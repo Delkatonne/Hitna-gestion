@@ -1,0 +1,524 @@
+{% extends "base.html" %}
+
+{% block title %}Ventes - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-container {
+        margin-bottom: 20px;
+    }
+    
+    .search-box {
+        width: 100%;
+        padding: 15px 20px;
+        font-size: 16px;
+        border: 2px solid #e0e0e0;
+        border-radius: 50px;
+        transition: all 0.3s;
+    }
+    
+    .search-box:focus {
+        outline: none;
+        border-color: #2a5298;
+    }
+    
+    .products-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+        max-height: 500px;
+        overflow-y: auto;
+        padding: 5px;
+    }
+    
+    .product-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 15px;
+        padding: 15px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .product-card:hover {
+        transform: translateY(-3px);
+        border-color: #2a5298;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .product-card.selected {
+        border-color: #28a745;
+        background: #f0fff4;
+    }
+    
+    .product-name {
+        font-size: 18px;
+        font-weight: bold;
+        color: #1e3c72;
+        margin-bottom: 10px;
+    }
+    
+    .product-price {
+        font-size: 24px;
+        font-weight: bold;
+        color: #28a745;
+    }
+    
+    .product-stock {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+    }
+    
+    .sale-form-container {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 20px;
+        padding: 25px;
+        margin-bottom: 30px;
+        color: white;
+    }
+    
+    .selected-product-info {
+        background: rgba(255,255,255,0.2);
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 20px;
+        text-align: center;
+    }
+    
+    .selected-product-name {
+        font-size: 20px;
+        font-weight: bold;
+    }
+    
+    .selected-product-price {
+        font-size: 28px;
+        font-weight: bold;
+    }
+    
+    .quantity-control {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin: 20px 0;
+    }
+    
+    .quantity-control input {
+        width: 120px;
+        padding: 12px;
+        font-size: 18px;
+        text-align: center;
+        border: none;
+        border-radius: 10px;
+    }
+    
+    .quantity-control button {
+        width: 50px;
+        height: 50px;
+        font-size: 24px;
+        background: white;
+        color: #1e3c72;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+    }
+    
+    .total-amount {
+        font-size: 32px;
+        font-weight: bold;
+        margin: 15px 0;
+        text-align: center;
+    }
+    
+    .btn-sale {
+        background: #28a745;
+        padding: 15px 30px;
+        font-size: 18px;
+        width: 100%;
+    }
+    
+    .no-results {
+        text-align: center;
+        padding: 40px;
+        color: #999;
+    }
+    
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 10001;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .modal-content {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        max-width: 400px;
+        width: 90%;
+        text-align: center;
+    }
+    
+    .modal-content input {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        margin: 20px 0;
+    }
+    
+    .stats-vendeurs {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-vendeur {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+    }
+    
+    .stat-vendeur.admin {
+        background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+        color: #333;
+    }
+    
+    .stat-vendeur.employe {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    }
+    
+    .stat-vendeur .icon {
+        font-size: 24px;
+    }
+    
+    .stat-vendeur .name {
+        font-weight: bold;
+        margin: 5px 0;
+    }
+    
+    .stat-vendeur .nb-ventes {
+        font-size: 20px;
+        font-weight: bold;
+    }
+    
+    .total-jour-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 15px;
+        margin-top: 20px;
+        text-align: center;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .total-jour-card h3 {
+        font-size: 16px;
+        opacity: 0.9;
+        margin-bottom: 5px;
+    }
+    
+    .total-jour-card .montant {
+        font-size: 36px;
+        font-weight: bold;
+    }
+    
+    .total-jour-card .nb-ventes {
+        font-size: 14px;
+        opacity: 0.8;
+        margin-top: 5px;
+    }
+    
+    .badge-admin {
+        background: #ffc107;
+        color: #333;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        display: inline-block;
+    }
+    
+    .badge-employe {
+        background: #17a2b8;
+        color: white;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        display: inline-block;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}🛒 Enregistrer une vente{% endblock %}
+{% block page_subtitle %}Sélectionnez un produit et enregistrez la vente{% endblock %}
+
+{% block content %}
+<!-- Message d'information employé -->
+<div class="card" style="background: #e8f4fd; border-left: 4px solid #17a2b8; margin-bottom: 20px;">
+    <p style="margin: 0;">
+        👤 Vous êtes connecté en tant qu'<strong>{{ session.user_nom }}</strong><br>
+        📊 Vous voyez toutes les ventes du jour
+    </p>
+</div>
+
+<!-- Statistiques des vendeurs du jour -->
+{% if stats_vendeurs %}
+<div class="stats-vendeurs">
+    {% for v in stats_vendeurs %}
+    <div class="stat-vendeur {% if v[0] == 'admin' %}admin{% else %}employe{% endif %}">
+        <div class="icon">{% if v[0] == 'admin' %}👑{% else %}👤{% endif %}</div>
+        <div class="name">{% if v[0] == 'admin' %}Administrateur{% else %}Employé{% endif %}</div>
+        <div class="nb-ventes">{{ v[1] }} vente(s)</div>
+        <div>{{ "{:,.0f}".format(v[2]) }} FCFA</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Barre de recherche -->
+<div class="card">
+    <h2 class="card-title">🔍 Rechercher un produit</h2>
+    <div class="search-container">
+        <input type="text" id="searchInput" class="search-box" placeholder="Tapez le nom du produit..." autocomplete="off">
+    </div>
+</div>
+
+<!-- Produits disponibles -->
+<div class="card">
+    <h2 class="card-title">📦 Produits disponibles</h2>
+    <div class="products-grid" id="productsGrid">
+        {% for p in produits %}
+        <div class="product-card" data-id="{{ p[0] }}" data-name="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}">
+            <div class="product-name">{{ p[1] }}</div>
+            <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
+            <div class="product-stock">📦 Stock: {{ p[3] }} unités</div>
+        </div>
+        {% endfor %}
+    </div>
+    <div id="noResults" class="no-results" style="display: none;">
+        🔍 Aucun produit trouvé
+    </div>
+</div>
+
+<!-- Formulaire de vente -->
+<div class="sale-form-container">
+    <h3>🛒 Vente en cours</h3>
+    <div id="selectedProductDisplay" class="selected-product-info">
+        <div style="opacity: 0.7;">👆 Cliquez sur un produit ci-dessus pour le sélectionner</div>
+    </div>
+    
+    <form method="post" id="saleForm" action="/vente">
+        <input type="hidden" name="produit_id" id="selectedProductId" required>
+        <input type="hidden" name="client" id="clientName" value="">
+        
+        <div class="quantity-control" style="display: none;" id="quantityControls">
+            <button type="button" onclick="decrementQuantity()">-</button>
+            <input type="number" name="quantite" id="quantite" value="1" min="1" onchange="updateTotal()">
+            <button type="button" onclick="incrementQuantity()">+</button>
+        </div>
+        
+        <div id="totalDisplay" style="display: none;">
+            <div class="total-amount">
+                Total: <span id="totalAmount">0</span> FCFA
+            </div>
+        </div>
+        
+        <button type="button" id="validateSaleBtn" class="btn-sale" style="display: none;">
+            💵 Valider la vente
+        </button>
+    </form>
+</div>
+
+<!-- Historique des ventes du jour -->
+<div class="card">
+    <h2 class="card-title">📜 Ventes du jour</h2>
+    {% if historique %}
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Heure</th>
+                    <th>Produit</th>
+                    <th>Quantité</th>
+                    <th>Total (FCFA)</th>
+                    <th>Client</th>
+                    <th>Vendeur</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in historique %}
+                <tr>
+                    <td>{{ v[4].split(' ')[1] if v[4] else '-' }}</td>
+                    <td><strong>{{ v[1] }}</strong></td>
+                    <td>{{ v[2] }}</td>
+                    <td style="color: #28a745; font-weight: bold;">{{ v[3] }} FCFA</td>
+                    <td>{{ v[5] or '-' }}</td>
+                    <td>
+                        {% if v[7] == 'admin' %}
+                            <span class="badge-admin">👑 {{ v[6] }}</span>
+                        {% else %}
+                            <span class="badge-employe">👤 {{ v[6] }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Total général du jour -->
+    <div class="total-jour-card">
+        <h3>💰 TOTAL DES VENTES DU JOUR</h3>
+        <div class="montant">{{ "{:,.0f}".format(total_general[0] if total_general[0] else 0) }} FCFA</div>
+        <div class="nb-ventes">{{ total_general[1] if total_general[1] else 0 }} vente(s) enregistrée(s)</div>
+    </div>
+    {% else %}
+    <p style="text-align: center; color: #999; padding: 40px;">Aucune vente enregistrée aujourd'hui</p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/changer_mdp">🔑 Changer mot de passe</a>
+    <a href="/logout">🚪 Déconnexion</a>
+</div>
+
+<!-- Modal client -->
+<div id="clientModal" class="modal">
+    <div class="modal-content">
+        <h3>👤 Nom du client</h3>
+        <input type="text" id="clientNameInput" placeholder="Entrez le nom du client" autocomplete="off">
+        <button onclick="confirmClientName()">✅ Confirmer</button>
+        <button onclick="skipClientName()" style="background: #6c757d;">⏭️ Passer</button>
+    </div>
+</div>
+
+<script>
+    let selectedProduct = null;
+    let maxStock = 0;
+    
+    // Recherche
+    const searchInput = document.getElementById('searchInput');
+    const productsGrid = document.getElementById('productsGrid');
+    const productCards = document.querySelectorAll('.product-card');
+    const noResults = document.getElementById('noResults');
+    
+    function filterProducts() {
+        const searchTerm = searchInput.value.toLowerCase().trim();
+        let hasResults = false;
+        
+        productCards.forEach(card => {
+            const productName = card.getAttribute('data-name').toLowerCase();
+            if (searchTerm === '' || productName.includes(searchTerm)) {
+                card.style.display = 'block';
+                hasResults = true;
+            } else {
+                card.style.display = 'none';
+            }
+        });
+        
+        noResults.style.display = hasResults ? 'none' : 'block';
+    }
+    
+    searchInput.addEventListener('keyup', filterProducts);
+    
+    // Sélection produit
+    productCards.forEach(card => {
+        card.addEventListener('click', () => {
+            productCards.forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            
+            selectedProduct = {
+                id: card.getAttribute('data-id'),
+                name: card.getAttribute('data-name'),
+                price: parseInt(card.getAttribute('data-price')),
+                stock: parseInt(card.getAttribute('data-stock'))
+            };
+            maxStock = selectedProduct.stock;
+            updateSelectedDisplay();
+        });
+    });
+    
+    function updateSelectedDisplay() {
+        if (selectedProduct) {
+            document.getElementById('selectedProductDisplay').innerHTML = `
+                <div>
+                    <div class="selected-product-name">${selectedProduct.name}</div>
+                    <div class="selected-product-price">${selectedProduct.price} FCFA</div>
+                    <div>📦 Stock: ${selectedProduct.stock} unités</div>
+                </div>
+            `;
+            document.getElementById('selectedProductId').value = selectedProduct.id;
+            document.getElementById('quantityControls').style.display = 'flex';
+            document.getElementById('totalDisplay').style.display = 'block';
+            document.getElementById('validateSaleBtn').style.display = 'block';
+            document.getElementById('quantite').value = 1;
+            updateTotal();
+        }
+    }
+    
+    function updateTotal() {
+        let quantite = parseInt(document.getElementById('quantite').value);
+        if (isNaN(quantite)) quantite = 1;
+        if (quantite > maxStock) quantite = maxStock;
+        if (quantite < 1) quantite = 1;
+        document.getElementById('quantite').value = quantite;
+        document.getElementById('totalAmount').innerText = quantite * selectedProduct.price;
+    }
+    
+    function incrementQuantity() {
+        let q = parseInt(document.getElementById('quantite').value);
+        if (q < maxStock) document.getElementById('quantite').value = q + 1;
+        updateTotal();
+    }
+    
+    function decrementQuantity() {
+        let q = parseInt(document.getElementById('quantite').value);
+        if (q > 1) document.getElementById('quantite').value = q - 1;
+        updateTotal();
+    }
+    
+    // Validation vente
+    document.getElementById('validateSaleBtn').addEventListener('click', () => {
+        const quantite = parseInt(document.getElementById('quantite').value);
+        if (quantite > maxStock) {
+            alert(`Stock insuffisant ! Il reste ${maxStock} unités`);
+            return;
+        }
+        document.getElementById('clientModal').style.display = 'flex';
+        document.getElementById('clientNameInput').focus();
+    });
+    
+    function confirmClientName() {
+        document.getElementById('clientName').value = document.getElementById('clientNameInput').value;
+        document.getElementById('clientModal').style.display = 'none';
+        document.getElementById('saleForm').submit();
+    }
+    
+    function skipClientName() {
+        document.getElementById('clientName').value = '';
+        document.getElementById('clientModal').style.display = 'none';
+        document.getElementById('saleForm').submit();
+    }
+    
+    // Fermer le modal en cliquant en dehors
+    window.onclick = function(event) {
+        const modal = document.getElementById('clientModal');
+        if (event.target == modal) {
+            modal.style.display = 'none';
+        }
+    }
+</script>
+{% endblock %}

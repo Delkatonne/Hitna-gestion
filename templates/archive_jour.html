@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Détail du {{ jour }} - Archives{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title">📅 Détail des opérations du {{ jour }}</h2>
+    
+    <!-- Résumé du jour -->
+    <div class="stats-grid">
+        <div class="stat-card" style="background: linear-gradient(135deg, #28a745, #20c997);">
+            <h3>💰 Ventes du jour</h3>
+            <div class="number">{{ "{:,.0f}".format(stats_ventes[2] if stats_ventes[2] else 0) }} FCFA</div>
+            <p>{{ stats_ventes[0] if stats_ventes[0] else 0 }} vente(s) - {{ stats_ventes[1] if stats_ventes[1] else 0 }} unités</p>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #dc3545, #c82333);">
+            <h3>💸 Achats du jour</h3>
+            <div class="number">{{ "{:,.0f}".format(stats_entrees[2] if stats_entrees[2] else 0) }} FCFA</div>
+            <p>{{ stats_entrees[0] if stats_entrees[0] else 0 }} achat(s) - {{ stats_entrees[1] if stats_entrees[1] else 0 }} unités</p>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #17a2b8, #138496);">
+            <h3>📊 Bénéfice brut</h3>
+            <div class="number">{{ "{:,.0f}".format((stats_ventes[2] if stats_ventes[2] else 0) - (stats_entrees[2] if stats_entrees[2] else 0)) }} FCFA</div>
+            <p>Ventes - Achats</p>
+        </div>
+    </div>
+</div>
+
+<!-- Détail des ventes du jour -->
+<div class="card">
+    <h2 class="card-title">🛒 Ventes du {{ jour }}</h2>
+    {% if ventes_jour %}
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Heure</th>
+                    <th>Produit</th>
+                    <th>Quantité</th>
+                    <th>Prix unit.</th>
+                    <th>Total</th>
+                    <th>Client</th>
+                    <th>Vendeur</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in ventes_jour %}
+                <tr>
+                    <td>{{ v[5].split(' ')[1] if v[5] else '-' }}</td>
+                    <td><strong>{{ v[11] if v[11] else 'Produit #' + v[1]|string }}</strong></td>
+                    <td>{{ v[2] }}</td>
+                    <td>{{ v[3] }} FCFA</td>
+                    <td style="color: #28a745; font-weight: bold;">{{ v[4] }} FCFA</td>
+                    <td>{{ v[7] or '-' }}</td>
+                    <td>{% if v[12] %}👤 {{ v[12] }}{% else %}Inconnu{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="background: #f8f9fa; font-weight: bold;">
+                    <td colspan="4" style="text-align: right;">Total :</td>
+                    <td colspan="3">{{ "{:,.0f}".format(stats_ventes[2] if stats_ventes[2] else 0) }} FCFA</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% else %}
+    <p style="text-align: center; color: #999; padding: 40px;">Aucune vente ce jour</p>
+    {% endif %}
+</div>
+
+<!-- Détail des entrées du jour -->
+<div class="card">
+    <h2 class="card-title">📥 Entrées de stock du {{ jour }}</h2>
+    {% if entrees_jour %}
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Heure</th>
+                    <th>Produit</th>
+                    <th>Quantité</th>
+                    <th>Prix unit.</th>
+                    <th>Total</th>
+                    <th>Fournisseur</th>
+                    <th>Enregistré par</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in entrees_jour %}
+                <tr>
+                    <td>{{ e[5].split(' ')[1] if e[5] else '-' }}</td>
+                    <td><strong>{{ e[11] if e[11] else 'Produit #' + e[1]|string }}</strong></td>
+                    <td style="color: #dc3545;">+{{ e[2] }}</td>
+                    <td>{{ e[3] }} FCFA</td>
+                    <td>{{ e[4] }} FCFA</td>
+                    <td>{{ e[6] or '-' }}</td>
+                    <td>{% if e[12] %}👤 {{ e[12] }}{% else %}Inconnu{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="background: #f8f9fa; font-weight: bold;">
+                    <td colspan="4" style="text-align: right;">Total :</td>
+                    <td colspan="3">{{ "{:,.0f}".format(stats_entrees[2] if stats_entrees[2] else 0) }} FCFA</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% else %}
+    <p style="text-align: center; color: #999; padding: 40px;">Aucune entrée de stock ce jour</p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/admin/archives">← Retour aux archives</a>
+    <a href="/dashboard">🏠 Dashboard</a>
+</div>
+{% endblock %}

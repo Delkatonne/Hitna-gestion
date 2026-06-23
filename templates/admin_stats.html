@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}Statistiques - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+ .stats-container {
+ display: grid;
+ grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+ gap: 25px;
+ margin-bottom: 30px;
+ }
+ .stat-box {
+ background: white;
+ border-radius: 15px;
+ padding: 20px;
+ box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+ }
+ .stat-box h3 {
+ color: #1e3c72;
+ margin-bottom: 15px;
+ border-left: 4px solid #2a5298;
+ padding-left: 12px;
+ font-size: 15px;
+ }
+ .marge-card {
+ background: linear-gradient(135deg, #28a745, #20c997);
+ color: white;
+ padding: 20px;
+ border-radius: 15px;
+ text-align: center;
+ margin-bottom: 25px;
+ }
+ .marge-card .number {
+ font-size: 36px;
+ font-weight: bold;
+ }
+ .marge-produits {
+ margin-top: 10px;
+ overflow-x: auto;
+ }
+ table {
+ width: 100%;
+ border-collapse: collapse;
+ }
+ th, td {
+ padding: 10px;
+ text-align: left;
+ border-bottom: 1px solid #ddd;
+ font-size: 13px;
+ }
+ th {
+ background: #f8f9fa;
+ color: #1e3c72;
+ }
+ .btn-export {
+ display: inline-block;
+ margin-top: 12px;
+ padding: 8px 15px;
+ background: #28a745;
+ color: white;
+ border-radius: 6px;
+ text-decoration: none;
+ font-size: 13px;
+ }
+ canvas {
+ max-height: 280px;
+ width: 100% !important;
+ }
+ .no-data {
+ text-align: center;
+ color: #999;
+ padding: 40px 0;
+ font-size: 14px;
+ }
+ @media (max-width: 768px) {
+ .stats-container {
+ grid-template-columns: 1fr;
+ }
+ }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block page_title %}Statistiques{% endblock %}
+{% block page_subtitle %}Analyse des ventes et performances{% endblock %}
+
+{% block content %}
+
+<!-- Marge bénéficiaire totale -->
+<div class="marge-card">
+ <h3>Marge bénéficiaire (totale)</h3>
+ {% if marge_totale %}
+ <div class="number">{{ "{:,.0f}".format((marge_totale[0] or 0) - (marge_totale[1] or 0)) }} FCFA</div>
+ <p>Ventes : {{ "{:,.0f}".format(marge_totale[0] or 0) }} FCFA &nbsp;|&nbsp; Achats : {{ "{:,.0f}".format(marge_totale[1] or 0) }} FCFA</p>
+ {% else %}
+ <div class="number">0 FCFA</div>
+ <p>Ventes : 0 FCFA | Achats : 0 FCFA</p>
+ {% endif %}
+</div>
+
+<div class="stats-container">
+ <!-- Graphique ventes par jour -->
+ <div class="stat-box">
+ <h3>Ventes des 7 derniers jours</h3>
+ {% if ventes_jour %}
+ <canvas id="ventesJourChart"></canvas>
+ <a href="/export/pdf?type=ventes_jour" class="btn-export">Exporter PDF</a>
+ {% else %}
+ <div class="no-data">Aucune vente sur les 7 derniers jours</div>
+ {% endif %}
+ </div>
+
+ <!-- Graphique ventes par mois -->
+ <div class="stat-box">
+ <h3>Ventes des 6 derniers mois</h3>
+ {% if ventes_mois %}
+ <canvas id="ventesMoisChart"></canvas>
+ <a href="/export/pdf?type=ventes_mois" class="btn-export">Exporter PDF</a>
+ {% else %}
+ <div class="no-data">Aucune vente sur les 6 derniers mois</div>
+ {% endif %}
+ </div>
+
+ <!-- Top produits -->
+ <div class="stat-box">
+ <h3>Top 10 produits les plus vendus</h3>
+ {% if top_produits and top_produits[0][1] > 0 %}
+ <canvas id="topProduitsChart"></canvas>
+ <a href="/export/pdf?type=top_produits" class="btn-export">Exporter PDF</a>
+ {% else %}
+ <div class="no-data">Aucune vente enregistrée</div>
+ {% endif %}
+ </div>
+</div>
+
+<!-- Marge par produit -->
+<div class="stat-box" style="margin-bottom:25px;">
+ <h3>Marge bénéficiaire par produit</h3>
+ <div class="marge-produits">
+ {% if marge_produits %}
+ <table>
+ <thead>
+ <tr>
+ <th>Produit</th>
+ <th>Ventes (FCFA)</th>
+ <th>Achats (FCFA)</th>
+ <th>Marge (FCFA)</th>
+ </tr>
+ </thead>
+ <tbody>
+ {% for m in marge_produits %}
+ <tr>
+ <td><strong>{{ m[0] }}</strong></td>
+ <td>{{ "{:,.0f}".format(m[1] or 0) }}</td>
+ <td>{{ "{:,.0f}".format(m[2] or 0) }}</td>
+ <td style="color: {{ '#28a745' if (m[3] or 0) >= 0 else '#dc3545' }}; font-weight: bold;">
+ {{ "{:,.0f}".format(m[3] or 0) }}
+ </td>
+ </tr>
+ {% endfor %}
+ </tbody>
+ </table>
+ {% else %}
+ <div class="no-data">Aucune donnée disponible</div>
+ {% endif %}
+ </div>
+</div>
+
+<div class="nav-links">
+ <a href="/dashboard">Retour au Dashboard</a>
+</div>
+
+<script>
+ const chartOptions = {
+ responsive: true,
+ plugins: { legend: { display: false } },
+ scales: {
+ y: { beginAtZero: true, ticks: { font: { size: 11 } } },
+ x: { ticks: { font: { size: 11 } } }
+ }
+ };
+
+ {% if ventes_jour %}
+ const joursLabels = [{% for v in ventes_jour %}'{{ v[0] }}',{% endfor %}];
+ const joursData = [{% for v in ventes_jour %}{{ v[1] }},{% endfor %}];
+
+ new Chart(document.getElementById('ventesJourChart'), {
+ type: 'bar',
+ data: {
+ labels: joursLabels,
+ datasets: [{
+ label: 'Ventes (FCFA)',
+ data: joursData,
+ backgroundColor: 'rgba(42, 82, 152, 0.7)',
+ borderColor: '#1e3c72',
+ borderWidth: 2,
+ borderRadius: 6
+ }]
+ },
+ options: chartOptions
+ });
+ {% endif %}
+
+ {% if ventes_mois %}
+ const moisLabels = [{% for v in ventes_mois %}'{{ v[0] }}',{% endfor %}];
+ const moisData = [{% for v in ventes_mois %}{{ v[1] }},{% endfor %}];
+
+ new Chart(document.getElementById('ventesMoisChart'), {
+ type: 'line',
+ data: {
+ labels: moisLabels,
+ datasets: [{
+ label: 'Ventes (FCFA)',
+ data: moisData,
+ backgroundColor: 'rgba(40, 167, 69, 0.15)',
+ borderColor: '#28a745',
+ borderWidth: 2,
+ fill: true,
+ tension: 0.4,
+ pointRadius: 5,
+ pointBackgroundColor: '#28a745'
+ }]
+ },
+ options: chartOptions
+ });
+ {% endif %}
+
+ {% if top_produits and top_produits[0][1] > 0 %}
+ const topLabels = [{% for p in top_produits %}'{{ p[0]|replace("'", "\\'") }}',{% endfor %}];
+ const topData = [{% for p in top_produits %}{{ p[1] }},{% endfor %}];
+
+ new Chart(document.getElementById('topProduitsChart'), {
+ type: 'bar',
+ data: {
+ labels: topLabels,
+ datasets: [{
+ label: 'Unités vendues',
+ data: topData,
+ backgroundColor: [
+ '#667eea','#764ba2','#f093fb','#f5576c','#4facfe',
+ '#43e97b','#fa709a','#fee140','#30cfd0','#a18cd1'
+ ],
+ borderRadius: 6
+ }]
+ },
+ options: {
+ responsive: true,
+ maintainAspectRatio: true,
+ indexAxis: 'y',
+ plugins: { legend: { display: false } },
+ scales: {
+ x: { beginAtZero: true, ticks: { font: { size: 10 } } },
+ y: { ticks: { font: { size: 10 } } }
+ }
+ }
+ });
+ {% endif %}
+</script>
+{% endblock %}

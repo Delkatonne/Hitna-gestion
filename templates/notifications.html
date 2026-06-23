@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Notifications - HITNA{% endblock %}
+
+{% block page_title %}🔔 Notifications{% endblock %}
+{% block page_subtitle %}Historique de toutes vos alertes et messages{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="notifications-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 class="card-title" style="margin-bottom: 0;">📋 Toutes les notifications</h2>
+        <button id="markAllReadBtn" class="btn" style="background: #17a2b8;">✅ Tout marquer comme lu</button>
+    </div>
+    
+    {% if notifications %}
+    <div class="notifications-list">
+        {% for n in notifications %}
+        <div class="notification-item {% if not n[6] %}unread{% endif %}" data-id="{{ n[0] }}" onclick="markAsRead(this, {{ n[0] }}, '{{ n[4] or '' }}')">
+            <div class="notification-icon">
+                {% if n[1] == 'stock_bas' %}
+                    ⚠️
+                {% elif n[1] == 'vente' %}
+                    🛒
+                {% elif n[1] == 'entree' %}
+                    📥
+                {% else %}
+                    ℹ️
+                {% endif %}
+            </div>
+            <div class="notification-content">
+                <div class="notification-title">{{ n[2] }}</div>
+                <div class="notification-message">{{ n[3] }}</div>
+                <div class="notification-date">{{ n[5] }}</div>
+            </div>
+            {% if not n[6] %}
+            <div class="notification-badge">Nouveau</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="icon">🔔</div>
+        <h3>Aucune notification</h3>
+        <p>Vous n'avez pas encore reçu de notifications</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard">← Retour au Dashboard</a>
+</div>
+
+<style>
+    .notifications-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .notification-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+        padding: 15px;
+        background: white;
+        border-radius: 10px;
+        border: 1px solid #e0e0e0;
+        transition: all 0.3s;
+        cursor: pointer;
+        position: relative;
+    }
+    
+    .notification-item:hover {
+        transform: translateX(5px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .notification-item.unread {
+        background: #e8f4fd;
+        border-left: 4px solid #2a5298;
+    }
+    
+    .notification-icon {
+        font-size: 24px;
+    }
+    
+    .notification-content {
+        flex: 1;
+    }
+    
+    .notification-title {
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 5px;
+    }
+    
+    .notification-message {
+        font-size: 13px;
+        color: #666;
+        margin-bottom: 5px;
+    }
+    
+    .notification-date {
+        font-size: 11px;
+        color: #999;
+    }
+    
+    .notification-badge {
+        background: #dc3545;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-size: 10px;
+        font-weight: bold;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+    }
+    
+    @media (max-width: 768px) {
+        .notification-item {
+            flex-direction: column;
+        }
+        .notification-badge {
+            position: static;
+            align-self: flex-start;
+        }
+    }
+</style>
+
+<script>
+    function markAsRead(element, id, lien) {
+        fetch(`/notifications/marquer_lu/${id}`, { method: 'POST' })
+            .then(() => {
+                if (lien) {
+                    window.location.href = lien;
+                } else {
+                    element.classList.remove('unread');
+                    const badge = element.querySelector('.notification-badge');
+                    if (badge) badge.remove();
+                }
+            });
+    }
+    
+    document.getElementById('markAllReadBtn')?.addEventListener('click', () => {
+        fetch('/notifications/marquer_tout_lu', { method: 'POST' })
+            .then(() => {
+                location.reload();
+            });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block title %}Fournisseurs - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Styles responsive pour fournisseurs */
+    .fournisseur-card {
+        background: white;
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 12px;
+        border: 1px solid #e0e0e0;
+        transition: all 0.2s;
+    }
+    
+    .fournisseur-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .fournisseur-card .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .fournisseur-card .card-header h3 {
+        margin: 0;
+        font-size: 16px;
+        color: #1e3c72;
+    }
+    
+    .fournisseur-card .id-badge {
+        background: #6c757d;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-size: 10px;
+    }
+    
+    .fournisseur-card .info-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #f0f0f0;
+        gap: 10px;
+    }
+    
+    .fournisseur-card .info-row:last-child {
+        border-bottom: none;
+    }
+    
+    .fournisseur-card .label {
+        font-size: 12px;
+        color: #888;
+        min-width: 80px;
+    }
+    
+    .fournisseur-card .value {
+        font-size: 13px;
+        color: #333;
+        text-align: right;
+        word-break: break-word;
+    }
+    
+    .fournisseur-card .card-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+    }
+    
+    .fournisseur-card .card-actions button,
+    .fournisseur-card .card-actions a {
+        flex: 1;
+        text-align: center;
+        padding: 8px;
+        font-size: 13px;
+        border-radius: 8px;
+        text-decoration: none;
+        display: inline-block;
+        border: none;
+        cursor: pointer;
+    }
+    
+    .edit-form-mobile {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .edit-form-mobile input {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+    
+    .edit-form-mobile .btn-group {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+    }
+    
+    .edit-form-mobile .btn-group button {
+        flex: 1;
+        padding: 10px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+    
+    /* Version desktop - tableau */
+    @media (min-width: 769px) {
+        .fournisseur-cards {
+            display: none;
+        }
+        .table-container {
+            display: block;
+        }
+    }
+    
+    /* Version mobile - cartes */
+    @media (max-width: 768px) {
+        .table-container {
+            display: none;
+        }
+        .fournisseur-cards {
+            display: block;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title">🏢 Gestion des fournisseurs</h2>
+
+    <!-- Formulaire d'ajout -->
+    <form method="post" action="/admin/fournisseurs/ajouter"
+        style="background: #f8f9fa; padding: 20px; border-radius: 15px; margin-bottom: 30px;">
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <input type="text" name="nom" placeholder="Nom du fournisseur *" required
+                style="flex:2; min-width:150px; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+            <input type="text" name="produits" placeholder="Produits fournis"
+                style="flex:2; min-width:150px; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+            <input type="tel" name="telephone" placeholder="Téléphone"
+                style="flex:1; min-width:120px; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+            <input type="email" name="email" placeholder="Email"
+                style="flex:1; min-width:130px; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+            <input type="text" name="adresse" placeholder="Adresse"
+                style="flex:2; min-width:150px; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+            <button type="submit" style="background:#28a745; white-space:nowrap;">➕ Ajouter</button>
+        </div>
+    </form>
+
+    <!-- Liste des fournisseurs -->
+    <h3 style="margin-bottom:15px; color:#1e3c72;">📋 Liste des fournisseurs</h3>
+
+    <!-- VERSION DESKTOP: Tableau -->
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Nom</th>
+                    <th>Produits fournis</th>
+                    <th>Téléphone</th>
+                    <th>Email</th>
+                    <th>Adresse</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in fournisseurs %}
+                <tr id="row-{{ f[0] }}">
+                    <td>{{ f[0] }}</td>
+                    <td id="nom-{{ f[0] }}">{{ f[1] }}</td>
+                    <td id="produits-{{ f[0] }}">{{ f[2] or '-' }}</td>
+                    <td id="tel-{{ f[0] }}">{{ f[3] or '-' }}</td>
+                    <td id="email-{{ f[0] }}">{{ f[4] or '-' }}</td>
+                    <td id="adr-{{ f[0] }}">{{ f[5] or '-' }}</td>
+                    <td style="white-space:nowrap;">
+                        <button onclick="activerEdition({{ f[0] }})" class="btn-small" style="background:#ffc107; color:#333;">✏️ Modifier</button>
+                        <a href="/admin/fournisseurs/supprimer/{{ f[0] }}"
+                            onclick="return confirm('Supprimer ce fournisseur ?')"
+                            style="background:#dc3545; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-size:13px;">🗑️ Supprimer</a>
+                    </td>
+                </tr>
+                <tr id="edit-{{ f[0] }}" style="display:none; background:#f0f7ff;">
+                    <td colspan="7">
+                        <form method="post" action="/admin/fournisseurs/modifier/{{ f[0] }}"
+                            style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:5px 0;">
+                            <input type="text" name="nom" value="{{ f[1] }}" placeholder="Nom *" required
+                                style="flex:2; min-width:120px; padding:8px; border:2px solid #667eea; border-radius:6px;">
+                            <input type="text" name="produits" value="{{ f[2] or '' }}" placeholder="Produits fournis"
+                                style="flex:2; min-width:120px; padding:8px; border:2px solid #667eea; border-radius:6px;">
+                            <input type="tel" name="telephone" value="{{ f[3] or '' }}" placeholder="Téléphone"
+                                style="flex:1; min-width:100px; padding:8px; border:2px solid #667eea; border-radius:6px;">
+                            <input type="email" name="email" value="{{ f[4] or '' }}" placeholder="Email"
+                                style="flex:1; min-width:110px; padding:8px; border:2px solid #667eea; border-radius:6px;">
+                            <input type="text" name="adresse" value="{{ f[5] or '' }}" placeholder="Adresse"
+                                style="flex:2; min-width:120px; padding:8px; border:2px solid #667eea; border-radius:6px;">
+                            <button type="submit" style="background:#28a745; padding:8px 14px;">✅ Valider</button>
+                            <button type="button" onclick="annulerEdition({{ f[0] }})"
+                                style="background:#6c757d; padding:8px 14px;">❌ Annuler</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="text-align:center; color:#999; padding:30px;">
+                        📭 Aucun fournisseur enregistré
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- VERSION MOBILE: Cartes -->
+    <div class="fournisseur-cards">
+        {% for f in fournisseurs %}
+        <div class="fournisseur-card" id="card-{{ f[0] }}">
+            <div class="card-header">
+                <h3>{{ f[1] }}</h3>
+                <span class="id-badge">#{{ f[0] }}</span>
+            </div>
+
+            <div class="info-row">
+                <span class="label">📦 Produits</span>
+                <span class="value">{{ f[2] or 'Non spécifié' }}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">📞 Téléphone</span>
+                <span class="value">{{ f[3] or 'Non renseigné' }}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">📧 Email</span>
+                <span class="value">{{ f[4] or 'Non renseigné' }}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">📍 Adresse</span>
+                <span class="value">{{ f[5] or 'Non renseignée' }}</span>
+            </div>
+
+            <div class="card-actions">
+                <button onclick="activerEditionMobile({{ f[0] }})" style="background:#ffc107; color:#333;">✏️ Modifier</button>
+                <a href="/admin/fournisseurs/supprimer/{{ f[0] }}" onclick="return confirm('Supprimer ce fournisseur ?')" style="background:#dc3545; color:white;">🗑️ Supprimer</a>
+            </div>
+        </div>
+
+        <!-- Mode édition mobile -->
+        <div id="card-edit-{{ f[0] }}" style="display:none; margin-bottom:15px;">
+            <div class="fournisseur-card" style="background:#f0f7ff; border:2px solid #667eea;">
+                <h3 style="color:#1e3c72; margin-bottom:15px;">✏️ Modifier {{ f[1] }}</h3>
+                <form method="post" action="/admin/fournisseurs/modifier/{{ f[0] }}" class="edit-form-mobile">
+                    <input type="text" name="nom" value="{{ f[1] }}" placeholder="Nom *" required>
+                    <input type="text" name="produits" value="{{ f[2] or '' }}" placeholder="Produits fournis">
+                    <input type="tel" name="telephone" value="{{ f[3] or '' }}" placeholder="Téléphone">
+                    <input type="email" name="email" value="{{ f[4] or '' }}" placeholder="Email">
+                    <input type="text" name="adresse" value="{{ f[5] or '' }}" placeholder="Adresse">
+                    <div class="btn-group">
+                        <button type="submit" style="background:#28a745; color:white;">✅ Valider</button>
+                        <button type="button" onclick="annulerEditionMobile({{ f[0] }})" style="background:#6c757d; color:white;">❌ Annuler</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div style="text-align:center; color:#999; padding:40px;">
+            <div style="font-size:48px; margin-bottom:15px;">📭</div>
+            <h3>Aucun fournisseur enregistré</h3>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard">← Retour au Dashboard</a>
+</div>
+
+<script>
+    function activerEdition(id) {
+        document.getElementById('row-' + id).style.display = 'none';
+        document.getElementById('edit-' + id).style.display = 'table-row';
+    }
+    
+    function annulerEdition(id) {
+        document.getElementById('row-' + id).style.display = 'table-row';
+        document.getElementById('edit-' + id).style.display = 'none';
+    }
+    
+    function activerEditionMobile(id) {
+        document.getElementById('card-' + id).style.display = 'none';
+        document.getElementById('card-edit-' + id).style.display = 'block';
+    }
+    
+    function annulerEditionMobile(id) {
+        document.getElementById('card-' + id).style.display = 'block';
+        document.getElementById('card-edit-' + id).style.display = 'none';
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des pertes - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-pertes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .stat-perte {
+        background: linear-gradient(135deg, #dc3545, #c82333);
+        color: white;
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+    }
+    .stat-perte.warning {
+        background: linear-gradient(135deg, #ffc107, #e0a800);
+        color: #333;
+    }
+    .stat-perte .number {
+        font-size: 32px;
+        font-weight: bold;
+    }
+    .motif-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: bold;
+    }
+    .motif-casse { background: #dc3545; color: white; }
+    .motif-vol { background: #6c757d; color: white; }
+    .motif-peremption { background: #ffc107; color: #333; }
+    .motif-erreur { background: #17a2b8; color: white; }
+    .btn-danger {
+        background: #dc3545;
+        color: white;
+    }
+    .btn-warning {
+        background: #ffc107;
+        color: #333;
+    }
+    .form-perte {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+    }
+    .form-perte .form-row {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+    .form-perte .form-group {
+        flex: 1;
+        min-width: 150px;
+    }
+    .form-perte select, .form-perte input {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+    }
+    @media (max-width: 768px) {
+        .form-perte .form-row {
+            flex-direction: column;
+        }
+        .stats-pertes {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}⚠️ Gestion des pertes{% endblock %}
+{% block page_subtitle %}Enregistrer les produits perdus, cassés ou volés{% endblock %}
+
+{% block content %}
+
+<!-- Statistiques -->
+<div class="stats-pertes">
+    <div class="stat-perte">
+        <h3>📊 Pertes aujourd'hui</h3>
+        <div class="number">{{ stats_aujourdhui[0] or 0 }}</div>
+        <p>{{ "{:,.0f}".format(stats_aujourdhui[1] or 0) }} FCFA - {{ stats_aujourdhui[2] or 0 }} unités</p>
+    </div>
+    <div class="stat-perte warning">
+        <h3>📈 Pertes (30 jours)</h3>
+        <div class="number">{{ stats_mois[0] or 0 }}</div>
+        <p>{{ "{:,.0f}".format(stats_mois[1] or 0) }} FCFA - {{ stats_mois[2] or 0 }} unités</p>
+    </div>
+</div>
+
+<!-- Formulaire d'ajout -->
+<div class="card">
+    <h2 class="card-title">➕ Enregistrer une perte</h2>
+    
+    <form method="post" action="/admin/pertes/ajouter" class="form-perte" onsubmit="return confirm('Confirmer cette perte ? Le stock sera diminué.')">
+        <div class="form-row">
+            <div class="form-group">
+                <label>📦 Produit</label>
+                <select name="produit_id" id="produit_id" required onchange="updateProductInfo()">
+                    <option value="">-- Sélectionnez un produit --</option>
+                    {% for p in produits %}
+                    <option value="{{ p[0] }}" data-prix="{{ p[2] }}" data-stock="{{ p[3] }}">
+                        {{ p[1] }} - Stock: {{ p[3] }} - {{ p[2] }} FCFA
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>🔢 Quantité</label>
+                <input type="number" name="quantite" id="quantite" min="1" required onchange="calculerTotal()">
+            </div>
+            <div class="form-group">
+                <label>💰 Total estimé</label>
+                <input type="text" id="total_estime" readonly style="background: #e9ecef; font-weight: bold;">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>📝 Motif de la perte</label>
+                <select name="motif" required>
+                    <option value="">-- Sélectionnez un motif --</option>
+                    <option value="Casse">🔨 Casse / Détérioration</option>
+                    <option value="Vol">👤 Vol</option>
+                    <option value="Péremption">📅 Péremption</option>
+                    <option value="Erreur de stock">📊 Erreur de stock</option>
+                    <option value="Autre">📝 Autre</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <button type="submit" class="btn-danger" style="width: 100%;">⚠️ Enregistrer la perte</button>
+            </div>
+        </div>
+        <div id="stockInfo" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+    </form>
+</div>
+
+<!-- Historique des pertes -->
+<div class="card">
+    <h2 class="card-title">📜 Historique des pertes</h2>
+    
+    {% if pertes %}
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Produit</th>
+                    <th>Quantité</th>
+                    <th>Prix unit.</th>
+                    <th>Total</th>
+                    <th>Motif</th>
+                    <th>Enregistré par</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in pertes %}
+                <tr>
+                    <td>{{ p[6] }}</td>
+                    <td><strong>{{ p[1] }}</strong></td>
+                    <td style="color: #dc3545;">-{{ p[2] }}</td>
+                    <td>{{ p[3] }} FCFA</td>
+                    <td style="font-weight: bold;">{{ p[4] }} FCFA</td>
+                    <td>
+                        <span class="motif-badge motif-{{ p[5]|lower|replace(' ', '') }}">
+                            {% if p[5] == 'Casse' %}🔨 Casse
+                            {% elif p[5] == 'Vol' %}👤 Vol
+                            {% elif p[5] == 'Péremption' %}📅 Péremption
+                            {% else %}📝 {{ p[5] }}{% endif %}
+                        </span>
+                    </td>
+                    <td>{{ p[7] }}</td>
+                    <td>
+                        <a href="/admin/pertes/supprimer/{{ p[0] }}" 
+                           onclick="return confirm('Annuler cette perte et restaurer le stock ?')"
+                           class="btn-small" style="background:#28a745; color:white;">
+                            ↩️ Annuler
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="text-align: center; color: #999; padding: 40px;">📭 Aucune perte enregistrée</p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/admin/archives">📚 Voir les archives des pertes</a>
+</div>
+
+<script>
+    const produits = {
+        {% for p in produits %}
+        {{ p[0] }}: { nom: "{{ p[1] }}", prix: {{ p[2] }}, stock: {{ p[3] }} },
+        {% endfor %}
+    };
+    
+    function updateProductInfo() {
+        const select = document.getElementById('produit_id');
+        const produitId = select.value;
+        const stockInfo = document.getElementById('stockInfo');
+        const quantiteInput = document.getElementById('quantite');
+        
+        if (produitId && produits[produitId]) {
+            const produit = produits[produitId];
+            stockInfo.innerHTML = `📦 Stock actuel: <strong>${produit.stock}</strong> unités - Prix: ${produit.prix} FCFA/unité`;
+            quantiteInput.max = produit.stock;
+            calculerTotal();
+        } else {
+            stockInfo.innerHTML = '';
+        }
+    }
+    
+    function calculerTotal() {
+        const select = document.getElementById('produit_id');
+        const produitId = select.value;
+        const quantite = parseInt(document.getElementById('quantite').value) || 0;
+        
+        if (produitId && produits[produitId] && quantite > 0) {
+            const produit = produits[produitId];
+            const total = quantite * produit.prix;
+            document.getElementById('total_estime').value = total.toLocaleString() + ' FCFA';
+            
+            if (quantite > produit.stock) {
+                document.getElementById('total_estime').style.color = '#dc3545';
+                document.getElementById('total_estime').style.fontWeight = 'bold';
+            } else {
+                document.getElementById('total_estime').style.color = '';
+            }
+        } else {
+            document.getElementById('total_estime').value = '';
+        }
+    }
+</script>
+{% endblock %}

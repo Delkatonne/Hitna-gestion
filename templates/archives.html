@@ -1,0 +1,913 @@
+{% extends "base.html" %}
+
+{% block title %}Archives - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Onglets */
+    .tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 25px;
+        border-bottom: 2px solid #e0e0e0;
+        padding-bottom: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+    }
+    
+    .tab-btn {
+        background: none;
+        border: none;
+        padding: 12px 25px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        border-radius: 10px 10px 0 0;
+        transition: all 0.3s;
+        color: #666;
+    }
+    
+    .tab-btn:hover {
+        background: #f0f2f5;
+        color: #1e3c72;
+    }
+    
+    .tab-btn.active {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: white;
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+        animation: fadeIn 0.5s;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Filtres */
+    .filters-container {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 25px;
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    
+    .filter-group {
+        flex: 1;
+        min-width: 150px;
+    }
+    
+    .filter-group label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #1e3c72;
+        font-size: 13px;
+    }
+    
+    .filter-group input, .filter-group select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+    
+    .filter-group input:focus, .filter-group select:focus {
+        outline: none;
+        border-color: #2a5298;
+    }
+    
+    .search-btn {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        padding: 10px 25px;
+        min-width: 100px;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    
+    .reset-btn {
+        background: #6c757d;
+        padding: 10px 25px;
+        min-width: 100px;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    
+    /* Statistiques globales */
+    .stats-archive {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+    
+    .stat-archive {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 12px;
+        text-align: center;
+    }
+    
+    .stat-archive.pertes {
+        background: linear-gradient(135deg, #dc3545, #c82333);
+    }
+    
+    .stat-archive .number {
+        font-size: 28px;
+        font-weight: bold;
+    }
+    
+    .stat-archive .label {
+        font-size: 13px;
+        opacity: 0.9;
+        margin-top: 5px;
+    }
+    
+    /* Séparateur de jour */
+    .day-separator {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: white;
+        padding: 12px 20px;
+        margin: 25px 0 15px 0;
+        border-radius: 12px;
+        font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .day-separator:first-of-type {
+        margin-top: 0;
+    }
+    
+    .day-date {
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .day-name {
+        background: rgba(255,255,255,0.2);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+    }
+    
+    .day-total {
+        background: rgba(255,255,255,0.2);
+        padding: 6px 15px;
+        border-radius: 25px;
+        font-size: 14px;
+    }
+    
+    /* Groupes d'entrées par jour */
+    .entrees-group, .ventes-group, .pertes-group {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 5px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    
+    .table-archive {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .table-archive th {
+        background: #f8f9fa;
+        padding: 12px;
+        text-align: left;
+        font-weight: 600;
+        color: #1e3c72;
+        border-bottom: 2px solid #e0e0e0;
+    }
+    
+    .table-archive td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .table-archive tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .day-total-footer {
+        background: #f8f9fa;
+        padding: 10px 15px;
+        font-weight: bold;
+        text-align: right;
+        border-top: 2px solid #e0e0e0;
+        font-size: 14px;
+    }
+    
+    .badge-success {
+        background: #d4edda;
+        color: #155724;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-block;
+    }
+    
+    .motif-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: bold;
+    }
+    .motif-casse { background: #dc3545; color: white; }
+    .motif-vol { background: #6c757d; color: white; }
+    .motif-peremption { background: #ffc107; color: #333; }
+    .motif-erreur-de-stock { background: #17a2b8; color: white; }
+    .motif-autre { background: #6c757d; color: white; }
+    
+    .empty-archive {
+        text-align: center;
+        padding: 60px 20px;
+        color: #999;
+    }
+    
+    .empty-archive .icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+    
+    .heure-cell {
+        font-family: monospace;
+        font-size: 13px;
+        color: #666;
+    }
+    
+    .vendeur-admin {
+        background: #ffc107;
+        color: #333;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: bold;
+        display: inline-block;
+    }
+    
+    .vendeur-employe {
+        background: #17a2b8;
+        color: white;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: bold;
+        display: inline-block;
+    }
+    
+    .filter-info {
+        background: #e8f4fd;
+        padding: 10px 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .clear-filters {
+        background: #dc3545;
+        color: white;
+        padding: 5px 12px;
+        border-radius: 20px;
+        text-decoration: none;
+        font-size: 12px;
+    }
+
+    .tri-select {
+        cursor: pointer;
+    }
+
+    /* ── Responsive mobile archives ── */
+    @media (max-width: 768px) {
+        .stats-archive {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .stat-archive .number {
+            font-size: 20px;
+        }
+
+        .stat-archive .label {
+            font-size: 11px;
+        }
+
+        .tab-btn {
+            padding: 10px 15px;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .filters-container {
+            flex-direction: column;
+            padding: 15px;
+            gap: 10px;
+        }
+
+        .filter-group {
+            min-width: unset;
+            width: 100%;
+        }
+
+        .search-btn, .reset-btn {
+            width: 100%;
+        }
+
+        .table-archive {
+            min-width: 550px;
+        }
+
+        .table-archive th,
+        .table-archive td {
+            padding: 7px 5px;
+            font-size: 11px;
+        }
+
+        .day-separator {
+            flex-direction: column;
+            text-align: center;
+            gap: 6px;
+            padding: 10px 12px;
+        }
+
+        .day-date {
+            font-size: 13px;
+        }
+
+        .day-total {
+            font-size: 11px;
+        }
+
+        .vendeur-admin, .vendeur-employe {
+            font-size: 10px;
+            padding: 2px 5px;
+        }
+    }
+
+    @media (max-width: 400px) {
+        .stats-archive {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}📚 Archives HITNA{% endblock %}
+{% block page_subtitle %}Consultez l'historique des ventes, entrées et pertes archivées{% endblock %}
+
+{% block content %}
+<!-- Statistiques globales -->
+<div class="stats-archive">
+    <div class="stat-archive">
+        <div class="number">{{ total_ventes_archive }}</div>
+        <div class="label">Ventes archivées</div>
+        <div class="label">{{ "{:,.0f}".format(total_ca_archive) }} FCFA</div>
+    </div>
+    <div class="stat-archive">
+        <div class="number">{{ total_entrees_archive }}</div>
+        <div class="label">Entrées archivées</div>
+        <div class="label">{{ "{:,.0f}".format(total_achats_archive) }} FCFA</div>
+    </div>
+    <div class="stat-archive pertes">
+        <div class="number">{{ total_pertes_archive }}</div>
+        <div class="label">Pertes archivées</div>
+        <div class="label">{{ "{:,.0f}".format(total_pertes_ca) }} FCFA</div>
+    </div>
+</div>
+
+<!-- Onglets -->
+<div class="tabs">
+    <button class="tab-btn {% if type_data == 'ventes' %}active{% endif %}" onclick="switchTab('ventes')">
+        📊 Ventes archivées
+    </button>
+    <button class="tab-btn {% if type_data == 'entrees' %}active{% endif %}" onclick="switchTab('entrees')">
+        📥 Entrées archivées
+    </button>
+    <button class="tab-btn {% if type_data == 'pertes' %}active{% endif %}" onclick="switchTab('pertes')">
+        ⚠️ Pertes archivées
+    </button>
+</div>
+
+<!-- Contenu Ventes -->
+<div id="tab-ventes" class="tab-content {% if type_data == 'ventes' %}active{% endif %}">
+    <!-- Filtres -->
+    <div class="filters-container">
+        <div class="filter-group">
+            <label>📅 Date de début</label>
+            <input type="date" id="date_debut_ventes" value="{{ request.args.get('date_debut', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>📅 Date de fin</label>
+            <input type="date" id="date_fin_ventes" value="{{ request.args.get('date_fin', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>🔍 Nom du produit</label>
+            <input type="text" id="produit_nom_ventes" placeholder="Rechercher un produit..." value="{{ request.args.get('produit_nom', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>🔄 Trier par</label>
+            <select id="tri_select_ventes" class="tri-select" onchange="rechercherAvecFiltres('ventes')">
+                <option value="desc" {% if request.args.get('tri', 'desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
+                <option value="asc" {% if request.args.get('tri', 'desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <button class="search-btn" onclick="rechercherAvecFiltres('ventes')">🔍 Rechercher</button>
+        </div>
+        <div class="filter-group">
+            <button class="reset-btn" onclick="resetRecherche('ventes')">🔄 Réinitialiser</button>
+        </div>
+    </div>
+    
+    <!-- Résultats des ventes -->
+    {% if ventes_archive %}
+        {% set current_day = "" %}
+        {% set day_total = 0 %}
+        {% set day_count = 0 %}
+        
+        {% for v in ventes_archive %}
+            {% set date_complete = v[5] if v[5] else '' %}
+            {% set v_date = date_complete.split(' ')[0] if date_complete else '' %}
+            {% set v_time = date_complete.split(' ')[1] if date_complete and ' ' in date_complete else '' %}
+            
+            {% if current_day != v_date and v_date != '' %}
+                {% if current_day != "" %}
+                                </tbody>
+                            </table>
+                            <div class="day-total-footer">
+                                📊 Total du {{ current_day }} : 
+                                <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
+                                ({{ day_count }} ventes)
+                            </div>
+                        </div>
+                {% endif %}
+                
+                <div class="day-separator">
+                    <div class="day-date">
+                        📅 {{ v_date }}
+                        <span class="day-name">
+                            {% if v_date == date_actuelle.split(' ')[0] %}
+                                📍 AUJOURD'HUI
+                            {% elif v_date == date_actuelle.split(' ')[0] %}
+                                HIER
+                            {% else %}
+                                {{ v_date }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="day-total">
+                        Total: à calculer
+                    </div>
+                </div>
+                
+                <div class="ventes-group">
+                    <div class="table-container">
+                        <table class="table-archive">
+                            <thead>
+                                <tr>
+                                    <th>Heure</th>
+                                    <th>Produit</th>
+                                    <th>Quantité</th>
+                                    <th>Prix unit.</th>
+                                    <th>Total</th>
+                                    <th>Client</th>
+                                    <th>Vendeur</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                {% set current_day = v_date %}
+                {% set day_total = 0 %}
+                {% set day_count = 0 %}
+            {% endif %}
+            
+            {% if v_date != '' %}
+                <tr>
+                    <td class="heure-cell">{{ v_time if v_time else '-' }}</td>
+                    <td><strong>{{ v[11] if v[11] else 'Produit #' + v[1]|string }}</strong></td>
+                    <td>{{ v[2] }}</td>
+                    <td>{{ v[3] }} FCFA</td>
+                    <td style="color: #28a745; font-weight: bold;">{{ v[4] }} FCFA</td>
+                    <td>{{ v[7] or '-' }}</td>
+                    <td>
+                        {% if v[12] %}
+                            <span class="vendeur-employe">👤 {{ v[12] }}</span>
+                        {% else %}
+                            <span class="vendeur-admin">👑 Inconnu</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% set day_total = day_total + v[4] %}
+                {% set day_count = day_count + 1 %}
+            {% endif %}
+        {% endfor %}
+        
+        {% if current_day != "" %}
+                        </tbody>
+                    </table>
+                    <div class="day-total-footer">
+                        📊 Total du {{ current_day }} : 
+                        <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
+                        ({{ day_count }} ventes)
+                    </div>
+                </div>
+        {% endif %}
+    {% else %}
+        <div class="empty-archive">
+            <div class="icon">📭</div>
+            <h3>Aucune vente trouvée</h3>
+            <p>Essayez avec d'autres critères de recherche</p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Contenu Entrées -->
+<div id="tab-entrees" class="tab-content {% if type_data == 'entrees' %}active{% endif %}">
+    <!-- Filtres -->
+    <div class="filters-container">
+        <div class="filter-group">
+            <label>📅 Date de début</label>
+            <input type="date" id="date_debut_entrees" value="{{ request.args.get('date_debut', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>📅 Date de fin</label>
+            <input type="date" id="date_fin_entrees" value="{{ request.args.get('date_fin', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>🔍 Nom du produit</label>
+            <input type="text" id="produit_nom_entrees" placeholder="Rechercher un produit..." value="{{ request.args.get('produit_nom', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>🔄 Trier par</label>
+            <select id="tri_select_entrees" class="tri-select" onchange="rechercherAvecFiltres('entrees')">
+                <option value="desc" {% if request.args.get('tri', 'desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
+                <option value="asc" {% if request.args.get('tri', 'desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <button class="search-btn" onclick="rechercherAvecFiltres('entrees')">🔍 Rechercher</button>
+        </div>
+        <div class="filter-group">
+            <button class="reset-btn" onclick="resetRecherche('entrees')">🔄 Réinitialiser</button>
+        </div>
+    </div>
+    
+    <!-- Résultats des entrées -->
+    {% if entrees_archive %}
+        {% set current_day = "" %}
+        {% set day_total = 0 %}
+        {% set day_count = 0 %}
+        {% set day_quantite = 0 %}
+        
+        {% for e in entrees_archive %}
+            {% set date_complete = e[5] if e[5] else '' %}
+            {% set e_date = date_complete.split(' ')[0] if date_complete else '' %}
+            {% set e_time = date_complete.split(' ')[1] if date_complete and ' ' in date_complete else '' %}
+            
+            {% if current_day != e_date and e_date != '' %}
+                {% if current_day != "" %}
+                                </tbody>
+                            </table>
+                            <div class="day-total-footer">
+                                📊 Total du {{ current_day }} : 
+                                <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
+                                ({{ day_count }} entrées, {{ day_quantite }} unités)
+                            </div>
+                        </div>
+                {% endif %}
+                
+                <div class="day-separator">
+                    <div class="day-date">
+                        📅 {{ e_date }}
+                        <span class="day-name">
+                            {% if e_date == date_actuelle.split(' ')[0] %}
+                                📍 AUJOURD'HUI
+                            {% elif e_date == date_actuelle.split(' ')[0] %}
+                                HIER
+                            {% else %}
+                                {{ e_date }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="day-total">
+                        Total: à calculer
+                    </div>
+                </div>
+                
+                <div class="entrees-group">
+                    <div class="table-container">
+                        <table class="table-archive">
+                            <thead>
+                                <tr>
+                                    <th>Heure</th>
+                                    <th>Produit</th>
+                                    <th>Quantité</th>
+                                    <th>Prix unit.</th>
+                                    <th>Total</th>
+                                    <th>Fournisseur</th>
+                                    <th>Enregistré par</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                {% set current_day = e_date %}
+                {% set day_total = 0 %}
+                {% set day_count = 0 %}
+                {% set day_quantite = 0 %}
+            {% endif %}
+            
+            {% if e_date != '' %}
+                <tr>
+                    <td class="heure-cell">{{ e_time if e_time else '-' }}</td>
+                    <td><strong>{{ e[11] if e[11] else 'Produit #' + e[1]|string }}</strong></td>
+                    <td><span class="badge-success">+{{ e[2] }}</span></td>
+                    <td>{{ e[3] }} FCFA</td>
+                    <td style="font-weight: bold; color: #28a745;">{{ e[4] }} FCFA</td>
+                    <td>{{ e[6] or '-' }}</td>
+                    <td>{% if e[12] %}👤 {{ e[12] }}{% else %}Inconnu{% endif %}</td>
+                </tr>
+                {% set day_total = day_total + e[4] %}
+                {% set day_count = day_count + 1 %}
+                {% set day_quantite = day_quantite + e[2] %}
+            {% endif %}
+        {% endfor %}
+        
+        {% if current_day != "" %}
+                        </tbody>
+                    </table>
+                    <div class="day-total-footer">
+                        📊 Total du {{ current_day }} : 
+                        <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
+                        ({{ day_count }} entrées, {{ day_quantite }} unités)
+                    </div>
+                </div>
+        {% endif %}
+    {% else %}
+        <div class="empty-archive">
+            <div class="icon">📭</div>
+            <h3>Aucune entrée trouvée</h3>
+            <p>Essayez avec d'autres critères de recherche</p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Contenu Pertes -->
+<div id="tab-pertes" class="tab-content {% if type_data == 'pertes' %}active{% endif %}">
+    <!-- Filtres -->
+    <div class="filters-container">
+        <div class="filter-group">
+            <label>📅 Date de début</label>
+            <input type="date" id="date_debut_pertes" value="{{ request.args.get('date_debut', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>📅 Date de fin</label>
+            <input type="date" id="date_fin_pertes" value="{{ request.args.get('date_fin', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>🔍 Nom du produit</label>
+            <input type="text" id="produit_nom_pertes" placeholder="Rechercher un produit..." value="{{ request.args.get('produit_nom', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>🔄 Trier par</label>
+            <select id="tri_select_pertes" class="tri-select" onchange="rechercherAvecFiltres('pertes')">
+                <option value="desc" {% if request.args.get('tri', 'desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
+                <option value="asc" {% if request.args.get('tri', 'desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <button class="search-btn" onclick="rechercherAvecFiltres('pertes')">🔍 Rechercher</button>
+        </div>
+        <div class="filter-group">
+            <button class="reset-btn" onclick="resetRecherche('pertes')">🔄 Réinitialiser</button>
+        </div>
+    </div>
+    
+    <!-- Résultats des pertes -->
+    {% if pertes_archive %}
+        {% set current_day = "" %}
+        {% set day_total = 0 %}
+        {% set day_count = 0 %}
+        {% set day_quantite = 0 %}
+        
+        {% for p in pertes_archive %}
+            {% set date_complete = p[6] if p[6] else '' %}
+            {% set p_date = date_complete.split(' ')[0] if date_complete else '' %}
+            {% set p_time = date_complete.split(' ')[1] if date_complete and ' ' in date_complete else '' %}
+            
+            {% if current_day != p_date and p_date != '' %}
+                {% if current_day != "" %}
+                                </tbody>
+                            </table>
+                            <div class="day-total-footer">
+                                📊 Total du {{ current_day }} : 
+                                <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
+                                ({{ day_count }} pertes, {{ day_quantite }} unités)
+                            </div>
+                        </div>
+                {% endif %}
+                
+                <div class="day-separator">
+                    <div class="day-date">
+                        📅 {{ p_date }}
+                        <span class="day-name">
+                            {% if p_date == date_actuelle.split(' ')[0] %}
+                                📍 AUJOURD'HUI
+                            {% else %}
+                                {{ p_date }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="day-total">
+                        Total: à calculer
+                    </div>
+                </div>
+                
+                <div class="pertes-group">
+                    <div class="table-container">
+                        <table class="table-archive">
+                            <thead>
+                                <tr>
+                                    <th>Heure</th>
+                                    <th>Produit</th>
+                                    <th>Quantité</th>
+                                    <th>Prix unit.</th>
+                                    <th>Total</th>
+                                    <th>Motif</th>
+                                    <th>Enregistré par</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                {% set current_day = p_date %}
+                {% set day_total = 0 %}
+                {% set day_count = 0 %}
+                {% set day_quantite = 0 %}
+            {% endif %}
+            
+            {% if p_date != '' %}
+                <tr>
+                    <td class="heure-cell">{{ p_time if p_time else '-' }}</td>
+                    <td><strong>{{ p[11] if p[11] else 'Produit #' + p[1]|string }}</strong></td>
+                    <td style="color: #dc3545;">-{{ p[2] }}</td>
+                    <td>{{ p[3] }} FCFA</td>
+                    <td style="font-weight: bold; color: #dc3545;">{{ p[4] }} FCFA</td>
+                    <td>
+                        <span class="motif-badge motif-{{ p[5]|lower|replace(' ', '-') }}">
+                            {% if p[5] == 'Casse' %}🔨 Casse
+                            {% elif p[5] == 'Vol' %}👤 Vol
+                            {% elif p[5] == 'Péremption' %}📅 Péremption
+                            {% elif p[5] == 'Erreur de stock' %}📊 Erreur de stock
+                            {% else %}📝 {{ p[5] }}{% endif %}
+                        </span>
+                    </td>
+                    <td>{% if p[12] %}👤 {{ p[12] }}{% else %}Inconnu{% endif %}</td>
+                </tr>
+                {% set day_total = day_total + p[4] %}
+                {% set day_count = day_count + 1 %}
+                {% set day_quantite = day_quantite + p[2] %}
+            {% endif %}
+        {% endfor %}
+        
+        {% if current_day != "" %}
+                        </tbody>
+                    </table>
+                    <div class="day-total-footer">
+                        📊 Total du {{ current_day }} : 
+                        <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
+                        ({{ day_count }} pertes, {{ day_quantite }} unités)
+                    </div>
+                </div>
+        {% endif %}
+    {% else %}
+        <div class="empty-archive">
+            <div class="icon">📭</div>
+            <h3>Aucune perte trouvée</h3>
+            <p>Essayez avec d'autres critères de recherche</p>
+        </div>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard">← Retour au Dashboard</a>
+</div>
+
+<script>
+    let currentType = '{{ type_data }}';
+    
+    function switchTab(type) {
+        currentType = type;
+        
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        
+        if (type === 'ventes') {
+            document.querySelector('.tab-btn:first-child').classList.add('active');
+            document.getElementById('tab-ventes').classList.add('active');
+        } else if (type === 'entrees') {
+            document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+            document.getElementById('tab-entrees').classList.add('active');
+        } else {
+            document.querySelector('.tab-btn:nth-child(3)').classList.add('active');
+            document.getElementById('tab-pertes').classList.add('active');
+        }
+        
+        const url = new URL(window.location.href);
+        url.searchParams.set('type', type);
+        window.history.pushState({}, '', url);
+    }
+    
+    function rechercherAvecFiltres(type) {
+        let dateDebut, dateFin, produitNom, tri;
+        
+        if (type === 'ventes') {
+            dateDebut = document.getElementById('date_debut_ventes').value;
+            dateFin = document.getElementById('date_fin_ventes').value;
+            produitNom = document.getElementById('produit_nom_ventes').value;
+            tri = document.getElementById('tri_select_ventes').value;
+        } else if (type === 'entrees') {
+            dateDebut = document.getElementById('date_debut_entrees').value;
+            dateFin = document.getElementById('date_fin_entrees').value;
+            produitNom = document.getElementById('produit_nom_entrees').value;
+            tri = document.getElementById('tri_select_entrees').value;
+        } else {
+            dateDebut = document.getElementById('date_debut_pertes').value;
+            dateFin = document.getElementById('date_fin_pertes').value;
+            produitNom = document.getElementById('produit_nom_pertes').value;
+            tri = document.getElementById('tri_select_pertes').value;
+        }
+        
+        const url = new URL(window.location.href);
+        url.searchParams.set('type', type);
+        if (dateDebut) url.searchParams.set('date_debut', dateDebut);
+        if (dateFin) url.searchParams.set('date_fin', dateFin);
+        if (produitNom) url.searchParams.set('produit_nom', produitNom);
+        if (tri) url.searchParams.set('tri', tri);
+        url.searchParams.delete('semaine');
+        window.location.href = url.toString();
+    }
+    
+    function resetRecherche(type) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('date_debut');
+        url.searchParams.delete('date_fin');
+        url.searchParams.delete('produit_nom');
+        url.searchParams.delete('semaine');
+        url.searchParams.delete('tri');
+        url.searchParams.set('type', type);
+        window.location.href = url.toString();
+    }
+    
+    // Mettre à jour les totaux des jours dans l'en-tête
+    document.addEventListener('DOMContentLoaded', function() {
+        const daySeparators = document.querySelectorAll('.day-separator');
+        const groups = document.querySelectorAll('.ventes-group, .entrees-group, .pertes-group');
+        
+        groups.forEach((group, index) => {
+            if (daySeparators[index]) {
+                const totalFooter = group.querySelector('.day-total-footer');
+                if (totalFooter) {
+                    const totalSpan = totalFooter.querySelector('span');
+                    const dayTotalSpan = daySeparators[index].querySelector('.day-total');
+                    if (totalSpan && dayTotalSpan) {
+                        const totalText = totalSpan.innerText;
+                        dayTotalSpan.innerHTML = 'Total: ' + totalText;
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

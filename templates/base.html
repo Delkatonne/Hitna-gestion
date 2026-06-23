@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1e3c72">
+    <title>{% block title %}HITNA - Gestion{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='images/logo.jpg') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/logo.jpg') }}">
+    <link rel="manifest" href="/static/manifest.json">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        /* Reset et base */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            overflow-x: hidden;
+            width: 100%;
+        }
+
+        /* Layout avec sidebar */
+        .app-wrapper {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(180deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            position: fixed;
+            left: 0;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            transition: transform 0.3s ease;
+        }
+        
+        .sidebar-header {
+            padding: 25px 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            margin-bottom: 20px;
+        }
+        
+        .sidebar-header img {
+            height: 60px;
+            background: white;
+            border-radius: 10px;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .sidebar-header h2 {
+            font-size: 20px;
+            margin: 10px 0 5px;
+            color: orange;
+        }
+        
+        .sidebar-header p {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        .sidebar-nav {
+            padding: 0 15px;
+        }
+        
+        .nav-item {
+            margin-bottom: 5px;
+        }
+        
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 15px;
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            transition: all 0.3s;
+            font-size: 14px;
+            min-height: 44px;
+        }
+        
+        .nav-link:hover {
+            background: rgba(255,255,255,0.2);
+            transform: translateX(5px);
+        }
+        
+        .nav-link.active {
+            background: rgba(255,255,255,0.25);
+            border-left: 3px solid #ffc107;
+        }
+        
+        .nav-link .icon {
+            font-size: 20px;
+            width: 25px;
+            text-align: center;
+        }
+        
+        .nav-divider {
+            height: 1px;
+            background: rgba(255,255,255,0.2);
+            margin: 15px 0;
+        }
+        
+        .user-info-sidebar {
+            padding: 20px;
+            margin-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            text-align: center;
+        }
+        
+        .user-avatar {
+            width: 50px;
+            height: 50px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            font-size: 24px;
+        }
+        
+        .user-name-sidebar {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .user-role-sidebar {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+            min-height: 100vh;
+            background: #f0f2f5;
+            overflow-x: hidden;
+            width: 0; /* force flex child à ne pas dépasser */
+            min-width: 0;
+        }
+        
+        .content-header {
+            background: orange;
+            padding: 12px 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            position: relative;
+            z-index: 500;
+        }
+
+        .content-header .header-text {
+            flex: 1;
+        }
+
+        .content-header h1 {
+            font-size: 24px;
+            color: #ffffff;
+            margin: 0;
+        }
+        
+        .content-header p {
+            color: #ffffff;
+            margin: 5px 0 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .menu-toggle {
+            display: none;
+            background: #1e3c72;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+            height: 40px;
+            width: 44px;
+            min-width: 44px;
+            min-height: 40px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            flex-shrink: 0;
+        }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 999;
+        }
+        
+        .sidebar-overlay.visible {
+            display: block;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 30px 30px 30px;
+        }
+        
+        /* Notifications centrales */
+        .center-notification {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 15px;
+            z-index: 10000;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            animation: centerFadeInOut 2.5s ease-in-out forwards;
+            pointer-events: none;
+        }
+        
+        .center-notification.error {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        }
+        
+        @keyframes centerFadeInOut {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            15% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            85% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); visibility: hidden; }
+        }
+        
+        .flash-message {
+            display: none;
+        }
+        
+        /* Alertes stock bas */
+        .stock-alert {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 10001;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            font-size: 14px;
+        }
+        
+        .stock-alert button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 0 5px;
+        }
+        
+        /* Notification Bell */
+        .notification-bell {
+            position: relative;
+        }
+
+        .bell-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            position: relative;
+            padding: 5px 10px;
+            box-shadow: none;
+            width: auto;
+        }
+
+        .bell-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-size: 11px;
+            font-weight: bold;
+            min-width: 18px;
+            text-align: center;
+        }
+
+        .notification-dropdown {
+            position: fixed;
+            top: 60px;
+            right: 10px;
+            width: 340px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+            z-index: 9999;
+            max-height: 420px;
+            overflow: hidden;
+        }
+
+        @media (max-width: 768px) {
+            .notification-dropdown {
+                width: calc(100vw - 20px);
+                right: 10px;
+                left: 10px;
+                top: 65px;
+            }
+        }
+
+        .dropdown-header {
+            padding: 12px 15px;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        .mark-read-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            font-size: 11px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: auto;
+            margin: 0;
+        }
+
+        .notification-list {
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .notification-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .notification-item:hover {
+            background: #f8f9fa;
+        }
+
+        .notification-item.unread {
+            background: #e8f4fd;
+            border-left: 3px solid #2a5298;
+        }
+
+        .notification-item .title {
+            font-weight: bold;
+            font-size: 13px;
+            color: #333;
+        }
+
+        .notification-item .message {
+            font-size: 12px;
+            color: #666;
+            margin-top: 3px;
+        }
+
+        .notification-item .date {
+            font-size: 10px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .notification-item.stock-bas .title {
+            color: #dc3545;
+        }
+
+        .dropdown-footer {
+            padding: 10px;
+            text-align: center;
+            border-top: 1px solid #eee;
+        }
+
+        .dropdown-footer a {
+            color: #2a5298;
+            text-decoration: none;
+            font-size: 12px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+        }
+
+        /* Thème clair (par défaut) */
+        body {
+            background: #f0f2f5;
+            transition: all 0.3s;
+        }
+
+        /* Thème sombre */
+        body.dark-theme {
+            background: #1a1a2e;
+        }
+
+        body.dark-theme .card,
+        body.dark-theme .chart-card,
+        body.dark-theme .stat-entree {
+            background: #16213e;
+            color: #eee;
+        }
+
+        body.dark-theme .card-title,
+        body.dark-theme .chart-card h3 {
+            color: #eee;
+        }
+
+        body.dark-theme table {
+            background: #16213e;
+            color: #eee;
+        }
+
+        body.dark-theme th {
+            background: #0f3460;
+            color: #eee;
+        }
+
+        body.dark-theme td {
+            border-bottom-color: #0f3460;
+        }
+
+        body.dark-theme .content-header {
+            background: #0f3460;
+        }
+
+        body.dark-theme .sidebar {
+            background: linear-gradient(180deg, #0f3460 0%, #16213e 100%);
+        }
+
+        /* Scrollbar sidebar */
+        .sidebar::-webkit-scrollbar {
+            width: 5px;
+        }
+        
+        .sidebar::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 5px;
+        }
+        
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.5);
+        }
+
+        /* Responsive Desktop */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .sidebar {
+                width: 240px;
+            }
+            .main-content {
+                margin-left: 240px;
+            }
+        }
+
+        /* Responsive Mobile */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 80%;
+                max-width: 280px;
+                position: fixed;
+                z-index: 2000;
+            }
+            
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 1999;
+            }
+            
+            .sidebar-overlay.visible {
+                display: block;
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .menu-toggle {
+                display: flex !important;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .content-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: nowrap;
+                padding: 10px 15px;
+                gap: 8px;
+                overflow: hidden;
+                width: 100%;
+            }
+            
+            .header-text {
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+            }
+            
+            .content-header h1 {
+                font-size: 16px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            
+            .content-header p {
+                font-size: 11px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            
+            .container {
+                padding: 0 15px 20px 15px;
+            }
+            
+            .bell-btn {
+                background: rgba(255,255,255,0.2);
+                border-radius: 50%;
+                width: 44px;
+                height: 44px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 22px;
+            }
+            
+
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="app-wrapper">
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="Logo Hitna" onerror="this.style.display='none'">
+                <h2 style="color: orange;">HITNA</h2>
+                <p>Système de gestion</p>
+            </div>
+            
+            <div class="sidebar-nav">
+                {% if session.role == 'admin' %}
+                <div class="nav-item">
+                    <a href="/dashboard" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                        <span class="icon">📊</span><span>Dashboard</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/produits" class="nav-link {% if request.endpoint == 'produits_list' %}active{% endif %}">
+                        <span class="icon">📦</span><span>Gérer les produits</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/entrees" class="nav-link {% if request.endpoint == 'entrees_list' %}active{% endif %}">
+                        <span class="icon">📥</span><span>Entrées de stock</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/acteurs" class="nav-link">
+                        <span class="icon">👥</span><span>Acteurs</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/ventes" class="nav-link {% if request.endpoint == 'admin_ventes' %}active{% endif %}">
+                        <span class="icon">🛒</span><span>Ventes</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/archives" class="nav-link">
+                        <span class="icon">📚</span><span>Archives</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/stats" class="nav-link">
+                        <span class="icon">📊</span><span>Statistiques</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/fournisseurs" class="nav-link">
+                        <span class="icon">🏢</span><span>Fournisseurs</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/alertes/produits" class="nav-link">
+                        <span class="icon">⚠️</span><span>Alertes produits</span>
+                    </a>
+                </div>
+
+                <div class="nav-item">
+                    <a href="/admin/pertes" class="nav-link">
+                        <span class="icon">🗑</span><span>Pertes</span>
+                    </a>
+                </div>
+                <div class="nav-divider"></div>
+                {% else %}
+                <div class="nav-item">
+                    <a href="/vente" class="nav-link {% if request.endpoint == 'vente' %}active{% endif %}">
+                        <span class="icon">🛒</span><span>Vente</span>
+                    </a>
+                </div>
+                {% if session.permissions and 'entrees' in session.permissions.split(',') %}
+                <div class="nav-item">
+                    <a href="/admin/entrees" class="nav-link">
+                        <span class="icon">📥</span><span>Entrées de stock</span>
+                    </a>
+                </div>
+                {% endif %}
+                <div class="nav-divider"></div>
+                {% endif %}
+                
+                <div class="nav-item">
+                    <a href="/changer_mdp" class="nav-link">
+                        <span class="icon">🔑</span><span>Changer mot de passe</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/logout" class="nav-link" onclick="return confirm('Voulez-vous vraiment vous déconnecter ?')">
+                        <span class="icon">🚪</span><span>Déconnexion</span>
+                    </a>
+                </div>
+            </div>
+            
+            <div class="user-info-sidebar">
+                <div class="user-avatar">{% if session.role == 'admin' %}👑{% else %}👤{% endif %}</div>
+                <div class="user-name-sidebar">{{ session.get('user_nom', 'Utilisateur') }}</div>
+                <div class="user-role-sidebar">{{ session.get('role_affiche', 'Utilisateur') }}</div>
+                <div class="user-role-sidebar" style="margin-top: 10px;">{{ date_actuelle }}</div>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="content-header">
+                <button class="menu-toggle" id="menuToggle">☰</button>
+                <div class="header-text">
+                    <h1>{% block page_title %}HITNA{% endblock %}</h1>
+                    <p>{% block page_subtitle %}{% endblock %}</p>
+                </div>
+                <button id="themeToggle" class="theme-toggle" style="background: none; width: auto; margin: 0; padding: 8px 12px; border-radius: 8px;">🌙</button>
+                <div class="notification-bell">
+                    <button id="notificationBell" class="bell-btn">
+                        🔔
+                        <span id="notificationBadge" class="badge" style="display: none;">0</span>
+                    </button>
+                    <div id="notificationDropdown" class="notification-dropdown" style="display: none;">
+                        <div class="dropdown-header">
+                            <span>🔔 Notifications</span>
+                            <button id="markAllRead" class="mark-read-btn">Tout marquer comme lu</button>
+                        </div>
+                        <div id="notificationList" class="notification-list">
+                            <div class="loading">Chargement...</div>
+                        </div>
+                        <div class="dropdown-footer">
+                            <a href="/notifications">Voir toutes les notifications</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="container">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <script>
+                                document.addEventListener('DOMContentLoaded', function() { 
+                                    showNotification('{{ message|safe }}', '{{ category if category else "success" }}');
+                                });
+                            </script>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+    
+    <div id="stockAlert" class="stock-alert" style="display: none;">
+        <span id="alertMessage"></span>
+        <button onclick="closeAlert()">✖</button>
+    </div>
+    
+    <script>
+        // Menu Toggle
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+
+        function openSidebar() {
+            sidebar.classList.add('open');
+            overlay.classList.add('visible');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        function closeSidebar() {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('visible');
+            document.body.style.overflow = '';
+        }
+
+        if (menuToggle) {
+            menuToggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (sidebar.classList.contains('open')) {
+                    closeSidebar();
+                } else {
+                    openSidebar();
+                }
+            });
+        }
+        
+        if (overlay) {
+            overlay.addEventListener('click', closeSidebar);
+        }
+        
+        // Fermer le sidebar sur mobile après clic sur un lien
+        document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+            link.addEventListener('click', function() {
+                if (window.innerWidth <= 768) {
+                    closeSidebar();
+                }
+            });
+        });
+        
+        // Notification centrale
+        function showNotification(message, type = 'success') {
+            const existingNotifs = document.querySelectorAll('.center-notification');
+            existingNotifs.forEach(notif => notif.remove());
+            
+            const notification = document.createElement('div');
+            notification.className = `center-notification ${type}`;
+            notification.innerHTML = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => { 
+                if (notification.parentNode) notification.remove(); 
+            }, 2500);
+        }
+        
+        // Remplacer alert() par des notifications stylées
+        const originalAlert = window.alert;
+        window.alert = function(message) {
+            if (message.includes('Stock') || message.includes('erreur') || message.includes('❌')) {
+                showNotification(message, 'error');
+            } else {
+                showNotification(message, 'success');
+            }
+        };
+        
+        // Active link detection
+        document.querySelectorAll('.nav-link').forEach(link => {
+            if (link.href === window.location.href) {
+                link.classList.add('active');
+            }
+        });
+        
+        // Fix pour iOS input zoom
+        const inputs = document.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('focus', function() { 
+                this.style.fontSize = '16px'; 
+            });
+        });
+
+        // Vérification stock bas
+        function checkStockBas() {
+            fetch('/api/stock_bas')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.length > 0 && window.location.pathname !== '/admin/alertes/produits') {
+                        const alertDiv = document.getElementById('stockAlert');
+                        const message = document.getElementById('alertMessage');
+                        message.innerHTML = `⚠️ ${data.length} produit(s) en stock bas : ${data.map(p => p.nom).join(', ')}`;
+                        alertDiv.style.display = 'flex';
+                    }
+                })
+                .catch(err => console.log('Erreur checkStock:', err));
+        }
+        
+        function closeAlert() {
+            document.getElementById('stockAlert').style.display = 'none';
+        }
+        
+        setInterval(checkStockBas, 30000);
+        checkStockBas();
+
+        // Notifications
+        let notifications = [];
+        let totalNonLus = 0;
+
+        function chargerNotifications() {
+            fetch('/api/notifications')
+                .then(response => response.json())
+                .then(data => {
+                    notifications = data.notifications;
+                    totalNonLus = data.total_non_lus;
+                    mettreAJourBadge();
+                    afficherDropdown();
+                })
+                .catch(err => console.log('Erreur notifications:', err));
+        }
+
+        function mettreAJourBadge() {
+            const badge = document.getElementById('notificationBadge');
+            if (totalNonLus > 0) {
+                badge.style.display = 'inline-block';
+                badge.textContent = totalNonLus > 99 ? '99+' : totalNonLus;
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        function afficherDropdown() {
+            const list = document.getElementById('notificationList');
+            if (!list) return;
+            
+            if (notifications.length === 0) {
+                list.innerHTML = '<div class="loading">📭 Aucune notification</div>';
+                return;
+            }
+            
+            let html = '';
+            notifications.forEach(notif => {
+                const typeClass = notif.type === 'stock_bas' ? 'stock-bas' : '';
+                html += `
+                    <div class="notification-item ${typeClass}" onclick="ouvrirNotification(${notif.id}, '${notif.lien}')">
+                        <div class="title">${notif.title}</div>
+                        <div class="message">${notif.message}</div>
+                        <div class="date">${notif.date}</div>
+                    </div>
+                `;
+            });
+            list.innerHTML = html;
+        }
+
+        window.ouvrirNotification = function(id, lien) {
+            fetch(`/notifications/marquer_lu/${id}`, { method: 'POST' })
+                .then(() => {
+                    if (lien && lien !== 'None' && lien !== '') {
+                        window.location.href = lien;
+                    } else {
+                        window.location.reload();
+                    }
+                })
+                .catch(err => console.log('Erreur:', err));
+        };
+
+        // Événements notifications
+        const bellBtn = document.getElementById('notificationBell');
+        const dropdown = document.getElementById('notificationDropdown');
+        const markAllRead = document.getElementById('markAllRead');
+
+        if (bellBtn) {
+            bellBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isVisible = dropdown.style.display === 'block';
+                if (isVisible) {
+                    dropdown.style.display = 'none';
+                } else {
+                    chargerNotifications();
+                    dropdown.style.display = 'block';
+                }
+            });
+        }
+
+        if (markAllRead) {
+            markAllRead.addEventListener('click', () => {
+                fetch('/notifications/marquer_tout_lu', { method: 'POST' })
+                    .then(() => {
+                        totalNonLus = 0;
+                        mettreAJourBadge();
+                        chargerNotifications();
+                    })
+                    .catch(err => console.log('Erreur:', err));
+            });
+        }
+
+        document.addEventListener('click', function(e) {
+            if (dropdown && bellBtn && !bellBtn.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+
+        setInterval(chargerNotifications, 30000);
+        chargerNotifications();
+
+        // Service Worker pour PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js')
+                .then(reg => console.log('Service Worker enregistré', reg))
+                .catch(err => console.log('Erreur Service Worker', err));
+        }
+
+        // Thème sombre
+        const themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) {
+            if (localStorage.getItem('theme') === 'dark') {
+                document.body.classList.add('dark-theme');
+                themeToggle.textContent = '☀️';
+            }
+            
+            themeToggle.addEventListener('click', () => {
+                document.body.classList.toggle('dark-theme');
+                const isDark = document.body.classList.contains('dark-theme');
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+                themeToggle.textContent = isDark ? '☀️' : '🌙';
+            });
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

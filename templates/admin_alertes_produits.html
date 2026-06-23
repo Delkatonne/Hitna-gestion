@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}Alertes produits - HITNA{% endblock %}
+
+{% block page_title %}⚠️ Seuils d'alerte des produits{% endblock %}
+{% block page_subtitle %}Définissez le seuil de stock pour recevoir des notifications{% endblock %}
+
+{% block content %}
+
+
+<style>
+    .btn-small {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+    input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        transform: scale(1.2);
+    }
+    
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    @media (max-width: 768px) {
+        /* Affichage en cartes sur mobile plutôt qu'en tableau */
+        .alert-table-desktop {
+            display: none;
+        }
+
+        .alert-cards-mobile {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .alert-card-item {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            width: 100%;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .alert-card-item .produit-nom {
+            font-weight: bold;
+            font-size: 15px;
+            color: #1e3c72;
+            margin-bottom: 10px;
+        }
+
+        .alert-card-item .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 13px;
+            gap: 8px;
+        }
+
+        .alert-card-item .row label {
+            color: #666;
+            flex-shrink: 0;
+        }
+
+        .alert-card-item .row span {
+            text-align: right;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 55%;
+        }
+
+        .alert-card-item input[type="number"] {
+            width: 80px;
+            max-width: 80px;
+            padding: 6px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .alert-card-item input[type="checkbox"] {
+            flex-shrink: 0;
+        }
+
+        .alert-card-item .btn-save {
+            display: block;
+            width: 100%;
+            margin-top: 10px;
+            padding: 10px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+    }
+
+    @media (min-width: 769px) {
+        .alert-cards-mobile {
+            display: none;
+        }
+
+        .alert-table-desktop {
+            display: block;
+        }
+
+        table {
+            min-width: 550px;
+        }
+        
+        th, td {
+            padding: 8px 5px;
+            font-size: 11px;
+        }
+        
+        input[type="number"] {
+            width: 60px;
+        }
+        
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 10px;
+        }
+    }
+</style>
+
+<div class="card">
+    <h2 class="card-title">📊 Configuration des alertes stock</h2>
+    <p style="margin-bottom: 20px; color: #666;">
+        Définissez pour chaque produit le seuil de stock à partir duquel vous recevrez une notification.
+    </p>
+    
+    <div class="table-container alert-table-desktop">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th>Stock actuel</th>
+                    <th>Seuil par défaut</th>
+                    <th>Seuil d'alerte</th>
+                    <th>Alerte active</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in produits %}
+                <form method="post" action="/admin/alertes/produits/modifier/{{ p[0] }}">
+                    <tr>
+                        <td><strong>{{ p[1] }}</strong></td>
+                        <td style="color: {% if p[2] <= p[4] %}#dc3545{% else %}#28a745{% endif %}; font-weight: bold;">
+                            {{ p[2] }} unités
+                        </td>
+                        <td>{{ p[3] }} unités</td>
+                        <td>
+                            <input type="number" name="seuil" value="{{ p[4] }}" style="width: 80px; padding: 5px;" min="0">
+                        </td>
+                        <td style="text-align: center;">
+                            <input type="checkbox" name="actif" {% if p[5] is not defined or p[5] == 1 %}checked{% endif %}>
+                        </td>
+                        <td>
+                            <button type="submit" class="btn-small" style="background: #28a745;">💾 Enregistrer</button>
+                        </td>
+                    </tr>
+                </form>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Version mobile en cartes -->
+    <div class="alert-cards-mobile">
+        {% for p in produits %}
+        <form method="post" action="/admin/alertes/produits/modifier/{{ p[0] }}">
+            <div class="alert-card-item">
+                <div class="produit-nom">{{ p[1] }}</div>
+                <div class="row">
+                    <label>Stock actuel</label>
+                    <span style="color: {% if p[2] <= p[4] %}#dc3545{% else %}#28a745{% endif %}; font-weight: bold;">{{ p[2] }} unités</span>
+                </div>
+                <div class="row">
+                    <label>Seuil par défaut</label>
+                    <span>{{ p[3] }} unités</span>
+                </div>
+                <div class="row">
+                    <label>Seuil d'alerte</label>
+                    <input type="number" name="seuil" value="{{ p[4] }}" min="0">
+                </div>
+                <div class="row">
+                    <label>Alerte active</label>
+                    <input type="checkbox" name="actif" {% if p[5] is not defined or p[5] == 1 %}checked{% endif %}>
+                </div>
+                <button type="submit" class="btn-save">💾 Enregistrer</button>
+            </div>
+        </form>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard">← Retour au Dashboard</a>
+</div>
+
+{% endblock %}

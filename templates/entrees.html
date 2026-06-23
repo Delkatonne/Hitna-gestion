@@ -1,0 +1,621 @@
+{% extends "base.html" %}
+
+{% block title %}Entrées de stock - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-select-container {
+        position: relative;
+        margin-bottom: 20px;
+    }
+    
+    .search-select-input {
+        width: 100%;
+        padding: 12px 15px;
+        font-size: 16px;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        transition: all 0.3s;
+    }
+    
+    .search-select-input:focus {
+        outline: none;
+        border-color: #2a5298;
+        box-shadow: 0 0 0 3px rgba(42,82,152,0.1);
+    }
+    
+    .search-select-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        max-height: 250px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .search-select-option {
+        padding: 10px 15px;
+        cursor: pointer;
+        transition: background 0.2s;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .search-select-option:hover {
+        background: #f0f2f5;
+    }
+    
+    .search-select-option.selected {
+        background: #667eea;
+        color: white;
+    }
+    
+    .search-select-option .product-name {
+        font-weight: bold;
+    }
+    
+    .search-select-option .product-stock {
+        font-size: 12px;
+        color: #666;
+        margin-left: 10px;
+    }
+    
+    .selected-product-display {
+        background: #e8f4fd;
+        border-left: 4px solid #2a5298;
+        padding: 10px 15px;
+        border-radius: 8px;
+        margin-top: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .selected-product-display .name {
+        font-weight: bold;
+        font-size: 16px;
+    }
+    
+    .selected-product-display .stock {
+        font-size: 14px;
+        color: #28a745;
+    }
+    
+    .clear-selection {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 5px 15px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    
+    .stats-entrees {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-entree {
+        background: white;
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    
+    .stat-entree .icon {
+        font-size: 40px;
+        margin-bottom: 10px;
+    }
+    
+    .stat-entree .value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #1e3c72;
+    }
+    
+    .add-form {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        margin-top: 20px;
+    }
+    
+    .add-form input {
+        flex: 1;
+        min-width: 150px;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+    }
+    
+    .badge-success {
+        background: #d4edda;
+        color: #155724;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-block;
+    }
+    
+    /* Style pour le regroupement par jour */
+    .day-separator {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: white;
+        padding: 12px 20px;
+        margin: 25px 0 15px 0;
+        border-radius: 12px;
+        font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .day-separator:first-of-type {
+        margin-top: 0;
+    }
+    
+    .day-date {
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .day-name {
+        background: rgba(255,255,255,0.2);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+    }
+    
+    .day-total {
+        background: rgba(255,255,255,0.2);
+        padding: 6px 15px;
+        border-radius: 25px;
+        font-size: 14px;
+    }
+    
+    .entrees-group {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 5px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    
+    .info-archive {
+        background: #e8f4fd;
+        border-left: 4px solid #17a2b8;
+        padding: 12px 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        font-size: 14px;
+    }
+    
+    .table-entrees {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .table-entrees th {
+        background: #f8f9fa;
+        padding: 12px;
+        text-align: left;
+        font-weight: 600;
+        color: #1e3c72;
+        border-bottom: 2px solid #e0e0e0;
+    }
+    
+    .table-entrees td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .table-entrees tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .day-total-footer {
+        background: #f8f9fa;
+        padding: 10px 15px;
+        font-weight: bold;
+        text-align: right;
+        border-top: 2px solid #e0e0e0;
+        font-size: 14px;
+    }
+    
+    .heure-cell {
+        font-family: monospace;
+        font-size: 13px;
+        color: #666;
+    }
+
+
+    /* Styles responsive pour entrées de stock */
+@media (max-width: 768px) {
+    .search-select-input {
+        font-size: 14px;
+        padding: 10px 12px;
+    }
+    
+    .add-form {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .add-form input, .add-form button {
+        width: 100%;
+        min-width: unset;
+    }
+
+    .stats-entrees {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    
+    .stat-entree .value {
+        font-size: 20px;
+    }
+
+    .stat-entree .icon {
+        font-size: 28px;
+    }
+    
+    .table-entrees {
+        min-width: 500px;
+    }
+
+    .table-entrees th, 
+    .table-entrees td {
+        padding: 6px 6px;
+        font-size: 11px;
+    }
+    
+    .day-separator {
+        flex-direction: column;
+        text-align: center;
+        gap: 6px;
+        padding: 10px 12px;
+    }
+    
+    .day-total {
+        font-size: 11px;
+    }
+
+    .day-date {
+        font-size: 13px;
+    }
+    
+    .entrees-group {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .heure-cell {
+        font-size: 10px;
+    }
+
+    .selected-product-display {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+
+    .clear-selection {
+        align-self: flex-end;
+    }
+
+    .info-archive {
+        font-size: 12px;
+        padding: 10px 12px;
+    }
+}
+
+@media (max-width: 400px) {
+    .stats-entrees {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block page_title %}📥 Entrées de stock{% endblock %}
+{% block page_subtitle %}Enregistrer les achats et approvisionnements{% endblock %}
+
+{% block content %}
+<!-- Message d'information -->
+<div class="info-archive">
+    ℹ️ Les entrées de stock sont automatiquement archivées chaque semaine (le lundi).<br>
+    Les archives sont conservées et accessibles dans la section <strong>📚 Archives</strong>.
+</div>
+
+<!-- Statistiques -->
+<div class="stats-entrees">
+    <div class="stat-entree">
+        <div class="icon">📦</div>
+        <div class="value">{{ produits|length }}</div>
+        <div class="label">Produits en stock</div>
+    </div>
+    <div class="stat-entree">
+        <div class="icon">📥</div>
+        <div class="value">{{ entrees|length }}</div>
+        <div class="label">Entrées récentes</div>
+    </div>
+    <div class="stat-entree">
+        <div class="icon">💰</div>
+        <div class="value">{{ "{:,.0f}".format(entrees|sum(attribute=4)|default(0)) }} FCFA</div>
+        <div class="label">Investissement total</div>
+    </div>
+</div>
+
+<!-- Formulaire d'ajout avec recherche -->
+<div class="card">
+    <h2 class="card-title">📥 Nouvelle entrée de stock (achat)</h2>
+    
+    <div class="search-select-container">
+        <input type="text" id="productSearchInput" class="search-select-input" placeholder="🔍 Rechercher un produit par son nom..." autocomplete="off">
+        <div id="productDropdown" class="search-select-dropdown"></div>
+    </div>
+    
+    <div id="selectedProductDisplay" style="display: none;">
+        <div class="selected-product-display">
+            <div>
+                <span class="name" id="selectedProductName"></span>
+                <span class="stock" id="selectedProductStock"></span>
+            </div>
+            <button type="button" class="clear-selection" onclick="clearSelection()">✖ Changer</button>
+        </div>
+    </div>
+    
+    <form method="post" action="/admin/entrees/ajouter" id="entreeForm">
+        <input type="hidden" name="produit_id" id="selectedProductId" required>
+        
+        <div class="add-form">
+            <input type="number" name="quantite" id="quantite" placeholder="Quantité" required>
+            <input type="number" name="prix_unitaire" id="prix_unitaire" placeholder="Prix unitaire (FCFA)" required>
+            <input type="text" name="fournisseur" id="fournisseur" placeholder="Fournisseur">
+            <button type="submit" id="submitBtn" disabled>✅ Valider l'entrée</button>
+        </div>
+    </form>
+</div>
+
+<!-- Historique des entrées regroupé par jour -->
+<div class="card">
+    <h2 class="card-title">📜 Historique des entrées de stock</h2>
+    
+    {% if entrees %}
+        {% set current_day = "" %}
+        {% set day_total = 0 %}
+        {% set day_count = 0 %}
+        {% set day_quantite = 0 %}
+        
+        {% for e in entrees %}
+            {% set date_complete = e[5] if e[5] else '' %}
+            {% set e_date = date_complete.split(' ')[0] if date_complete else '' %}
+            {% set e_time = date_complete.split(' ')[1] if date_complete and ' ' in date_complete else '' %}
+            
+            {% if current_day != e_date and e_date != '' %}
+                {% if current_day != "" %}
+                                </tbody>
+                            </table>
+                            <div class="day-total-footer">
+                                📊 Total du {{ current_day }} : 
+                                <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
+                                ({{ day_count }} entrées, {{ day_quantite }} unités)
+                            </div>
+                        </div>
+                {% endif %}
+                
+                <div class="day-separator">
+                    <div class="day-date">
+                        📅 {{ e_date }}
+                        <span class="day-name">
+                            {% if e_date == date_actuelle.split(' ')[0] %}
+                                📍 AUJOURD'HUI
+                            {% elif e_date == date_actuelle.split(' ')[0] %}
+                                HIER
+                            {% else %}
+                                {{ e_date }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="day-total">
+                        Total: à calculer
+                    </div>
+                </div>
+                
+                <div class="entrees-group">
+                    <div class="table-container">
+                        <table class="table-entrees">
+                            <thead>
+                                <tr>
+                                    <th>Heure</th>
+                                    <th>Produit</th>
+                                    <th>Quantité</th>
+                                    <th>Prix unit.</th>
+                                    <th>Total (FCFA)</th>
+                                    <th>Fournisseur</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                {% set current_day = e_date %}
+                {% set day_total = 0 %}
+                {% set day_count = 0 %}
+                {% set day_quantite = 0 %}
+            {% endif %}
+            
+            {% if e_date != '' %}
+                <tr>
+                    <td class="heure-cell">{{ e_time if e_time else '-' }}</td>
+                    <td><strong>{{ e[1] }}</strong></td>
+                    <td><span class="badge-success">+{{ e[2] }}</span></td>
+                    <td>{{ e[3] }} FCFA</td>
+                    <td style="font-weight: bold; color: #28a745;">{{ e[4] }} FCFA</td>
+                    <td>{{ e[6] or '-' }}</td>
+                </tr>
+                {% set day_total = day_total + e[4] %}
+                {% set day_count = day_count + 1 %}
+                {% set day_quantite = day_quantite + e[2] %}
+            {% endif %}
+        {% endfor %}
+        
+        {% if current_day != "" %}
+                        </tbody>
+                    </table>
+                    <div class="day-total-footer">
+                        📊 Total du {{ current_day }} : 
+                        <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
+                        ({{ day_count }} entrées, {{ day_quantite }} unités)
+                    </div>
+                </div>
+        {% endif %}
+    {% else %}
+        <p style="text-align: center; color: #999; padding: 40px;">Aucune entrée de stock enregistrée</p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/admin/produits">← Gestion produits</a>
+    <a href="/dashboard">🏠 Dashboard</a>
+</div>
+
+<script>
+    const produits = [
+        {% for p in produits %}
+        { id: {{ p[0] }}, nom: "{{ p[1] }}", stock: {{ p[2] if p[2] else 0 }} },
+        {% endfor %}
+    ];
+    
+    let selectedProduit = null;
+    
+    const searchInput = document.getElementById('productSearchInput');
+    const productDropdownEl = document.getElementById('productDropdown');
+    const selectedDisplay = document.getElementById('selectedProductDisplay');
+    const selectedName = document.getElementById('selectedProductName');
+    const selectedStock = document.getElementById('selectedProductStock');
+    const selectedId = document.getElementById('selectedProductId');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    function filterProducts(searchTerm) {
+        const term = searchTerm.toLowerCase().trim();
+        if (term === '') return produits;
+        return produits.filter(p => p.nom.toLowerCase().includes(term));
+    }
+    
+    function showDropdown(products) {
+        if (products.length === 0) {
+            productDropdownEl.innerHTML = '<div class="search-select-option" style="color:#999;">Aucun produit trouvé</div>';
+            productDropdownEl.style.display = 'block';
+            return;
+        }
+        
+        productDropdownEl.innerHTML = '';
+        products.forEach(p => {
+            const option = document.createElement('div');
+            option.className = 'search-select-option';
+            option.innerHTML = `
+                <div>
+                    <span class="product-name">${p.nom}</span>
+                    <span class="product-stock">📦 Stock actuel: ${p.stock} unités</span>
+                </div>
+            `;
+            option.onclick = () => selectProduct(p);
+            productDropdownEl.appendChild(option);
+        });
+        productDropdownEl.style.display = 'block';
+    }
+    
+    function selectProduct(product) {
+        selectedProduit = product;
+        selectedId.value = product.id;
+        selectedName.innerHTML = product.nom;
+        selectedStock.innerHTML = `📦 Stock actuel: ${product.stock} unités`;
+        selectedDisplay.style.display = 'block';
+        searchInput.value = product.nom;
+        productDropdownEl.style.display = 'none';
+        submitBtn.disabled = false;
+        document.getElementById('quantite').focus();
+    }
+    
+    function clearSelection() {
+        selectedProduit = null;
+        selectedId.value = '';
+        selectedDisplay.style.display = 'none';
+        searchInput.value = '';
+        searchInput.focus();
+        submitBtn.disabled = true;
+        document.getElementById('quantite').value = '';
+        document.getElementById('prix_unitaire').value = '';
+        document.getElementById('fournisseur').value = '';
+    }
+    
+    searchInput.addEventListener('input', function() {
+        const searchTerm = this.value;
+        if (searchTerm === '') {
+            productDropdownEl.style.display = 'none';
+            return;
+        }
+        const filtered = filterProducts(searchTerm);
+        showDropdown(filtered);
+    });
+    
+    document.addEventListener('click', function(event) {
+        if (!searchInput.contains(event.target) && !productDropdownEl.contains(event.target)) {
+            productDropdownEl.style.display = 'none';
+        }
+    });
+    
+    document.getElementById('entreeForm').addEventListener('submit', function(e) {
+        if (!selectedProduit) {
+            alert('Veuillez sélectionner un produit');
+            e.preventDefault();
+            return false;
+        }
+        const quantite = parseInt(document.getElementById('quantite').value);
+        if (!quantite || quantite <= 0) {
+            alert('Veuillez saisir une quantité valide');
+            e.preventDefault();
+            return false;
+        }
+        const prix = parseInt(document.getElementById('prix_unitaire').value);
+        if (!prix || prix <= 0) {
+            alert('Veuillez saisir un prix unitaire valide');
+            e.preventDefault();
+            return false;
+        }
+        return confirm(`Confirmer l'entrée de ${quantite} ${selectedProduit.nom} pour ${quantite * prix} FCFA ?`);
+    });
+    
+    // Mettre à jour les totaux des jours dans l'en-tête
+    document.addEventListener('DOMContentLoaded', function() {
+        const daySeparators = document.querySelectorAll('.day-separator');
+        const groups = document.querySelectorAll('.entrees-group');
+        
+        groups.forEach((group, index) => {
+            if (daySeparators[index]) {
+                const totalFooter = group.querySelector('.day-total-footer');
+                if (totalFooter) {
+                    const totalSpan = totalFooter.querySelector('span');
+                    const dayTotalSpan = daySeparators[index].querySelector('.day-total');
+                    if (totalSpan && dayTotalSpan) {
+                        const totalText = totalSpan.innerText;
+                        dayTotalSpan.innerHTML = 'Total: ' + totalText;
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}
