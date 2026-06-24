@@ -756,11 +756,17 @@ def admin_archives():
             produit_filtre=produit_filtre, 
             tri=tri,
             type_data=type_arch)
-            
+                
     except Exception as e:
-        print(f"Erreur archives: {e}")
+        import traceback
+        print("=" * 50)
+        print("❌ ERREUR DANS ARCHIVES")
+        print(f"Erreur: {e}")
+        traceback.print_exc()
+        print("=" * 50)
         flash(f'❌ Erreur lors du chargement des archives: {str(e)}')
-        return render_template('admin_archives.html', 
+        flash(f'❌ Erreur lors du chargement des archives: {str(e)}')
+    return render_template('admin_archives.html', 
             archives=[],
             type_archive=type_arch,
             ventes_archive=[],
