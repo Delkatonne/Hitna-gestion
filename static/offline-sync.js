@@ -43,7 +43,8 @@ async function queueAction(type, endpoint, data) {
             endpoint: endpoint,
             data: data,
             timestamp: new Date().toISOString(),
-            synced: false
+            synced: false,
+            attempts: 0
         };
         
         const request = store.add(action);
@@ -80,6 +81,29 @@ async function removeSyncedAction(id) {
     });
 }
 
+// Mettre à jour une action (incrémenter les tentatives)
+async function updateAction(id, data) {
+    await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.get(id);
+        
+        request.onsuccess = () => {
+            const action = request.result;
+            if (action) {
+                Object.assign(action, data);
+                const updateRequest = store.put(action);
+                updateRequest.onsuccess = () => resolve();
+                updateRequest.onerror = () => reject(updateRequest.error);
+            } else {
+                resolve();
+            }
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
 // ──────────────────────────────────────────────────────────────
 // SYNCHRONISATION AVEC LE SERVEUR
 // ──────────────────────────────────────────────────────────────
@@ -98,6 +122,10 @@ async function syncWithServer() {
     
     for (const action of actions) {
         try {
+            // Incrémenter les tentatives
+            action.attempts = (action.attempts || 0) + 1;
+            await updateAction(action.id, { attempts: action.attempts });
+            
             const response = await fetch(action.endpoint, {
                 method: 'POST',
                 headers: {
@@ -109,12 +137,17 @@ async function syncWithServer() {
             if (response.ok) {
                 await removeSyncedAction(action.id);
                 syncedCount++;
-                console.log(`✅ Action ${action.id} synchronisée`);
+                console.log(`✅ ${action.type} ${action.id} synchronisée`);
             } else {
-                console.error(`❌ Erreur lors de la synchro de l'action ${action.id}`);
+                console.error(`❌ Erreur synchro ${action.id}: ${response.status}`);
+                
+                if (action.attempts > 5) {
+                    console.warn(`⚠️ Action ${action.id} abandonnée après 5 tentatives`);
+                    await updateAction(action.id, { synced: true });
+                }
             }
         } catch (error) {
-            console.error(`❌ Erreur réseau: ${error.message}`);
+            console.error(`❌ Erreur réseau pour ${action.id}: ${error.message}`);
         }
     }
     
@@ -134,7 +167,7 @@ function showOfflineNotification(message, type = 'info') {
     notif.className = 'offline-notification';
     notif.style.cssText = `
         position: fixed;
-        bottom: 20px;
+        bottom: 80px;
         left: 50%;
         transform: translateX(-50%);
         background: ${type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#17a2b8'};
@@ -162,11 +195,10 @@ function showOfflineNotification(message, type = 'info') {
 // INTERCEPTION DES FORMULAIRES POUR HORS LIGNE
 // ──────────────────────────────────────────────────────────────
 function setupOfflineForms() {
-    // Intercepter le formulaire de vente
+    // ── Formulaire de vente ──
     const saleForm = document.querySelector('#saleForm');
     if (saleForm) {
         saleForm.addEventListener('submit', async function(e) {
-            // Vérifier si on est hors ligne
             if (!navigator.onLine) {
                 e.preventDefault();
                 
@@ -177,21 +209,18 @@ function setupOfflineForms() {
                 }
                 
                 await queueAction('vente', this.action, data);
-                showOfflineNotification('📱 Vente sauvegardée hors ligne. Synchronisation automatique au retour de la connexion.', 'info');
+                showOfflineNotification('📱 Vente sauvegardée hors ligne ✅');
                 
-                // Réinitialiser le formulaire
                 this.reset();
-                
-                // Mettre à jour l'affichage
                 const display = document.getElementById('selectedProductDisplay');
                 if (display) {
-                    display.innerHTML = '<div style="opacity: 0.7;">Vente sauvegardée hors ligne ✅</div>';
+                    display.innerHTML = '<div style="opacity: 0.7;">✅ Vente sauvegardée hors ligne</div>';
                 }
             }
         });
     }
     
-    // Intercepter le formulaire d'entrée de stock
+    // ── Formulaire d'entrée de stock ──
     const entreForm = document.querySelector('#entreeForm');
     if (entreForm) {
         entreForm.addEventListener('submit', async function(e) {
@@ -205,13 +234,49 @@ function setupOfflineForms() {
                 }
                 
                 await queueAction('entree', this.action, data);
-                showOfflineNotification('📥 Entrée sauvegardée hors ligne. Synchronisation automatique au retour de la connexion.', 'info');
+                showOfflineNotification('📥 Entrée sauvegardée hors ligne ✅');
                 
-                // Réinitialiser le formulaire
                 this.reset();
-                document.getElementById('selectedProductDisplay').style.display = 'none';
+                const display = document.getElementById('selectedProductDisplay');
+                if (display) {
+                    display.style.display = 'none';
+                }
             }
         });
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
+// INDIQUER L'ÉTAT DE LA CONNEXION
+// ──────────────────────────────────────────────────────────────
+function updateConnectionStatus() {
+    let statusDiv = document.getElementById('connectionStatus');
+    if (!statusDiv) {
+        const div = document.createElement('div');
+        div.id = 'connectionStatus';
+        div.style.cssText = `
+            position: fixed;
+            top: 70px;
+            right: 10px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+            transition: all 0.3s;
+        `;
+        document.body.appendChild(div);
+        statusDiv = div;
+    }
+    
+    if (navigator.onLine) {
+        statusDiv.textContent = '🟢 En ligne';
+        statusDiv.style.background = '#d4edda';
+        statusDiv.style.color = '#155724';
+    } else {
+        statusDiv.textContent = '🔴 Hors ligne';
+        statusDiv.style.background = '#f8d7da';
+        statusDiv.style.color = '#721c24';
     }
 }
 
@@ -221,16 +286,28 @@ function setupOfflineForms() {
 function initOfflineSync() {
     // Synchroniser quand la connexion revient
     window.addEventListener('online', () => {
+        updateConnectionStatus();
         showOfflineNotification('🌐 Connexion rétablie, synchronisation...', 'info');
         syncWithServer();
+    });
+    
+    window.addEventListener('offline', () => {
+        updateConnectionStatus();
+        showOfflineNotification('📡 Connexion perdue, mode hors ligne activé', 'error');
     });
     
     // Synchroniser au chargement de la page
     document.addEventListener('DOMContentLoaded', () => {
         setupOfflineForms();
-        if (navigator.onLine) {
-            syncWithServer();
-        }
+        updateConnectionStatus();
+        
+        getPendingActions().then(actions => {
+            if (actions.length > 0 && navigator.onLine) {
+                syncWithServer();
+            } else if (actions.length > 0) {
+                showOfflineNotification(`📱 ${actions.length} action(s) en attente de synchronisation`, 'info');
+            }
+        });
     });
     
     // Synchronisation périodique (toutes les 2 minutes)

@@ -14,15 +14,27 @@
         <br>
         <strong>Fonctionnalités disponibles :</strong>
         <br>
-        • Visualisation des données en cache
+        • 📦 Visualisation des produits en cache
         <br>
-        • Accès au dashboard (si déjà chargé)
+        • 📊 Consultation des statistiques en cache
         <br>
-        • Les modifications seront synchronisées automatiquement
+        • 🛒 Création de ventes (synchronisées automatiquement)
+        <br>
+        • 📥 Création d'entrées de stock (synchronisées automatiquement)
     </p>
     <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 20px;">
         <a href="/dashboard" class="btn" style="background: #28a745; text-decoration: none; color: white; padding: 12px 25px; border-radius: 8px;">🏠 Dashboard</a>
         <a href="/vente" class="btn" style="background: #17a2b8; text-decoration: none; color: white; padding: 12px 25px; border-radius: 8px;">🛒 Vente</a>
+        <a href="/admin/produits" class="btn" style="background: #ffc107; text-decoration: none; color: #333; padding: 12px 25px; border-radius: 8px;">📦 Produits</a>
+    </div>
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+        <p style="font-size: 12px; color: #999;">
+            💡 Les données seront synchronisées automatiquement<br>
+            lorsque la connexion sera rétablie.
+        </p>
+        <div id="offlineIndicator" style="margin-top: 10px; font-size: 14px; color: #666;">
+            🔴 Vous êtes hors ligne
+        </div>
     </div>
 </div>
 {% endblock %}
