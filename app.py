@@ -736,7 +736,7 @@ def admin_archives():
         total_achats_archive = nb_entrees_arch[1] if nb_entrees_arch else 0
         total_pertes_ca = nb_pertes_arch[1] if nb_pertes_arch else 0
         
-        return render_template('admin_archives.html', 
+        return render_template('archives.html', 
             archives=rows, 
             type_archive=type_arch,
             ventes_archive=rows if type_arch=='ventes' else [],
@@ -766,7 +766,7 @@ def admin_archives():
         print("=" * 50)
         flash(f'❌ Erreur lors du chargement des archives: {str(e)}')
         flash(f'❌ Erreur lors du chargement des archives: {str(e)}')
-    return render_template('admin_archives.html', 
+    return render_template('archives.html', 
             archives=[],
             type_archive=type_arch,
             ventes_archive=[],
