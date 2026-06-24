@@ -792,6 +792,13 @@ def export_pdf():
     return send_file(buffer,as_attachment=True,
         download_name=f"rapport_{datetime.now().strftime('%Y%m%d')}.pdf",mimetype='application/pdf')
 
+
+
+# POUR OFFLINE
+@app.route('/offline')
+def offline():
+    return render_template('offline.html')
+
 # ──────────────────────────────────────────────────────────────
 # API JSON
 # ──────────────────────────────────────────────────────────────

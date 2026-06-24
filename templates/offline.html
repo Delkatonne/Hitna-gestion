@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Hors ligne - HITNA{% endblock %}
+
+{% block page_title %}📡 Mode hors ligne{% endblock %}
+{% block page_subtitle %}Vous n'êtes pas connecté à Internet{% endblock %}
+
+{% block content %}
+<div class="card" style="text-align: center; padding: 40px; max-width: 600px; margin: 50px auto;">
+    <div style="font-size: 80px; margin-bottom: 20px;">📡</div>
+    <h2 style="color: #1e3c72;">Connexion perdue</h2>
+    <p style="color: #666; margin: 20px 0; font-size: 16px; line-height: 1.6;">
+        Vous êtes actuellement hors ligne.
+        <br>
+        <strong>Fonctionnalités disponibles :</strong>
+        <br>
+        • Visualisation des données en cache
+        <br>
+        • Accès au dashboard (si déjà chargé)
+        <br>
+        • Les modifications seront synchronisées automatiquement
+    </p>
+    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 20px;">
+        <a href="/dashboard" class="btn" style="background: #28a745; text-decoration: none; color: white; padding: 12px 25px; border-radius: 8px;">🏠 Dashboard</a>
+        <a href="/vente" class="btn" style="background: #17a2b8; text-decoration: none; color: white; padding: 12px 25px; border-radius: 8px;">🛒 Vente</a>
+    </div>
+</div>
+{% endblock %}
