@@ -1,8 +1,12 @@
 from app import app, init_db
 
-# init_db() est appelé ici pour que gunicorn initialise les tables
-# au démarrage, avant de servir la première requête.
-init_db()
+# ⚠️ Initialiser la base de données au démarrage du serveur
+print("🔧 Initialisation de la base de données...")
+try:
+    init_db()
+    print("✅ Base de données initialisée avec succès")
+except Exception as e:
+    print(f"⚠️ Erreur: {e}")
 
 if __name__ == "__main__":
     app.run()
