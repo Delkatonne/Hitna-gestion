@@ -139,9 +139,6 @@ def init_db():
         c.execute("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions) VALUES (%s,%s,%s,%s,%s,%s)",
                   ('employe','Employé',hashlib.sha256('emp123'.encode()).hexdigest(),'Employé',1,'vente'))
 
-    # ⚠️ PRODUITS DE DÉMO SUPPRIMÉS — Plus de réinitialisation automatique.
-    # L'admin entre ses vrais produits, ils sont persistants dans PostgreSQL.
-
     conn.commit(); c.close(); conn.close()
 
 # ──────────────────────────────────────────────────────────────
@@ -248,7 +245,7 @@ def verifier_alertes_stock():
         for a in admins:
             existant = q1('''SELECT COUNT(*) FROM notifications
                 WHERE user_id=%s AND type='stock_bas' AND message LIKE %s
-                AND date_creation > NOW()-INTERVAL '1 day' ''',
+                AND date_creation::timestamp > NOW() - INTERVAL '1 day' ''',
                 (a[0], f'%{p[1]}%'))
             if existant and existant[0]==0:
                 creer_notification(a[0],'stock_bas','⚠️ Stock bas',
@@ -457,11 +454,16 @@ def dashboard():
     stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
         FROM sorties s JOIN users u ON s.employe_id=u.id
         WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
-    ventes_7_jours = qall('''SELECT DATE(date_sortie),COALESCE(SUM(total),0)
-        FROM sorties WHERE date_sortie>=NOW()-INTERVAL '7 days'
-        GROUP BY DATE(date_sortie) ORDER BY DATE(date_sortie)''')
+    
+    # ✅ CORRECTION : Ajout de ::timestamp pour les comparaisons de dates
+    ventes_7_jours = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0)
+        FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
+        GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
+    
     ventes_par_heure = qall('''SELECT EXTRACT(HOUR FROM date_sortie::timestamp)::int,COALESCE(SUM(total),0)
-        FROM sorties WHERE DATE(date_sortie)=CURRENT_DATE GROUP BY 1 ORDER BY 1''')
+        FROM sorties WHERE DATE(date_sortie::timestamp) = CURRENT_DATE
+        GROUP BY 1 ORDER BY 1''')
+    
     return render_template('dashboard.html',
         total_jour=total_jour, nb_produits=nb_produits,
         stock_total=stock_total, nb_stock_bas=nb_stock_bas,
@@ -480,7 +482,7 @@ def pertes_list():
         ORDER BY p.date_perte DESC LIMIT 100''')
     produits = qall("SELECT id,nom,prix,stock FROM produits ORDER BY nom")
     s_auj = q1("SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE DATE(date_perte)=CURRENT_DATE")
-    s_mois= q1("SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE date_perte>=NOW()-INTERVAL '30 days'")
+    s_mois= q1("SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE date_perte::timestamp >= NOW() - INTERVAL '30 days'")
     return render_template('admin_pertes.html', pertes=pertes, produits=produits,
                            stats_aujourdhui=s_auj, stats_mois=s_mois)
 
@@ -669,12 +671,16 @@ def supprimer_fournisseur(id):
 @app.route('/admin/stats')
 def admin_stats():
     if session.get('role')!='admin': return redirect('/login')
-    ventes_jour = qall('''SELECT DATE(date_sortie),COALESCE(SUM(total),0),COUNT(*)
-        FROM sorties WHERE date_sortie>=NOW()-INTERVAL '7 days'
-        GROUP BY DATE(date_sortie) ORDER BY DATE(date_sortie)''')
+    
+    # ✅ CORRECTION : Ajout de ::timestamp
+    ventes_jour = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*)
+        FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
+        GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
+    
     ventes_mois = qall('''SELECT TO_CHAR(date_sortie::timestamp,'YYYY-MM'),COALESCE(SUM(total),0),COUNT(*)
-        FROM sorties WHERE date_sortie>=NOW()-INTERVAL '6 months'
+        FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '6 months'
         GROUP BY 1 ORDER BY 1''')
+    
     top_produits = qall('''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
         FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
         GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 10''')
@@ -775,7 +781,7 @@ def export_pdf():
     p.setFont("Helvetica-Bold",16); p.drawString(50,h-50,"HITNA - Rapport")
     p.setFont("Helvetica",10); p.drawString(50,h-70,f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     y=h-100
-    data=qall("SELECT DATE(date_sortie),COALESCE(SUM(total),0),COUNT(*) FROM sorties GROUP BY DATE(date_sortie) ORDER BY 1 DESC LIMIT 30")
+    data=qall("SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*) FROM sorties GROUP BY DATE(date_sortie::timestamp) ORDER BY 1 DESC LIMIT 30")
     p.setFont("Helvetica-Bold",10)
     p.drawString(50,y,"Date"); p.drawString(150,y,"Montant (FCFA)"); p.drawString(280,y,"Ventes"); y-=20
     for row in data:
@@ -812,6 +818,11 @@ def manifest():
 # ──────────────────────────────────────────────────────────────
 # LANCEMENT
 # ──────────────────────────────────────────────────────────────
+# ⚠️ Initialiser la base au démarrage (même en production)
+print("🔧 Initialisation de la base de données...")
+init_db()
+print("✅ Base de données initialisée")
+
 if __name__=='__main__':
     init_db()
     port=int(os.environ.get('PORT',5000))
