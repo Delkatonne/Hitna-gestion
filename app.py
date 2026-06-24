@@ -337,7 +337,6 @@ def supprimer_produit(id):
 
 @app.route('/admin/produits/supprimer_multiple', methods=['POST'])
 def supprimer_produits_multiple():
-    """Suppression groupée de plusieurs produits sélectionnés."""
     if session.get('role')!='admin': return redirect('/login')
     ids = request.form.getlist('produit_ids')
     if not ids:
@@ -455,7 +454,6 @@ def dashboard():
         FROM sorties s JOIN users u ON s.employe_id=u.id
         WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
     
-    # ✅ CORRECTION : Ajout de ::timestamp pour les comparaisons de dates
     ventes_7_jours = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0)
         FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
         GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
@@ -672,7 +670,6 @@ def supprimer_fournisseur(id):
 def admin_stats():
     if session.get('role')!='admin': return redirect('/login')
     
-    # ✅ CORRECTION : Ajout de ::timestamp
     ventes_jour = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*)
         FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
         GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
@@ -696,44 +693,93 @@ def admin_stats():
         top_produits=top_produits, marge_totale=marge, marge_produits=marge_produits)
 
 # ──────────────────────────────────────────────────────────────
-# ARCHIVES
+# ARCHIVES - VERSION CORRIGÉE
 # ──────────────────────────────────────────────────────────────
 @app.route('/admin/archives')
 def admin_archives():
     if session.get('role')!='admin': return redirect('/login')
     type_arch=request.args.get('type','ventes')
-    date_debut=request.args.get('date_debut',''); date_fin=request.args.get('date_fin','')
-    produit_filtre=request.args.get('produit',''); tri=request.args.get('tri','date_desc')
+    date_debut=request.args.get('date_debut','')
+    date_fin=request.args.get('date_fin','')
+    produit_filtre=request.args.get('produit','')
+    tri=request.args.get('tri','date_desc')
     order = 'DESC' if 'desc' in tri else 'ASC'
 
-    if type_arch=='entrees':
-        rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_entree,fournisseur,employe_nom,archive_date
-            FROM archive_entrees WHERE 1=1
-            {"AND date_entree>='"+date_debut+"'" if date_debut else ""}
-            {"AND date_entree<='"+date_fin+" 23:59:59'" if date_fin else ""}
-            {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
-            ORDER BY date_entree {order} LIMIT 200''')
-    elif type_arch=='pertes':
-        rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,motif,date_perte,employe_nom,archive_date
-            FROM archive_pertes WHERE 1=1
-            {"AND date_perte>='"+date_debut+"'" if date_debut else ""}
-            {"AND date_perte<='"+date_fin+" 23:59:59'" if date_fin else ""}
-            {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
-            ORDER BY date_perte {order} LIMIT 200''')
-    else:
-        rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_vente,client,employe_nom,archive_date
-            FROM archive_ventes WHERE 1=1
-            {"AND date_vente>='"+date_debut+"'" if date_debut else ""}
-            {"AND date_vente<='"+date_fin+" 23:59:59'" if date_fin else ""}
-            {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
-            ORDER BY date_vente {order} LIMIT 200''')
+    try:
+        if type_arch=='entrees':
+            rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_entree,fournisseur,employe_nom,archive_date
+                FROM archive_entrees WHERE 1=1
+                {"AND date_entree>='"+date_debut+"'" if date_debut else ""}
+                {"AND date_entree<='"+date_fin+" 23:59:59'" if date_fin else ""}
+                {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
+                ORDER BY date_entree {order} LIMIT 200''')
+        elif type_arch=='pertes':
+            rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,motif,date_perte,employe_nom,archive_date
+                FROM archive_pertes WHERE 1=1
+                {"AND date_perte>='"+date_debut+"'" if date_debut else ""}
+                {"AND date_perte<='"+date_fin+" 23:59:59'" if date_fin else ""}
+                {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
+                ORDER BY date_perte {order} LIMIT 200''')
+        else:
+            rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_vente,client,employe_nom,archive_date
+                FROM archive_ventes WHERE 1=1
+                {"AND date_vente>='"+date_debut+"'" if date_debut else ""}
+                {"AND date_vente<='"+date_fin+" 23:59:59'" if date_fin else ""}
+                {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
+                ORDER BY date_vente {order} LIMIT 200''')
 
-    nb_ventes_arch  = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_ventes") or (0,0)
-    nb_entrees_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_entrees") or (0,0)
-    nb_pertes_arch  = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_pertes") or (0,0)
-    return render_template('admin_archives.html', archives=rows, type_archive=type_arch,
-        nb_ventes_arch=nb_ventes_arch, nb_entrees_arch=nb_entrees_arch, nb_pertes_arch=nb_pertes_arch,
-        date_debut=date_debut, date_fin=date_fin, produit_filtre=produit_filtre, tri=tri)
+        nb_ventes_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_ventes") or (0,0)
+        nb_entrees_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_entrees") or (0,0)
+        nb_pertes_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_pertes") or (0,0)
+        
+        total_ca_archive = nb_ventes_arch[1] if nb_ventes_arch else 0
+        total_achats_archive = nb_entrees_arch[1] if nb_entrees_arch else 0
+        total_pertes_ca = nb_pertes_arch[1] if nb_pertes_arch else 0
+        
+        return render_template('admin_archives.html', 
+            archives=rows, 
+            type_archive=type_arch,
+            ventes_archive=rows if type_arch=='ventes' else [],
+            entrees_archive=rows if type_arch=='entrees' else [],
+            pertes_archive=rows if type_arch=='pertes' else [],
+            nb_ventes_arch=nb_ventes_arch[0] if nb_ventes_arch else 0,
+            nb_entrees_arch=nb_entrees_arch[0] if nb_entrees_arch else 0,
+            nb_pertes_arch=nb_pertes_arch[0] if nb_pertes_arch else 0,
+            total_ventes_archive=nb_ventes_arch[0] if nb_ventes_arch else 0,
+            total_entrees_archive=nb_entrees_arch[0] if nb_entrees_arch else 0,
+            total_pertes_archive=nb_pertes_arch[0] if nb_pertes_arch else 0,
+            total_ca_archive=total_ca_archive,
+            total_achats_archive=total_achats_archive,
+            total_pertes_ca=total_pertes_ca,
+            date_debut=date_debut, 
+            date_fin=date_fin, 
+            produit_filtre=produit_filtre, 
+            tri=tri,
+            type_data=type_arch)
+            
+    except Exception as e:
+        print(f"Erreur archives: {e}")
+        flash(f'❌ Erreur lors du chargement des archives: {str(e)}')
+        return render_template('admin_archives.html', 
+            archives=[],
+            type_archive=type_arch,
+            ventes_archive=[],
+            entrees_archive=[],
+            pertes_archive=[],
+            nb_ventes_arch=0,
+            nb_entrees_arch=0,
+            nb_pertes_arch=0,
+            total_ventes_archive=0,
+            total_entrees_archive=0,
+            total_pertes_archive=0,
+            total_ca_archive=0,
+            total_achats_archive=0,
+            total_pertes_ca=0,
+            date_debut=date_debut,
+            date_fin=date_fin,
+            produit_filtre=produit_filtre,
+            tri=tri,
+            type_data=type_arch)
 
 # ──────────────────────────────────────────────────────────────
 # MOT DE PASSE OUBLIÉ
@@ -792,13 +838,6 @@ def export_pdf():
     return send_file(buffer,as_attachment=True,
         download_name=f"rapport_{datetime.now().strftime('%Y%m%d')}.pdf",mimetype='application/pdf')
 
-
-
-# POUR OFFLINE
-@app.route('/offline')
-def offline():
-    return render_template('offline.html')
-
 # ──────────────────────────────────────────────────────────────
 # API JSON
 # ──────────────────────────────────────────────────────────────
@@ -809,7 +848,10 @@ def api_produits():
     return jsonify({'produits':[{'id':p[0],'nom':p[1],'prix':p[2],'stock':p[3]} for p in produits],
                     'timestamp':datetime.now().isoformat()})
 
-# Servir Service Worker depuis /sw.js (doit être à la racine)
+@app.route('/offline')
+def offline():
+    return render_template('offline.html')
+
 @app.route('/sw.js')
 def service_worker():
     from flask import make_response
@@ -825,7 +867,6 @@ def manifest():
 # ──────────────────────────────────────────────────────────────
 # LANCEMENT
 # ──────────────────────────────────────────────────────────────
-# ⚠️ Initialiser la base au démarrage (même en production)
 print("🔧 Initialisation de la base de données...")
 init_db()
 print("✅ Base de données initialisée")

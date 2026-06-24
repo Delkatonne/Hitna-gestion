@@ -53,6 +53,23 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   
+  // Ne pas interférer avec l'API
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => {
+          return new Response(JSON.stringify({
+            error: 'Hors ligne',
+            offline: true
+          }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        })
+    );
+    return;
+  }
+  
   // Pour les pages HTML
   if (event.request.mode === 'navigate') {
     event.respondWith(

@@ -4,7 +4,6 @@
 
 {% block extra_css %}
 <style>
-    /* Onglets */
     .tabs {
         display: flex;
         gap: 10px;
@@ -52,7 +51,6 @@
         to { opacity: 1; transform: translateY(0); }
     }
     
-    /* Filtres */
     .filters-container {
         background: #f8f9fa;
         padding: 20px;
@@ -112,7 +110,6 @@
         font-weight: 600;
     }
     
-    /* Statistiques globales */
     .stats-archive {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -143,7 +140,6 @@
         margin-top: 5px;
     }
     
-    /* Séparateur de jour */
     .day-separator {
         background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
         color: white;
@@ -185,7 +181,6 @@
         font-size: 14px;
     }
     
-    /* Groupes d'entrées par jour */
     .entrees-group, .ventes-group, .pertes-group {
         background: white;
         border-radius: 12px;
@@ -313,7 +308,6 @@
         cursor: pointer;
     }
 
-    /* ── Responsive mobile archives ── */
     @media (max-width: 768px) {
         .stats-archive {
             grid-template-columns: repeat(2, 1fr);
@@ -395,19 +389,19 @@
 <!-- Statistiques globales -->
 <div class="stats-archive">
     <div class="stat-archive">
-        <div class="number">{{ total_ventes_archive }}</div>
+        <div class="number">{{ total_ventes_archive|default(0) }}</div>
         <div class="label">Ventes archivées</div>
-        <div class="label">{{ "{:,.0f}".format(total_ca_archive) }} FCFA</div>
+        <div class="label">{{ "{:,.0f}".format(total_ca_archive|default(0)) }} FCFA</div>
     </div>
     <div class="stat-archive">
-        <div class="number">{{ total_entrees_archive }}</div>
+        <div class="number">{{ total_entrees_archive|default(0) }}</div>
         <div class="label">Entrées archivées</div>
-        <div class="label">{{ "{:,.0f}".format(total_achats_archive) }} FCFA</div>
+        <div class="label">{{ "{:,.0f}".format(total_achats_archive|default(0)) }} FCFA</div>
     </div>
     <div class="stat-archive pertes">
-        <div class="number">{{ total_pertes_archive }}</div>
+        <div class="number">{{ total_pertes_archive|default(0) }}</div>
         <div class="label">Pertes archivées</div>
-        <div class="label">{{ "{:,.0f}".format(total_pertes_ca) }} FCFA</div>
+        <div class="label">{{ "{:,.0f}".format(total_pertes_ca|default(0)) }} FCFA</div>
     </div>
 </div>
 
@@ -426,25 +420,24 @@
 
 <!-- Contenu Ventes -->
 <div id="tab-ventes" class="tab-content {% if type_data == 'ventes' %}active{% endif %}">
-    <!-- Filtres -->
     <div class="filters-container">
         <div class="filter-group">
             <label>📅 Date de début</label>
-            <input type="date" id="date_debut_ventes" value="{{ request.args.get('date_debut', '') }}">
+            <input type="date" id="date_debut_ventes" value="{{ date_debut|default('') }}">
         </div>
         <div class="filter-group">
             <label>📅 Date de fin</label>
-            <input type="date" id="date_fin_ventes" value="{{ request.args.get('date_fin', '') }}">
+            <input type="date" id="date_fin_ventes" value="{{ date_fin|default('') }}">
         </div>
         <div class="filter-group">
             <label>🔍 Nom du produit</label>
-            <input type="text" id="produit_nom_ventes" placeholder="Rechercher un produit..." value="{{ request.args.get('produit_nom', '') }}">
+            <input type="text" id="produit_nom_ventes" placeholder="Rechercher un produit..." value="{{ produit_filtre|default('') }}">
         </div>
         <div class="filter-group">
             <label>🔄 Trier par</label>
             <select id="tri_select_ventes" class="tri-select" onchange="rechercherAvecFiltres('ventes')">
-                <option value="desc" {% if request.args.get('tri', 'desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
-                <option value="asc" {% if request.args.get('tri', 'desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
+                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
+                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
             </select>
         </div>
         <div class="filter-group">
@@ -455,8 +448,7 @@
         </div>
     </div>
     
-    <!-- Résultats des ventes -->
-    {% if ventes_archive %}
+    {% if ventes_archive|default([]) %}
         {% set current_day = "" %}
         {% set day_total = 0 %}
         {% set day_count = 0 %}
@@ -484,8 +476,6 @@
                         <span class="day-name">
                             {% if v_date == date_actuelle.split(' ')[0] %}
                                 📍 AUJOURD'HUI
-                            {% elif v_date == date_actuelle.split(' ')[0] %}
-                                HIER
                             {% else %}
                                 {{ v_date }}
                             {% endif %}
@@ -558,25 +548,24 @@
 
 <!-- Contenu Entrées -->
 <div id="tab-entrees" class="tab-content {% if type_data == 'entrees' %}active{% endif %}">
-    <!-- Filtres -->
     <div class="filters-container">
         <div class="filter-group">
             <label>📅 Date de début</label>
-            <input type="date" id="date_debut_entrees" value="{{ request.args.get('date_debut', '') }}">
+            <input type="date" id="date_debut_entrees" value="{{ date_debut|default('') }}">
         </div>
         <div class="filter-group">
             <label>📅 Date de fin</label>
-            <input type="date" id="date_fin_entrees" value="{{ request.args.get('date_fin', '') }}">
+            <input type="date" id="date_fin_entrees" value="{{ date_fin|default('') }}">
         </div>
         <div class="filter-group">
             <label>🔍 Nom du produit</label>
-            <input type="text" id="produit_nom_entrees" placeholder="Rechercher un produit..." value="{{ request.args.get('produit_nom', '') }}">
+            <input type="text" id="produit_nom_entrees" placeholder="Rechercher un produit..." value="{{ produit_filtre|default('') }}">
         </div>
         <div class="filter-group">
             <label>🔄 Trier par</label>
             <select id="tri_select_entrees" class="tri-select" onchange="rechercherAvecFiltres('entrees')">
-                <option value="desc" {% if request.args.get('tri', 'desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
-                <option value="asc" {% if request.args.get('tri', 'desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
+                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
+                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
             </select>
         </div>
         <div class="filter-group">
@@ -587,8 +576,7 @@
         </div>
     </div>
     
-    <!-- Résultats des entrées -->
-    {% if entrees_archive %}
+    {% if entrees_archive|default([]) %}
         {% set current_day = "" %}
         {% set day_total = 0 %}
         {% set day_count = 0 %}
@@ -617,8 +605,6 @@
                         <span class="day-name">
                             {% if e_date == date_actuelle.split(' ')[0] %}
                                 📍 AUJOURD'HUI
-                            {% elif e_date == date_actuelle.split(' ')[0] %}
-                                HIER
                             {% else %}
                                 {{ e_date }}
                             {% endif %}
@@ -687,25 +673,24 @@
 
 <!-- Contenu Pertes -->
 <div id="tab-pertes" class="tab-content {% if type_data == 'pertes' %}active{% endif %}">
-    <!-- Filtres -->
     <div class="filters-container">
         <div class="filter-group">
             <label>📅 Date de début</label>
-            <input type="date" id="date_debut_pertes" value="{{ request.args.get('date_debut', '') }}">
+            <input type="date" id="date_debut_pertes" value="{{ date_debut|default('') }}">
         </div>
         <div class="filter-group">
             <label>📅 Date de fin</label>
-            <input type="date" id="date_fin_pertes" value="{{ request.args.get('date_fin', '') }}">
+            <input type="date" id="date_fin_pertes" value="{{ date_fin|default('') }}">
         </div>
         <div class="filter-group">
             <label>🔍 Nom du produit</label>
-            <input type="text" id="produit_nom_pertes" placeholder="Rechercher un produit..." value="{{ request.args.get('produit_nom', '') }}">
+            <input type="text" id="produit_nom_pertes" placeholder="Rechercher un produit..." value="{{ produit_filtre|default('') }}">
         </div>
         <div class="filter-group">
             <label>🔄 Trier par</label>
             <select id="tri_select_pertes" class="tri-select" onchange="rechercherAvecFiltres('pertes')">
-                <option value="desc" {% if request.args.get('tri', 'desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
-                <option value="asc" {% if request.args.get('tri', 'desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
+                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
+                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
             </select>
         </div>
         <div class="filter-group">
@@ -716,8 +701,7 @@
         </div>
     </div>
     
-    <!-- Résultats des pertes -->
-    {% if pertes_archive %}
+    {% if pertes_archive|default([]) %}
         {% set current_day = "" %}
         {% set day_total = 0 %}
         {% set day_count = 0 %}
@@ -890,7 +874,6 @@
         window.location.href = url.toString();
     }
     
-    // Mettre à jour les totaux des jours dans l'en-tête
     document.addEventListener('DOMContentLoaded', function() {
         const daySeparators = document.querySelectorAll('.day-separator');
         const groups = document.querySelectorAll('.ventes-group, .entrees-group, .pertes-group');
