@@ -404,6 +404,19 @@
         <div class="label">{{ "{:,.0f}".format(total_pertes_ca|default(0)) }} FCFA</div>
     </div>
 </div>
+<div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <label for="date_export" style="font-weight: 600; color: #1e3c72;">📅 Exporter le point du jour :</label>
+        <input type="date" id="date_export" value="{{ date_actuelle.split('/')[2] }}-{{ date_actuelle.split('/')[1] }}-{{ date_actuelle.split('/')[0] }}" 
+               style="padding: 8px 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
+        <a href="#" id="exportPdfBtn" class="btn" style="background: #dc3545; text-decoration: none; color: white; padding: 8px 20px; border-radius: 8px;">
+            📄 Exporter PDF
+        </a>
+        <button onclick="setToday()" style="background: #17a2b8; padding: 8px 15px; border: none; border-radius: 8px; color: white; cursor: pointer;">
+            📍 Aujourd'hui
+        </button>
+    </div>
+</div>
 
 <!-- Onglets -->
 <div class="tabs">
@@ -891,6 +904,31 @@
                 }
             }
         });
+    });
+
+    // Exporter PDF pour une date spécifique
+    document.getElementById('exportPdfBtn')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        const dateInput = document.getElementById('date_export');
+        const date = dateInput.value;
+        if (date) {
+            window.location.href = '/export/pdf_jour/' + date;
+        } else {
+            alert('Veuillez sélectionner une date');
+        }
+    });
+    
+    function setToday() {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        document.getElementById('date_export').value = `${year}-${month}-${day}`;
+    }
+    
+    // Mettre la date du jour par défaut
+    document.addEventListener('DOMContentLoaded', function() {
+        setToday();
     });
 </script>
 {% endblock %}

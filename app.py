@@ -844,6 +844,270 @@ def export_pdf():
     return send_file(buffer,as_attachment=True,
         download_name=f"rapport_{datetime.now().strftime('%Y%m%d')}.pdf",mimetype='application/pdf')
 
+#
+# EXPORT POINT JOURNALIER
+#
+@app.route('/export/pdf_jour/<date>')
+def export_pdf_jour(date):
+    """Exporter le rapport d'une journée spécifique en PDF"""
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    try:
+        # Convertir la date
+        date_obj = datetime.strptime(date, '%Y-%m-%d')
+        date_str = date_obj.strftime('%d/%m/%Y')
+        date_sql = date_obj.strftime('%Y-%m-%d')
+        
+        # Récupérer les données du jour
+        # Ventes du jour
+        ventes = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total, 
+                                s.date_sortie, s.client, u.nom as vendeur
+                         FROM sorties s 
+                         JOIN produits p ON s.produit_id = p.id 
+                         JOIN users u ON s.employe_id = u.id
+                         WHERE DATE(s.date_sortie) = %s
+                         ORDER BY s.date_sortie DESC''', (date_sql,))
+        
+        # Entrées du jour
+        entrees = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total, 
+                                 e.date_entree, e.fournisseur, u.nom as enregistreur
+                          FROM entrees e 
+                          JOIN produits p ON e.produit_id = p.id 
+                          JOIN users u ON e.employe_id = u.id
+                          WHERE DATE(e.date_entree) = %s
+                          ORDER BY e.date_entree DESC''', (date_sql,))
+        
+        # Pertes du jour
+        pertes = qall('''SELECT p.id, pr.nom, p.quantite, p.prix_unitaire, p.total, 
+                                p.motif, p.date_perte, u.nom as enregistreur
+                         FROM pertes p 
+                         JOIN produits pr ON p.produit_id = pr.id 
+                         JOIN users u ON p.employe_id = u.id
+                         WHERE DATE(p.date_perte) = %s
+                         ORDER BY p.date_perte DESC''', (date_sql,))
+        
+        # Statistiques
+        total_ventes = sum(v[4] for v in ventes) if ventes else 0
+        total_entrees = sum(e[4] for e in entrees) if entrees else 0
+        total_pertes = sum(p[4] for p in pertes) if pertes else 0
+        nb_ventes = len(ventes)
+        nb_entrees = len(entrees)
+        nb_pertes = len(pertes)
+        benefice = total_ventes - total_entrees
+        
+        # Créer le PDF
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        
+        # En-tête
+        c.setFont("Helvetica-Bold", 20)
+        c.setFillColorRGB(0.12, 0.24, 0.45)  # Couleur HITNA
+        c.drawString(50, height - 50, "HITNA - Rapport Journalier")
+        
+        c.setFont("Helvetica", 12)
+        c.setFillColorRGB(0.4, 0.4, 0.4)
+        c.drawString(50, height - 70, f"Date : {date_str}")
+        c.drawString(50, height - 90, f"Généré le : {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        
+        # Résumé
+        c.setFont("Helvetica-Bold", 14)
+        c.setFillColorRGB(0.12, 0.24, 0.45)
+        c.drawString(50, height - 120, "📊 RÉSUMÉ DU JOUR")
+        
+        c.setFont("Helvetica", 11)
+        c.setFillColorRGB(0, 0, 0)
+        y = height - 145
+        c.drawString(50, y, f"💰 Ventes : {nb_ventes} vente(s) - {format_prix(total_ventes)} FCFA")
+        y -= 20
+        c.drawString(50, y, f"📥 Entrées : {nb_entrees} entrée(s) - {format_prix(total_entrees)} FCFA")
+        y -= 20
+        c.drawString(50, y, f"⚠️ Pertes : {nb_pertes} perte(s) - {format_prix(total_pertes)} FCFA")
+        y -= 25
+        c.setFont("Helvetica-Bold", 12)
+        if benefice >= 0:
+            c.setFillColorRGB(0.16, 0.65, 0.28)  # Vert
+            c.drawString(50, y, f"📈 Bénéfice : {format_prix(benefice)} FCFA")
+        else:
+            c.setFillColorRGB(0.86, 0.21, 0.21)  # Rouge
+            c.drawString(50, y, f"📉 Perte : {format_prix(abs(benefice))} FCFA")
+        
+        # Séparateur
+        y -= 30
+        c.setFillColorRGB(0.8, 0.8, 0.8)
+        c.rect(50, y, width - 100, 1, stroke=1, fill=0)
+        y -= 20
+        
+        # Détail des ventes
+        if ventes:
+            c.setFont("Helvetica-Bold", 12)
+            c.setFillColorRGB(0.12, 0.24, 0.45)
+            c.drawString(50, y, "🛒 VENTES DU JOUR")
+            y -= 20
+            
+            c.setFont("Helvetica-Bold", 9)
+            c.setFillColorRGB(0.3, 0.3, 0.3)
+            c.drawString(50, y, "Produit")
+            c.drawString(170, y, "Qté")
+            c.drawString(210, y, "Prix unit.")
+            c.drawString(290, y, "Total")
+            c.drawString(370, y, "Client")
+            c.drawString(440, y, "Vendeur")
+            y -= 15
+            
+            c.setFont("Helvetica", 8)
+            c.setFillColorRGB(0, 0, 0)
+            for v in ventes[:20]:  # Limite à 20 pour éviter trop de pages
+                if y < 50:
+                    c.showPage()
+                    y = height - 50
+                    c.setFont("Helvetica-Bold", 9)
+                    c.drawString(50, y, "Produit")
+                    c.drawString(170, y, "Qté")
+                    c.drawString(210, y, "Prix unit.")
+                    c.drawString(290, y, "Total")
+                    c.drawString(370, y, "Client")
+                    c.drawString(440, y, "Vendeur")
+                    y -= 15
+                    c.setFont("Helvetica", 8)
+                
+                c.drawString(50, y, v[1][:25])
+                c.drawString(170, y, str(v[2]))
+                c.drawString(210, y, format_prix(v[3]))
+                c.drawString(290, y, format_prix(v[4]))
+                c.drawString(370, y, v[6][:15] if v[6] else "-")
+                c.drawString(440, y, v[7][:15] if v[7] else "-")
+                y -= 15
+            
+            y -= 10
+        
+        # Nouvelle page pour les entrées et pertes si besoin
+        if entrees or pertes:
+            c.showPage()
+            y = height - 50
+            c.setFont("Helvetica-Bold", 16)
+            c.setFillColorRGB(0.12, 0.24, 0.45)
+            c.drawString(50, y, f"HITNA - Rapport Journalier (suite)")
+            y -= 30
+            c.setFont("Helvetica", 10)
+            c.setFillColorRGB(0.4, 0.4, 0.4)
+            c.drawString(50, y, f"Date : {date_str}")
+            y -= 20
+        
+        # Détail des entrées
+        if entrees:
+            c.setFont("Helvetica-Bold", 12)
+            c.setFillColorRGB(0.12, 0.24, 0.45)
+            c.drawString(50, y, "📥 ENTRÉES DE STOCK")
+            y -= 20
+            
+            c.setFont("Helvetica-Bold", 9)
+            c.setFillColorRGB(0.3, 0.3, 0.3)
+            c.drawString(50, y, "Produit")
+            c.drawString(170, y, "Qté")
+            c.drawString(210, y, "Prix unit.")
+            c.drawString(290, y, "Total")
+            c.drawString(370, y, "Fournisseur")
+            c.drawString(440, y, "Enreg.")
+            y -= 15
+            
+            c.setFont("Helvetica", 8)
+            c.setFillColorRGB(0, 0, 0)
+            for e in entrees[:15]:
+                if y < 50:
+                    c.showPage()
+                    y = height - 50
+                    c.setFont("Helvetica-Bold", 9)
+                    c.drawString(50, y, "Produit")
+                    c.drawString(170, y, "Qté")
+                    c.drawString(210, y, "Prix unit.")
+                    c.drawString(290, y, "Total")
+                    c.drawString(370, y, "Fournisseur")
+                    c.drawString(440, y, "Enreg.")
+                    y -= 15
+                    c.setFont("Helvetica", 8)
+                
+                c.drawString(50, y, e[1][:25])
+                c.drawString(170, y, str(e[2]))
+                c.drawString(210, y, format_prix(e[3]))
+                c.drawString(290, y, format_prix(e[4]))
+                c.drawString(370, y, e[6][:15] if e[6] else "-")
+                c.drawString(440, y, e[7][:15] if e[7] else "-")
+                y -= 15
+            
+            y -= 10
+        
+        # Détail des pertes
+        if pertes:
+            if y < 100:
+                c.showPage()
+                y = height - 50
+            
+            c.setFont("Helvetica-Bold", 12)
+            c.setFillColorRGB(0.86, 0.21, 0.21)
+            c.drawString(50, y, "⚠️ PERTES")
+            y -= 20
+            
+            c.setFont("Helvetica-Bold", 9)
+            c.setFillColorRGB(0.3, 0.3, 0.3)
+            c.drawString(50, y, "Produit")
+            c.drawString(170, y, "Qté")
+            c.drawString(210, y, "Prix unit.")
+            c.drawString(290, y, "Total")
+            c.drawString(370, y, "Motif")
+            c.drawString(440, y, "Enreg.")
+            y -= 15
+            
+            c.setFont("Helvetica", 8)
+            c.setFillColorRGB(0, 0, 0)
+            for p in pertes[:15]:
+                if y < 50:
+                    c.showPage()
+                    y = height - 50
+                    c.setFont("Helvetica-Bold", 9)
+                    c.drawString(50, y, "Produit")
+                    c.drawString(170, y, "Qté")
+                    c.drawString(210, y, "Prix unit.")
+                    c.drawString(290, y, "Total")
+                    c.drawString(370, y, "Motif")
+                    c.drawString(440, y, "Enreg.")
+                    y -= 15
+                    c.setFont("Helvetica", 8)
+                
+                c.drawString(50, y, p[1][:25])
+                c.drawString(170, y, str(p[2]))
+                c.drawString(210, y, format_prix(p[3]))
+                c.drawString(290, y, format_prix(p[4]))
+                c.drawString(370, y, p[5][:15] if p[5] else "-")
+                c.drawString(440, y, p[7][:15] if p[7] else "-")
+                y -= 15
+        
+        # Pied de page
+        c.showPage()
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(0.5, 0.5, 0.5)
+        c.drawString(50, 30, "HITNA - Système de gestion - Rapport généré automatiquement")
+        
+        c.save()
+        buffer.seek(0)
+        
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"rapport_{date}.pdf",
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        print(f"Erreur export PDF: {e}")
+        flash(f'❌ Erreur lors de l\'export PDF: {str(e)}')
+        return redirect('/admin/archives')
+
+def format_prix(valeur):
+    """Formater un nombre avec séparateurs de milliers"""
+    return f"{valeur:,.0f}".replace(",", " ")
+
 # ──────────────────────────────────────────────────────────────
 # API JSON
 # ──────────────────────────────────────────────────────────────

@@ -319,6 +319,8 @@
     <a href="/admin/entrees">📥 Entrées de stock</a>
     <a href="/admin/ventes">🛒 Ventes</a>
     <a href="/admin/archives">📚 Archives</a>
+    <a href="#" onclick="exportToday()" style="background: #dc3545; color: white;">📄 Exporter le point du jour</a>
+    <a href="/admin/archives">📚 Archives</a>
     <a href="/changer_mdp">🔑 Changer mot de passe</a>
     <a href="/logout">🚪 Déconnexion</a>
 </div>
@@ -378,8 +380,8 @@ new Chart(document.getElementById('ventesChart'), {
 
 // Graphique des ventes par heure
 {% if ventes_par_heure %}
-const heuresLabels = [{% for v in ventes_par_heure %}'{{ v[0] }}h',{% endfor %}];
-const heuresData = [{% for v in ventes_par_heure %}{{ v[1] }},{% endfor %}];
+    const heuresLabels = [{% for v in ventes_par_heure %}'{{ v[0] }}h',{% endfor %}];
+    const heuresData = [{% for v in ventes_par_heure %}{{ v[1] }},{% endfor %}];
 
 new Chart(document.getElementById('ventesHeureChart'), {
     type: 'bar',
@@ -404,6 +406,14 @@ new Chart(document.getElementById('ventesHeureChart'), {
     }
 });
 {% endif %}
+
+ function exportToday() {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        window.location.href = '/export/pdf_jour/' + year + '-' + month + '-' + day;
+    }
 </script>
 
 
