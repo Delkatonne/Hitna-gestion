@@ -6,10 +6,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#1e3c72">
+    <meta name="apple-mobile-web-app-title" content="HITNA">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/logo-192.png') }}">
     <title>{% block title %}HITNA - Gestion{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='images/logo.jpg') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/logo.jpg') }}">
     <link rel="manifest" href="/static/manifest.json">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
@@ -149,7 +150,7 @@
             min-height: 100vh;
             background: #f0f2f5;
             overflow-x: hidden;
-            width: 0; /* force flex child à ne pas dépasser */
+            width: 0;
             min-width: 0;
         }
         
@@ -576,6 +577,56 @@
             
 
         }
+
+        /* Bannière d'installation PWA */
+        #installBanner {
+            display: none;
+            background: #1e3c72;
+            color: white;
+            padding: 12px 20px;
+            text-align: center;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            z-index: 1000;
+            left: 0;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        #installBanner .install-text {
+            margin-right: 15px;
+        }
+        
+        #installBtn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        #closeInstallBanner {
+            background: transparent;
+            color: white;
+            border: none;
+            font-size: 20px;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+
+        /* Animation pour les notifications offline */
+        @keyframes slideUp {
+            from { transform: translate(-50%, 100%); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+
+        .offline-notification {
+            animation: slideUp 0.3s ease-out;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -726,11 +777,22 @@
             </div>
         </div>
     </div>
+
+    <!-- Bannière d'installation PWA -->
+    <div id="installBanner">
+        <span class="install-text">📱 Installez HITNA sur votre appareil</span>
+        <button id="installBtn">Installer</button>
+        <button id="closeInstallBanner">✕</button>
+    </div>
     
     <div id="stockAlert" class="stock-alert" style="display: none;">
         <span id="alertMessage"></span>
         <button onclick="closeAlert()">✖</button>
     </div>
+
+    <!-- Scripts offline -->
+    <script src="{{ url_for('static', filename='offline-sync.js') }}"></script>
+    <script src="{{ url_for('static', filename='offline-cache.js') }}"></script>
     
     <script>
         // Menu Toggle
@@ -959,6 +1021,37 @@
                 themeToggle.textContent = isDark ? '☀️' : '🌙';
             });
         }
+
+        // Installation PWA
+        let deferredPrompt;
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installBanner').style.display = 'flex';
+        });
+        
+        document.getElementById('installBtn')?.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const result = await deferredPrompt.userChoice;
+                if (result.outcome === 'accepted') {
+                    document.getElementById('installBanner').style.display = 'none';
+                }
+                deferredPrompt = null;
+            }
+        });
+        
+        document.getElementById('closeInstallBanner')?.addEventListener('click', () => {
+            document.getElementById('installBanner').style.display = 'none';
+        });
+
+        // Initialisation offline
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof initOfflineSync === 'function') {
+                initOfflineSync();
+            }
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>
