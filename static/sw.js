@@ -6,6 +6,7 @@ const DYNAMIC_CACHE = 'hitna-dynamic-v1';
 const urlsToCache = [
   '/',
   '/login',
+  '/offline',          // ⚠️ Page hors ligne
   '/static/style.css',
   '/static/manifest.json',
   '/static/images/logo.jpg'
