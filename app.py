@@ -861,7 +861,9 @@ def offline():
 @app.route('/sw.js')
 def service_worker():
     from flask import make_response
-    resp = make_response(app.send_static_file('sw.js'))
+    with open('sw.js', 'r') as f:
+        content = f.read()
+    resp = make_response(content, 200)
     resp.headers['Content-Type'] = 'application/javascript'
     resp.headers['Cache-Control'] = 'no-cache'
     return resp
