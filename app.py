@@ -17,6 +17,19 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'hitna_secret')
 
 # ──────────────────────────────────────────────────────────────
+# CONFIGURATION EMAIL (Gmail)
+# ──────────────────────────────────────────────────────────────
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'hitnasuperette@gmail.com')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
+app.config['MAIL_DEFAULT_SENDER'] = ('HITNA Gestion', 'hitnasuperette@gmail.com')
+
+mail = Mail(app)
+
+# ──────────────────────────────────────────────────────────────
 # CONNEXION POSTGRESQL
 # DATABASE_URL est fournie automatiquement par Render
 # ──────────────────────────────────────────────────────────────
@@ -904,21 +917,66 @@ def admin_archives():
             type_data=type_arch)
 
 # ──────────────────────────────────────────────────────────────
-# MOT DE PASSE OUBLIÉ
+# MOT DE PASSE OUBLIÉ - VERSION CORRIGÉE AVEC EMAIL
 # ──────────────────────────────────────────────────────────────
 @app.route('/mot_de_passe_oublie', methods=['GET','POST'])
 def mot_de_passe_oublie():
-    if request.method=='POST':
-        email=request.form.get('email','').strip()
-        if email!='hitnasuperette@gmail.com':
-            flash('❌ Seul l\'administrateur peut réinitialiser son mot de passe.','error')
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        
+        if email != 'hitnasuperette@gmail.com':
+            flash('❌ Seul l\'administrateur peut réinitialiser son mot de passe.', 'error')
             return redirect('/mot_de_passe_oublie')
-        user=q1("SELECT id FROM users WHERE role='admin' AND email=? AND actif=1",(email,))
+        
+        user = q1("SELECT id, nom FROM users WHERE role='admin' AND email = %s AND actif = 1", (email,))
+        
         if user:
-            token=generate_reset_token(user[0])
-            flash(f'🔗 Lien : {url_for("reset_password",token=token,_external=True)}','info')
-        else: flash('❌ Aucun admin actif avec cet email','error')
+            token = generate_reset_token(user[0])
+            reset_url = url_for('reset_password', token=token, _external=True)
+            
+            # Créer le message email
+            try:
+                msg = Message(
+                    subject="🔐 Réinitialisation de votre mot de passe - HITNA",
+                    recipients=[email],
+                    body=f"""
+Bonjour {user[1]},
+
+Vous avez demandé la réinitialisation de votre mot de passe pour l'application HITNA.
+
+Cliquez sur le lien ci-dessous pour créer un nouveau mot de passe :
+{reset_url}
+
+Ce lien est valable 24 heures.
+
+Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
+
+Cordialement,
+L'équipe HITNA
+""",
+                    html=f"""
+<h2>🔐 Réinitialisation de votre mot de passe</h2>
+<p>Bonjour <strong>{user[1]}</strong>,</p>
+<p>Vous avez demandé la réinitialisation de votre mot de passe pour l'application <strong>HITNA</strong>.</p>
+<p>Cliquez sur le bouton ci-dessous pour créer un nouveau mot de passe :</p>
+<p><a href="{reset_url}" style="background: #1e3c72; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none;">🔑 Réinitialiser mon mot de passe</a></p>
+<p>Ce lien est valable <strong>24 heures</strong>.</p>
+<p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
+<br>
+<p>Cordialement,<br><strong>L'équipe HITNA</strong></p>
+"""
+                )
+                mail.send(msg)
+                flash('✅ Un email de réinitialisation a été envoyé à hitnasuperette@gmail.com', 'success')
+            except Exception as e:
+                print(f"Erreur envoi email: {e}")
+                # En cas d'erreur, afficher le lien quand même (mode développement)
+                flash(f'🔗 Lien de réinitialisation : {reset_url}', 'info')
+        else:
+            flash('❌ Aucun administrateur actif avec cet email', 'error')
+        
         return redirect('/login')
+    
     return render_template('mot_de_passe_oublie.html')
 
 @app.route('/reset_password/<token>', methods=['GET','POST'])
