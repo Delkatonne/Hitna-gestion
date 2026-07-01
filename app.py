@@ -609,6 +609,236 @@ def modifier_acteur(id):
             (hashlib.sha256(request.form['new_password'].encode()).hexdigest(),id))
     flash(f'✅ Acteur "{nom}" modifié')
     return redirect('/admin/acteurs')
+# ── GESTION DES PERMISSIONS ET ACTEURS ──
+@app.route('/admin/acteurs/permissions/<int:id>', methods=['POST'])
+def modifier_permissions_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    perms = request.form.getlist('permissions')
+    if not perms:
+        perms = ['vente']
+    
+    permissions_str = ','.join(perms)
+    
+    try:
+        exe("UPDATE users SET permissions = %s WHERE id = %s", (permissions_str, id))
+        flash('✅ Permissions mises à jour avec succès')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+# ── GESTION DES PERMISSIONS ET ACTEURS ──
+@app.route('/admin/acteurs/permissions/<int:id>', methods=['POST'])
+def modifier_permissions_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    perms = request.form.getlist('permissions')
+    if not perms:
+        perms = ['vente']
+    
+    permissions_str = ','.join(perms)
+    
+    try:
+        exe("UPDATE users SET permissions = %s WHERE id = %s", (permissions_str, id))
+        flash('✅ Permissions mises à jour avec succès')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+
+
+@app.route('/admin/acteurs/modifier_email/<int:id>', methods=['POST'])
+def modifier_email_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    email = request.form.get('email', '')
+    
+    try:
+        exe("UPDATE users SET email = %s WHERE id = %s", (email, id))
+        flash('✅ Email mis à jour avec succès')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+
+
+@app.route('/admin/acteurs/modifier_role/<int:id>', methods=['POST'])
+def modifier_role_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    role_personnalise = request.form.get('role_personnalise', '')
+    
+    try:
+        exe("UPDATE users SET role_personnalise = %s WHERE id = %s", (role_personnalise, id))
+        flash('✅ Rôle personnalisé mis à jour avec succès')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+
+
+@app.route('/admin/acteurs/reset_mdp/<int:id>', methods=['POST'])
+def reset_mdp_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    nouveau_mdp = request.form.get('nouveau_mdp', '')
+    
+    if len(nouveau_mdp) < 4:
+        flash('❌ Le mot de passe doit contenir au moins 4 caractères')
+        return redirect('/admin/acteurs')
+    
+    try:
+        import hashlib
+        password_hash = hashlib.sha256(nouveau_mdp.encode()).hexdigest()
+        exe("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, id))
+        flash('✅ Mot de passe réinitialisé avec succès')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+
+
+@app.route('/admin/acteurs/desactiver/<int:id>', methods=['POST'])
+def desactiver_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    if id == session['user_id']:
+        flash('❌ Impossible de désactiver votre propre compte')
+        return redirect('/admin/acteurs')
+    
+    motif = request.form.get('motif', '')
+    motif_autre = request.form.get('motif_autre', '')
+    
+    if motif == 'Autre' and motif_autre:
+        motif = motif_autre
+    
+    try:
+        exe("UPDATE users SET actif = 0, motif_absence = %s WHERE id = %s", (motif, id))
+        flash(f'✅ Compte désactivé avec succès. Motif: {motif}')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+
+
+@app.route('/admin/acteurs/reactiver/<int:id>')
+def reactiver_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    if id == session['user_id']:
+        flash('❌ Impossible de réactiver votre propre compte')
+        return redirect('/admin/acteurs')
+    
+    try:
+        exe("UPDATE users SET actif = 1, motif_absence = '' WHERE id = %s", (id,))
+        flash('✅ Compte réactivé avec succès')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+
+
+@app.route('/admin/acteurs/modifier_email/<int:id>', methods=['POST'])
+def modifier_email_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    email = request.form.get('email', '')
+    
+    try:
+        exe("UPDATE users SET email = %s WHERE id = %s", (email, id))
+        flash('✅ Email mis à jour avec succès')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+
+
+@app.route('/admin/acteurs/modifier_role/<int:id>', methods=['POST'])
+def modifier_role_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    role_personnalise = request.form.get('role_personnalise', '')
+    
+    try:
+        exe("UPDATE users SET role_personnalise = %s WHERE id = %s", (role_personnalise, id))
+        flash('✅ Rôle personnalisé mis à jour avec succès')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+
+
+@app.route('/admin/acteurs/reset_mdp/<int:id>', methods=['POST'])
+def reset_mdp_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    nouveau_mdp = request.form.get('nouveau_mdp', '')
+    
+    if len(nouveau_mdp) < 4:
+        flash('❌ Le mot de passe doit contenir au moins 4 caractères')
+        return redirect('/admin/acteurs')
+    
+    try:
+        import hashlib
+        password_hash = hashlib.sha256(nouveau_mdp.encode()).hexdigest()
+        exe("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, id))
+        flash('✅ Mot de passe réinitialisé avec succès')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+
+
+@app.route('/admin/acteurs/desactiver/<int:id>', methods=['POST'])
+def desactiver_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    if id == session['user_id']:
+        flash('❌ Impossible de désactiver votre propre compte')
+        return redirect('/admin/acteurs')
+    
+    motif = request.form.get('motif', '')
+    motif_autre = request.form.get('motif_autre', '')
+    
+    if motif == 'Autre' and motif_autre:
+        motif = motif_autre
+    
+    try:
+        exe("UPDATE users SET actif = 0, motif_absence = %s WHERE id = %s", (motif, id))
+        flash(f'✅ Compte désactivé avec succès. Motif: {motif}')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
+
+
+@app.route('/admin/acteurs/reactiver/<int:id>')
+def reactiver_acteur(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    if id == session['user_id']:
+        flash('❌ Impossible de réactiver votre propre compte')
+        return redirect('/admin/acteurs')
+    
+    try:
+        exe("UPDATE users SET actif = 1, motif_absence = '' WHERE id = %s", (id,))
+        flash('✅ Compte réactivé avec succès')
+    except Exception as e:
+        flash(f'❌ Erreur: {str(e)}')
+    
+    return redirect('/admin/acteurs')
 
 @app.route('/admin/acteurs/supprimer/<int:id>')
 def supprimer_acteur(id):
