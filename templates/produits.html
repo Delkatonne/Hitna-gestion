@@ -34,6 +34,57 @@
         border-color: #1e3c72;
     }
 
+    /* ── Barre de recherche ──────────────────── */
+    .search-bar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+        background: #f8f9fa;
+        padding: 12px 16px;
+        border-radius: 12px;
+        border: 1px solid #e0e0e0;
+    }
+    .search-bar input {
+        flex: 1;
+        min-width: 200px;
+        padding: 10px 15px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+    }
+    .search-bar input:focus {
+        outline: none;
+        border-color: #2a5298;
+        box-shadow: 0 0 0 3px rgba(42, 82, 152, 0.1);
+    }
+    .search-bar .search-icon {
+        font-size: 20px;
+        color: #666;
+    }
+    .search-bar .clear-search {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 13px;
+        display: none;
+    }
+    .search-bar .clear-search.visible {
+        display: inline-block;
+    }
+    .search-bar .result-count {
+        font-size: 13px;
+        color: #666;
+        font-weight: 600;
+        min-width: 80px;
+        text-align: right;
+    }
+
     /* ── Barre d'actions multiple ───────────── */
     .bulk-actions-bar {
         display: none;
@@ -123,6 +174,11 @@
     /* Ligne sélectionnée */
     tr.selected-row {
         background: #fff3cd !important;
+    }
+
+    /* Produit masqué par la recherche */
+    .produit-hidden {
+        display: none !important;
     }
 
     /* ── Cartes mobiles ─────────────────────── */
@@ -216,6 +272,15 @@
         color: #495057;
         margin-left: 5px;
     }
+
+    /* Animation de la barre de recherche */
+    .search-bar {
+        transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .search-bar:focus-within {
+        border-color: #2a5298;
+        box-shadow: 0 0 0 3px rgba(42, 82, 152, 0.1);
+    }
 </style>
 
 <!-- ══ SECTION AJOUT ════════════════════════════════════════ -->
@@ -264,6 +329,14 @@
         </button>
     </div>
 
+    <!-- ══ BARRE DE RECHERCHE ══ -->
+    <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Rechercher un produit par nom..." autocomplete="off">
+        <span class="result-count" id="resultCount"></span>
+        <button class="clear-search" id="clearSearch" onclick="clearSearch()">✕ Effacer</button>
+    </div>
+
     <!-- Barre d'actions groupées -->
     <div class="bulk-actions-bar" id="bulk-actions-bar">
         <span class="bulk-count" id="bulk-count">0 produit(s) sélectionné(s)</span>
@@ -294,7 +367,7 @@
                 </thead>
                 <tbody id="produits-tbody">
                     {% for p in produits %}
-                    <tr id="row-{{ p[0] }}">
+                    <tr id="row-{{ p[0] }}" data-nom="{{ p[1]|lower }}">
                         <td class="checkbox-cell">
                             <input type="checkbox" class="product-checkbox"
                                    value="{{ p[0] }}" data-nom="{{ p[1] }}"
@@ -334,9 +407,9 @@
     </div>
 
     <!-- ── VERSION MOBILE (cartes) ───────────── -->
-    <div class="produits-cards-mobile">
+    <div class="produits-cards-mobile" id="produits-cards-mobile">
         {% for p in produits %}
-        <div class="produit-card" id="card-{{ p[0] }}">
+        <div class="produit-card" id="card-{{ p[0] }}" data-nom="{{ p[1]|lower }}">
             <div class="card-header">
                 <input type="checkbox" class="product-checkbox"
                        value="{{ p[0] }}" data-nom="{{ p[1] }}"
@@ -517,6 +590,68 @@ function fermerModal() {
 
 document.getElementById('modal-modifier').addEventListener('click', function(e) {
     if (e.target === this) fermerModal();
+});
+
+// ── RECHERCHE EN TEMPS RÉEL ──────────────────
+const searchInput = document.getElementById('searchInput');
+const clearBtn = document.getElementById('clearSearch');
+const resultCount = document.getElementById('resultCount');
+
+function filterProducts() {
+    const searchTerm = searchInput.value.toLowerCase().trim();
+    let visibleCount = 0;
+    
+    // Filtrer les lignes du tableau desktop
+    document.querySelectorAll('#produits-tbody tr').forEach(row => {
+        const nom = row.getAttribute('data-nom') || '';
+        if (searchTerm === '' || nom.includes(searchTerm)) {
+            row.classList.remove('produit-hidden');
+            visibleCount++;
+        } else {
+            row.classList.add('produit-hidden');
+        }
+    });
+    
+    // Filtrer les cartes mobile
+    document.querySelectorAll('#produits-cards-mobile .produit-card').forEach(card => {
+        const nom = card.getAttribute('data-nom') || '';
+        if (searchTerm === '' || nom.includes(searchTerm)) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+    
+    // Mettre à jour le compteur
+    const total = document.querySelectorAll('#produits-tbody tr').length;
+    if (searchTerm === '') {
+        resultCount.textContent = `${total} produits`;
+        clearBtn.classList.remove('visible');
+    } else {
+        resultCount.textContent = `${visibleCount} résultat(s) sur ${total}`;
+        clearBtn.classList.add('visible');
+    }
+}
+
+function clearSearch() {
+    searchInput.value = '';
+    filterProducts();
+    searchInput.focus();
+}
+
+// Recherche en temps réel
+searchInput.addEventListener('input', filterProducts);
+
+// Recherche avec la touche Escape
+searchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        clearSearch();
+    }
+});
+
+// Initialiser le compteur
+document.addEventListener('DOMContentLoaded', function() {
+    filterProducts();
 });
 </script>
 {% endblock %}
