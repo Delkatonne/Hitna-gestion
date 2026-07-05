@@ -253,6 +253,7 @@
         }
         
         /* Alertes stock bas */
+        /*
         .stock-alert {
             position: fixed;
             bottom: 20px;
@@ -277,6 +278,7 @@
             cursor: pointer;
             padding: 0 5px;
         }
+        */
         
         /* Notification Bell */
         .notification-bell {
@@ -785,10 +787,10 @@
         <button id="closeInstallBanner">✕</button>
     </div>
     
-    <div id="stockAlert" class="stock-alert" style="display: none;">
+   <!-- <div id="stockAlert" class="stock-alert" style="display: none;">
         <span id="alertMessage"></span>
         <button onclick="closeAlert()">✖</button>
-    </div>
+    </div> -->
 
     <!-- Scripts offline -->
     <script src="{{ url_for('static', filename='offline-sync.js') }}"></script>
@@ -878,6 +880,7 @@
         });
 
         // Vérification stock bas
+        /*
         function checkStockBas() {
             fetch('/api/stock_bas')
                 .then(response => response.json())
@@ -898,6 +901,7 @@
         
         setInterval(checkStockBas, 30000);
         checkStockBas();
+        */
 
         // Notifications
         let notifications = [];
