@@ -280,7 +280,7 @@
         }
         */
         
-        /* Notification Bell */
+        /* Notification Bell - CORRIGÉ */
         .notification-bell {
             position: relative;
         }
@@ -323,8 +323,11 @@
             border-radius: 10px;
             box-shadow: 0 8px 30px rgba(0,0,0,0.25);
             z-index: 9999;
-            max-height: 420px;
+            max-height: 90vh;
+            max-height: calc(100vh - 80px);
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
         @media (max-width: 768px) {
@@ -333,6 +336,7 @@
                 right: 10px;
                 left: 10px;
                 top: 65px;
+                max-height: calc(100vh - 100px);
             }
         }
 
@@ -344,6 +348,7 @@
             justify-content: space-between;
             align-items: center;
             font-weight: bold;
+            flex-shrink: 0;
         }
 
         .mark-read-btn {
@@ -359,8 +364,9 @@
         }
 
         .notification-list {
-            max-height: 350px;
+            flex: 1;
             overflow-y: auto;
+            max-height: 350px;
         }
 
         .notification-item {
@@ -405,12 +411,20 @@
             padding: 10px;
             text-align: center;
             border-top: 1px solid #eee;
+            background: white;
+            flex-shrink: 0;
         }
 
         .dropdown-footer a {
             color: #2a5298;
             text-decoration: none;
             font-size: 12px;
+            display: block;
+            padding: 5px 0;
+        }
+
+        .dropdown-footer a:hover {
+            text-decoration: underline;
         }
 
         .loading {
@@ -576,8 +590,6 @@
                 justify-content: center;
                 font-size: 22px;
             }
-            
-
         }
 
         /* Bannière d'installation PWA */
@@ -691,10 +703,14 @@
                         <span class="icon">⚠️</span><span>Alertes produits</span>
                     </a>
                 </div>
-
                 <div class="nav-item">
                     <a href="/admin/pertes" class="nav-link">
-                        <span class="icon">🗑</span><span>Pertes</span>
+                        <span class="icon">🗑️</span><span>Pertes</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/unites" class="nav-link">
+                        <span class="icon">📏</span><span>Unités de mesure</span>
                     </a>
                 </div>
                 <div class="nav-divider"></div>
@@ -722,11 +738,6 @@
                 <div class="nav-item">
                     <a href="/logout" class="nav-link" onclick="return confirm('Voulez-vous vraiment vous déconnecter ?')">
                         <span class="icon">🚪</span><span>Déconnexion</span>
-                    </a>
-                </div>
-                <div class="nav-item">
-                    <a href="/admin/unites" class="nav-link">
-                        <span class="icon">📏</span><span>Unités de mesure</span>
                     </a>
                 </div>
             </div>
@@ -884,7 +895,7 @@
             });
         });
 
-        // Vérification stock bas
+        // Vérification stock bas (désactivée)
         /*
         function checkStockBas() {
             fetch('/api/stock_bas')
