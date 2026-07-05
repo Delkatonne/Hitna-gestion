@@ -20,7 +20,7 @@
         margin-bottom: 6px;
         font-size: 13px;
     }
-    .form-group input {
+    .form-group input, .form-group select {
         width: 100%;
         padding: 10px 14px;
         border: 2px solid #e0e0e0;
@@ -29,7 +29,7 @@
         box-sizing: border-box;
         transition: border-color 0.2s;
     }
-    .form-group input:focus {
+    .form-group input:focus, .form-group select:focus {
         outline: none;
         border-color: #1e3c72;
     }
@@ -205,6 +205,17 @@
     /* Badge stock */
     .badge-stock-ok  { color: #28a745; font-weight: 700; }
     .badge-stock-bas { color: #dc3545; font-weight: 700; }
+    
+    /* Unité badge */
+    .unite-badge {
+        display: inline-block;
+        background: #e9ecef;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        color: #495057;
+        margin-left: 5px;
+    }
 </style>
 
 <!-- ══ SECTION AJOUT ════════════════════════════════════════ -->
@@ -227,6 +238,15 @@
             <div class="form-group">
                 <label>⚠️ Stock minimum (alerte)</label>
                 <input type="number" name="stock_min" placeholder="Ex: 5" min="0" value="5">
+            </div>
+            <div class="form-group">
+                <label>📏 Unité de mesure</label>
+                <select name="unite_id">
+                    <option value="">-- Aucune unité --</option>
+                    {% for unite in unites %}
+                    <option value="{{ unite[0] }}">{{ unite[1] }} ({{ unite[2] }})</option>
+                    {% endfor %}
+                </select>
             </div>
         </div>
         <button type="submit" class="btn" style="background:#1e3c72;color:white;padding:11px 28px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
@@ -258,7 +278,7 @@
     <!-- ── VERSION DESKTOP ───────────────────── -->
     <div class="produits-table-desktop">
         <div class="table-container">
-            <table class="table" style="min-width:600px;">
+            <table class="table" style="min-width:650px;">
                 <thead>
                     <tr>
                         <th class="checkbox-cell">
@@ -267,6 +287,7 @@
                         <th>Produit</th>
                         <th>Prix</th>
                         <th>Stock</th>
+                        <th>Unité</th>
                         <th>Stock min</th>
                         <th>Actions</th>
                     </tr>
@@ -284,10 +305,17 @@
                         <td class="{% if p[3] <= p[4] %}badge-stock-bas{% else %}badge-stock-ok{% endif %}">
                             {{ p[3] }} unités
                         </td>
+                        <td>
+                            {% if p[5] %}
+                                <span class="unite-badge">{{ p[5] }}</span>
+                            {% else %}
+                                <span style="color:#999; font-size:11px;">—</span>
+                            {% endif %}
+                        </td>
                         <td>{{ p[4] }}</td>
                         <td>
                             <!-- Modifier -->
-                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }})"
+                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }}, {{ p[6]|default('') }})"
                                     style="background:#1e3c72;color:white;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;">
                                 ✏️ Modifier
                             </button>
@@ -327,12 +355,16 @@
                 </span>
             </div>
             <div class="card-row">
+                <label>Unité</label>
+                <span>{% if p[5] %}{{ p[5] }}{% else %}—{% endif %}</span>
+            </div>
+            <div class="card-row">
                 <label>Stock min</label>
                 <span>{{ p[4] }}</span>
             </div>
             <div class="card-actions">
                 <button class="card-btn-save"
-                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }})">
+                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }}, {{ p[6]|default('') }})">
                     ✏️ Modifier
                 </button>
                 <a href="/admin/produits/supprimer/{{ p[0] }}"
@@ -346,6 +378,7 @@
 
 <div class="nav-links">
     <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/admin/unites">📏 Gérer les unités de mesure</a>
 </div>
 
 <!-- ══ MODAL MODIFICATION ════════════════════════════════════ -->
@@ -360,6 +393,15 @@
             <div class="form-group" style="margin-bottom:12px;">
                 <label>Prix (FCFA)</label>
                 <input type="number" name="prix" id="modal-prix" min="0" required style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label>📏 Unité de mesure</label>
+                <select name="unite_id" id="modal-unite" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
+                    <option value="">-- Aucune unité --</option>
+                    {% for unite in unites %}
+                    <option value="{{ unite[0] }}">{{ unite[1] }} ({{ unite[2] }})</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="form-group" style="margin-bottom:20px;">
                 <label>Stock minimum</label>
@@ -386,7 +428,6 @@ function onCheckboxChange(cb) {
     const nom = cb.dataset.nom;
     if (cb.checked) {
         selectedIds.add(id);
-        // Surligner la ligne/carte
         const row  = document.getElementById('row-' + id);
         const card = document.getElementById('card-' + id);
         if (row)  row.classList.add('selected-row');
@@ -397,7 +438,6 @@ function onCheckboxChange(cb) {
         const card = document.getElementById('card-' + id);
         if (row)  row.classList.remove('selected-row');
         if (card) card.classList.remove('selected-card');
-        // Décocher "Tout sélectionner"
         const cbAll = document.getElementById('select-all-cb');
         if (cbAll) cbAll.checked = false;
     }
@@ -413,7 +453,6 @@ function updateBulkBar() {
     if (n > 0) {
         bar.classList.add('visible');
         count.textContent = n + ' produit(s) sélectionné(s)';
-        // Construire les inputs cachés pour le form
         container.innerHTML = '';
         selectedIds.forEach(id => {
             const input = document.createElement('input');
@@ -463,11 +502,12 @@ function confirmSuppressionMultiple() {
 }
 
 // ── Modal modification ─────────────────────────
-function ouvrirModal(id, nom, prix, stockMin) {
+function ouvrirModal(id, nom, prix, stockMin, uniteId) {
     document.getElementById('form-modifier').action = '/admin/produits/modifier/' + id;
     document.getElementById('modal-nom').value      = nom;
     document.getElementById('modal-prix').value     = prix;
     document.getElementById('modal-stock-min').value = stockMin;
+    document.getElementById('modal-unite').value    = uniteId || '';
     document.getElementById('modal-modifier').style.display = 'flex';
 }
 
@@ -475,7 +515,6 @@ function fermerModal() {
     document.getElementById('modal-modifier').style.display = 'none';
 }
 
-// Fermer le modal en cliquant en dehors
 document.getElementById('modal-modifier').addEventListener('click', function(e) {
     if (e.target === this) fermerModal();
 });

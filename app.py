@@ -31,7 +31,6 @@ mail = Mail(app)
 
 # ──────────────────────────────────────────────────────────────
 # CONNEXION POSTGRESQL
-# DATABASE_URL est fournie automatiquement par Render
 # ──────────────────────────────────────────────────────────────
 def get_db():
     url = os.environ.get('DATABASE_URL', '')
@@ -72,6 +71,7 @@ def exe(sql, params=(), returning=False):
 def init_db():
     conn = get_db(); c = conn.cursor()
 
+    # ====== TABLES EXISTANTES ======
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY, role TEXT, role_personnalise TEXT,
         password_hash TEXT, nom TEXT, actif INTEGER DEFAULT 1,
@@ -114,7 +114,7 @@ def init_db():
         id SERIAL PRIMARY KEY, user_id INTEGER, token TEXT,
         expires_at TEXT, used INTEGER DEFAULT 0)''')
 
-    # Archives (toutes dans la même base PostgreSQL)
+    # Archives
     c.execute('''CREATE TABLE IF NOT EXISTS archive_ventes (
         id INTEGER, produit_id INTEGER, quantite INTEGER,
         prix_unitaire INTEGER, total INTEGER, date_vente TEXT,
@@ -139,13 +139,46 @@ def init_db():
         total_ventes INTEGER, nb_entrees INTEGER, total_achats INTEGER,
         archive_date TEXT)''')
 
+    # ====== NOUVELLE TABLE : UNITÉS DE MESURE ======
+    c.execute('''CREATE TABLE IF NOT EXISTS unites_mesure (
+        id SERIAL PRIMARY KEY, 
+        nom TEXT UNIQUE, 
+        symbole TEXT,
+        description TEXT,
+        actif INTEGER DEFAULT 1)''')
+
+    # ====== AJOUT DE LA COLONNE unite_id DANS produits ======
+    # Vérifier si la colonne existe déjà
+    c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='unite_id'")
+    if not c.fetchone():
+        c.execute("ALTER TABLE produits ADD COLUMN unite_id INTEGER REFERENCES unites_mesure(id)")
+        print("✅ Colonne 'unite_id' ajoutée à produits")
+
     c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_date  ON sorties(date_sortie)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_entrees_date  ON entrees(date_entree)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_archive_vd    ON archive_ventes(date_vente)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_archive_ed    ON archive_entrees(date_entree)')
 
-    # Données initiales — seulement si aucun utilisateur n'existe
-    c.execute('SELECT COUNT(*) FROM users'); 
+    # ====== UNITÉS PAR DÉFAUT ======
+    c.execute("SELECT COUNT(*) FROM unites_mesure")
+    if c.fetchone()[0] == 0:
+        unites_defaut = [
+            ('Litre', 'L', 'Litre (1L)'),
+            ('Demi-litre', '1/2 L', 'Demi-litre (0.5L)'),
+            ('Quart de litre', '1/4 L', 'Quart de litre (0.25L)'),
+            ('Kilogramme', 'kg', 'Kilogramme (1kg)'),
+            ('Demi-kilogramme', '1/2 kg', 'Demi-kilogramme (500g)'),
+            ('Gramme', 'g', 'Gramme'),
+            ('Millilitre', 'ml', 'Millilitre'),
+            ('Pièce', 'pc', 'À l\'unité'),
+        ]
+        for u in unites_defaut:
+            c.execute("INSERT INTO unites_mesure (nom, symbole, description, actif) VALUES (%s,%s,%s,%s)", 
+                      (u[0], u[1], u[2], 1))
+        print("✅ Unités de mesure par défaut ajoutées")
+
+    # ====== DONNÉES INITIALES ======
+    c.execute('SELECT COUNT(*) FROM users')
     if c.fetchone()[0] == 0:
         c.execute("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions) VALUES (%s,%s,%s,%s,%s,%s)",
                   ('admin','Administrateur',hashlib.sha256('admin123'.encode()).hexdigest(),'Administrateur',1,'admin'))
@@ -153,9 +186,10 @@ def init_db():
                   ('employe','Employé',hashlib.sha256('emp123'.encode()).hexdigest(),'Employé',1,'vente'))
 
     conn.commit(); c.close(); conn.close()
+    print("✅ Base de données initialisée avec unités de mesure")
 
 # ──────────────────────────────────────────────────────────────
-# ARCHIVAGE HEBDOMADAIRE (même logique, une seule base)
+# ARCHIVAGE HEBDOMADAIRE
 # ──────────────────────────────────────────────────────────────
 def get_derniere_archive():
     row = q1("SELECT semaine FROM archive_recap ORDER BY id DESC LIMIT 1")
@@ -314,58 +348,195 @@ def changer_mdp():
     return render_template('changer_mdp.html')
 
 # ──────────────────────────────────────────────────────────────
-# PRODUITS — SUPPRESSION MULTIPLE INCLUSE
+# UNITÉS DE MESURE - NOUVEAU
+# ──────────────────────────────────────────────────────────────
+@app.route('/admin/unites')
+def admin_unites():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    unites = qall("SELECT * FROM unites_mesure ORDER BY nom")
+    return render_template('admin_unites.html', unites=unites)
+
+@app.route('/admin/unites/ajouter', methods=['POST'])
+def ajouter_unite():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    nom = request.form.get('nom', '').strip()
+    symbole = request.form.get('symbole', '').strip()
+    description = request.form.get('description', '').strip()
+    
+    if not nom:
+        flash('❌ Le nom de l\'unité est obligatoire')
+        return redirect('/admin/unites')
+    
+    try:
+        exe("INSERT INTO unites_mesure (nom, symbole, description, actif) VALUES (?,?,?,1)",
+            (nom, symbole, description))
+        flash(f'✅ Unité "{nom}" ajoutée')
+    except Exception:
+        flash('❌ Cette unité existe déjà')
+    
+    return redirect('/admin/unites')
+
+@app.route('/admin/unites/modifier/<int:id>', methods=['POST'])
+def modifier_unite(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    nom = request.form.get('nom', '').strip()
+    symbole = request.form.get('symbole', '').strip()
+    description = request.form.get('description', '').strip()
+    actif = 1 if request.form.get('actif') else 0
+    
+    try:
+        exe("UPDATE unites_mesure SET nom=?, symbole=?, description=?, actif=? WHERE id=?", 
+            (nom, symbole, description, actif, id))
+        flash(f'✅ Unité "{nom}" modifiée')
+    except Exception:
+        flash('❌ Erreur lors de la modification')
+    
+    return redirect('/admin/unites')
+
+@app.route('/admin/unites/supprimer/<int:id>')
+def supprimer_unite(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    # Vérifier si l'unité est utilisée par des produits
+    used = q1("SELECT COUNT(*) FROM produits WHERE unite_id=?", (id,))
+    if used and used[0] > 0:
+        flash('❌ Cette unité est utilisée par des produits. Supprimez-les d\'abord.')
+        return redirect('/admin/unites')
+    
+    u = q1("SELECT nom FROM unites_mesure WHERE id=?", (id,))
+    if u:
+        exe("DELETE FROM unites_mesure WHERE id=?", (id,))
+        flash(f'🗑️ Unité "{u[0]}" supprimée')
+    return redirect('/admin/unites')
+
+# ──────────────────────────────────────────────────────────────
+# PRODUITS — AVEC UNITÉS DE MESURE
 # ──────────────────────────────────────────────────────────────
 @app.route('/admin/produits')
 def produits_list():
-    if session.get('role')!='admin': return redirect('/login')
-    produits = qall("SELECT id,nom,prix,stock,stock_min FROM produits ORDER BY nom")
-    return render_template('produits.html', produits=produits)
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    produits = qall('''SELECT p.id, p.nom, p.prix, p.stock, p.stock_min,
+                              COALESCE(u.symbole, '') as unite_symbole,
+                              COALESCE(u.nom, '') as unite_nom,
+                              p.unite_id
+                       FROM produits p 
+                       LEFT JOIN unites_mesure u ON p.unite_id = u.id 
+                       ORDER BY p.nom''')
+    
+    unites = qall("SELECT id, nom, symbole FROM unites_mesure WHERE actif = 1 ORDER BY nom")
+    
+    return render_template('produits.html', produits=produits, unites=unites)
 
 @app.route('/admin/produits/ajouter', methods=['POST'])
 def ajouter_produit():
-    if session.get('role')!='admin': return redirect('/login')
-    nom = request.form['nom']; prix = int(float(request.form['prix']))
-    stock = int(request.form.get('stock',0)); smin = int(request.form.get('stock_min',5))
-    exe("INSERT INTO produits (nom,prix,stock,stock_min) VALUES (?,?,?,?)",(nom,prix,stock,smin))
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    nom = request.form['nom']
+    prix = int(float(request.form['prix']))
+    stock = int(request.form.get('stock', 0))
+    smin = int(request.form.get('stock_min', 5))
+    unite_id = request.form.get('unite_id')
+    
+    # Si unite_id est vide ou "0", on le met à NULL
+    if not unite_id or unite_id == '0':
+        unite_id = None
+    else:
+        unite_id = int(unite_id)
+    
+    exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id) VALUES (?,?,?,?,?)",
+        (nom, prix, stock, smin, unite_id))
+    
     flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
     envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
     return redirect('/admin/produits')
 
 @app.route('/admin/produits/modifier/<int:id>', methods=['POST'])
 def modifier_produit(id):
-    if session.get('role')!='admin': return redirect('/login')
-    nom = request.form['nom']; prix = int(float(request.form['prix']))
-    smin = int(request.form.get('stock_min',5))
-    exe("UPDATE produits SET nom=?,prix=?,stock_min=? WHERE id=?",(nom,prix,smin,id))
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    nom = request.form['nom']
+    prix = int(float(request.form['prix']))
+    smin = int(request.form.get('stock_min', 5))
+    unite_id = request.form.get('unite_id')
+    
+    if not unite_id or unite_id == '0':
+        unite_id = None
+    else:
+        unite_id = int(unite_id)
+    
+    exe("UPDATE produits SET nom=?, prix=?, stock_min=?, unite_id=? WHERE id=?", 
+        (nom, prix, smin, unite_id, id))
+    
     flash(f'✅ Produit "{nom}" modifié')
     return redirect('/admin/produits')
 
 @app.route('/admin/produits/supprimer/<int:id>')
 def supprimer_produit(id):
-    if session.get('role')!='admin': return redirect('/login')
-    p = q1("SELECT nom FROM produits WHERE id=?",(id,))
-    if p: exe("DELETE FROM produits WHERE id=?",(id,)); flash(f'🗑️ "{p[0]}" supprimé')
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
+    p = q1("SELECT nom FROM produits WHERE id=?", (id,))
+    if p:
+        # Vérifier si le produit a des ventes/entrées/pertes avant de supprimer
+        ventes = q1("SELECT COUNT(*) FROM sorties WHERE produit_id=?", (id,))
+        entrees = q1("SELECT COUNT(*) FROM entrees WHERE produit_id=?", (id,))
+        pertes = q1("SELECT COUNT(*) FROM pertes WHERE produit_id=?", (id,))
+        
+        if (ventes and ventes[0] > 0) or (entrees and entrees[0] > 0) or (pertes and pertes[0] > 0):
+            flash('❌ Ce produit a des mouvements. Impossible de le supprimer.')
+            return redirect('/admin/produits')
+        
+        exe("DELETE FROM produits WHERE id=?", (id,))
+        flash(f'🗑️ "{p[0]}" supprimé')
     return redirect('/admin/produits')
 
 @app.route('/admin/produits/supprimer_multiple', methods=['POST'])
 def supprimer_produits_multiple():
-    if session.get('role')!='admin': return redirect('/login')
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    
     ids = request.form.getlist('produit_ids')
     if not ids:
-        flash('⚠️ Aucun produit sélectionné'); return redirect('/admin/produits')
+        flash('⚠️ Aucun produit sélectionné')
+        return redirect('/admin/produits')
+    
     noms_supprimes = []
+    errors = []
+    
     for pid in ids:
         try:
             pid_int = int(pid)
-            p = q1("SELECT nom FROM produits WHERE id=?",(pid_int,))
+            p = q1("SELECT nom FROM produits WHERE id=?", (pid_int,))
             if p:
-                exe("DELETE FROM produits WHERE id=?",(pid_int,))
-                noms_supprimes.append(p[0])
+                # Vérifier si le produit a des mouvements
+                ventes = q1("SELECT COUNT(*) FROM sorties WHERE produit_id=?", (pid_int,))
+                entrees = q1("SELECT COUNT(*) FROM entrees WHERE produit_id=?", (pid_int,))
+                pertes = q1("SELECT COUNT(*) FROM pertes WHERE produit_id=?", (pid_int,))
+                
+                if (ventes and ventes[0] > 0) or (entrees and entrees[0] > 0) or (pertes and pertes[0] > 0):
+                    errors.append(f'"{p[0]}" (a des mouvements)')
+                else:
+                    exe("DELETE FROM produits WHERE id=?", (pid_int,))
+                    noms_supprimes.append(p[0])
         except (ValueError, Exception):
             continue
+    
     if noms_supprimes:
         flash(f'🗑️ {len(noms_supprimes)} produit(s) supprimé(s) : {", ".join(noms_supprimes)}')
+    if errors:
+        flash(f'⚠️ Produits non supprimés : {", ".join(errors)}', 'warning')
+    
     return redirect('/admin/produits')
 
 # ──────────────────────────────────────────────────────────────
@@ -586,7 +757,7 @@ def modifier_alerte_produit(id):
     return redirect('/admin/alertes/produits')
 
 # ──────────────────────────────────────────────────────────────
-# ACTEURS
+# ACTEURS (inchangé)
 # ──────────────────────────────────────────────────────────────
 @app.route('/admin/acteurs')
 def admin_acteurs():
@@ -623,120 +794,84 @@ def modifier_acteur(id):
     flash(f'✅ Acteur "{nom}" modifié')
     return redirect('/admin/acteurs')
 
-# ── GESTION DES PERMISSIONS ET ACTEURS ──
 @app.route('/admin/acteurs/permissions/<int:id>', methods=['POST'])
 def modifier_permissions_acteur(id):
-    if session.get('role') != 'admin':
-        return redirect('/login')
-    
+    if session.get('role') != 'admin': return redirect('/login')
     perms = request.form.getlist('permissions')
-    if not perms:
-        perms = ['vente']
-    
+    if not perms: perms = ['vente']
     permissions_str = ','.join(perms)
-    
     try:
         exe("UPDATE users SET permissions = %s WHERE id = %s", (permissions_str, id))
         flash('✅ Permissions mises à jour avec succès')
     except Exception as e:
         flash(f'❌ Erreur: {str(e)}')
-    
     return redirect('/admin/acteurs')
-
 
 @app.route('/admin/acteurs/modifier_email/<int:id>', methods=['POST'])
 def modifier_email_acteur(id):
-    if session.get('role') != 'admin':
-        return redirect('/login')
-    
+    if session.get('role') != 'admin': return redirect('/login')
     email = request.form.get('email', '')
-    
     try:
         exe("UPDATE users SET email = %s WHERE id = %s", (email, id))
         flash('✅ Email mis à jour avec succès')
     except Exception as e:
         flash(f'❌ Erreur: {str(e)}')
-    
     return redirect('/admin/acteurs')
-
 
 @app.route('/admin/acteurs/modifier_role/<int:id>', methods=['POST'])
 def modifier_role_acteur(id):
-    if session.get('role') != 'admin':
-        return redirect('/login')
-    
+    if session.get('role') != 'admin': return redirect('/login')
     role_personnalise = request.form.get('role_personnalise', '')
-    
     try:
         exe("UPDATE users SET role_personnalise = %s WHERE id = %s", (role_personnalise, id))
         flash('✅ Rôle personnalisé mis à jour avec succès')
     except Exception as e:
         flash(f'❌ Erreur: {str(e)}')
-    
     return redirect('/admin/acteurs')
-
 
 @app.route('/admin/acteurs/reset_mdp/<int:id>', methods=['POST'])
 def reset_mdp_acteur(id):
-    if session.get('role') != 'admin':
-        return redirect('/login')
-    
+    if session.get('role') != 'admin': return redirect('/login')
     nouveau_mdp = request.form.get('nouveau_mdp', '')
-    
     if len(nouveau_mdp) < 4:
         flash('❌ Le mot de passe doit contenir au moins 4 caractères')
         return redirect('/admin/acteurs')
-    
     try:
-        import hashlib
         password_hash = hashlib.sha256(nouveau_mdp.encode()).hexdigest()
         exe("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, id))
         flash('✅ Mot de passe réinitialisé avec succès')
     except Exception as e:
         flash(f'❌ Erreur: {str(e)}')
-    
     return redirect('/admin/acteurs')
-
 
 @app.route('/admin/acteurs/desactiver/<int:id>', methods=['POST'])
 def desactiver_acteur(id):
-    if session.get('role') != 'admin':
-        return redirect('/login')
-    
+    if session.get('role') != 'admin': return redirect('/login')
     if id == session['user_id']:
         flash('❌ Impossible de désactiver votre propre compte')
         return redirect('/admin/acteurs')
-    
     motif = request.form.get('motif', '')
     motif_autre = request.form.get('motif_autre', '')
-    
     if motif == 'Autre' and motif_autre:
         motif = motif_autre
-    
     try:
         exe("UPDATE users SET actif = 0, motif_absence = %s WHERE id = %s", (motif, id))
         flash(f'✅ Compte désactivé avec succès. Motif: {motif}')
     except Exception as e:
         flash(f'❌ Erreur: {str(e)}')
-    
     return redirect('/admin/acteurs')
-
 
 @app.route('/admin/acteurs/reactiver/<int:id>')
 def reactiver_acteur(id):
-    if session.get('role') != 'admin':
-        return redirect('/login')
-    
+    if session.get('role') != 'admin': return redirect('/login')
     if id == session['user_id']:
         flash('❌ Impossible de réactiver votre propre compte')
         return redirect('/admin/acteurs')
-    
     try:
         exe("UPDATE users SET actif = 1, motif_absence = '' WHERE id = %s", (id,))
         flash('✅ Compte réactivé avec succès')
     except Exception as e:
         flash(f'❌ Erreur: {str(e)}')
-    
     return redirect('/admin/acteurs')
 
 @app.route('/admin/acteurs/supprimer/<int:id>')
@@ -822,7 +957,7 @@ def admin_stats():
         top_produits=top_produits, marge_totale=marge, marge_produits=marge_produits)
 
 # ──────────────────────────────────────────────────────────────
-# ARCHIVES - VERSION CORRIGÉE
+# ARCHIVES
 # ──────────────────────────────────────────────────────────────
 @app.route('/admin/archives')
 def admin_archives():
@@ -894,7 +1029,6 @@ def admin_archives():
         traceback.print_exc()
         print("=" * 50)
         flash(f'❌ Erreur lors du chargement des archives: {str(e)}')
-        flash(f'❌ Erreur lors du chargement des archives: {str(e)}')
     return render_template('archives.html', 
             archives=[],
             type_archive=type_arch,
@@ -917,7 +1051,7 @@ def admin_archives():
             type_data=type_arch)
 
 # ──────────────────────────────────────────────────────────────
-# MOT DE PASSE OUBLIÉ - VERSION CORRIGÉE AVEC EMAIL
+# MOT DE PASSE OUBLIÉ
 # ──────────────────────────────────────────────────────────────
 @app.route('/mot_de_passe_oublie', methods=['GET','POST'])
 def mot_de_passe_oublie():
@@ -934,7 +1068,6 @@ def mot_de_passe_oublie():
             token = generate_reset_token(user[0])
             reset_url = url_for('reset_password', token=token, _external=True)
             
-            # Créer le message email
             try:
                 msg = Message(
                     subject="🔐 Réinitialisation de votre mot de passe - HITNA",
@@ -970,7 +1103,6 @@ L'équipe HITNA
                 flash('✅ Un email de réinitialisation a été envoyé à hitnasuperette@gmail.com', 'success')
             except Exception as e:
                 print(f"Erreur envoi email: {e}")
-                # En cas d'erreur, afficher le lien quand même (mode développement)
                 flash(f'🔗 Lien de réinitialisation : {reset_url}', 'info')
         else:
             flash('❌ Aucun administrateur actif avec cet email', 'error')
@@ -1018,9 +1150,6 @@ def export_pdf():
     return send_file(buffer,as_attachment=True,
         download_name=f"rapport_{datetime.now().strftime('%Y%m%d')}.pdf",mimetype='application/pdf')
 
-#
-# EXPORT POINT JOURNALIER
-#
 @app.route('/export/pdf_jour/<date>')
 def export_pdf_jour(date):
     """Exporter le rapport d'une journée spécifique en PDF"""
@@ -1028,13 +1157,10 @@ def export_pdf_jour(date):
         return redirect('/login')
     
     try:
-        # Convertir la date
         date_obj = datetime.strptime(date, '%Y-%m-%d')
         date_str = date_obj.strftime('%d/%m/%Y')
         date_sql = date_obj.strftime('%Y-%m-%d')
         
-        # Récupérer les données du jour
-        # Ventes du jour
         ventes = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total, 
                                 s.date_sortie, s.client, u.nom as vendeur
                          FROM sorties s 
@@ -1043,7 +1169,6 @@ def export_pdf_jour(date):
                          WHERE DATE(s.date_sortie) = %s
                          ORDER BY s.date_sortie DESC''', (date_sql,))
         
-        # Entrées du jour
         entrees = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total, 
                                  e.date_entree, e.fournisseur, u.nom as enregistreur
                           FROM entrees e 
@@ -1052,7 +1177,6 @@ def export_pdf_jour(date):
                           WHERE DATE(e.date_entree) = %s
                           ORDER BY e.date_entree DESC''', (date_sql,))
         
-        # Pertes du jour
         pertes = qall('''SELECT p.id, pr.nom, p.quantite, p.prix_unitaire, p.total, 
                                 p.motif, p.date_perte, u.nom as enregistreur
                          FROM pertes p 
@@ -1061,7 +1185,6 @@ def export_pdf_jour(date):
                          WHERE DATE(p.date_perte) = %s
                          ORDER BY p.date_perte DESC''', (date_sql,))
         
-        # Statistiques
         total_ventes = sum(v[4] for v in ventes) if ventes else 0
         total_entrees = sum(e[4] for e in entrees) if entrees else 0
         total_pertes = sum(p[4] for p in pertes) if pertes else 0
@@ -1070,14 +1193,12 @@ def export_pdf_jour(date):
         nb_pertes = len(pertes)
         benefice = total_ventes - total_entrees
         
-        # Créer le PDF
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
         
-        # En-tête
         c.setFont("Helvetica-Bold", 20)
-        c.setFillColorRGB(0.12, 0.24, 0.45)  # Couleur HITNA
+        c.setFillColorRGB(0.12, 0.24, 0.45)
         c.drawString(50, height - 50, "HITNA - Rapport Journalier")
         
         c.setFont("Helvetica", 12)
@@ -1085,7 +1206,6 @@ def export_pdf_jour(date):
         c.drawString(50, height - 70, f"Date : {date_str}")
         c.drawString(50, height - 90, f"Généré le : {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         
-        # Résumé
         c.setFont("Helvetica-Bold", 14)
         c.setFillColorRGB(0.12, 0.24, 0.45)
         c.drawString(50, height - 120, "📊 RÉSUMÉ DU JOUR")
@@ -1101,19 +1221,17 @@ def export_pdf_jour(date):
         y -= 25
         c.setFont("Helvetica-Bold", 12)
         if benefice >= 0:
-            c.setFillColorRGB(0.16, 0.65, 0.28)  # Vert
+            c.setFillColorRGB(0.16, 0.65, 0.28)
             c.drawString(50, y, f"📈 Bénéfice : {format_prix(benefice)} FCFA")
         else:
-            c.setFillColorRGB(0.86, 0.21, 0.21)  # Rouge
+            c.setFillColorRGB(0.86, 0.21, 0.21)
             c.drawString(50, y, f"📉 Perte : {format_prix(abs(benefice))} FCFA")
         
-        # Séparateur
         y -= 30
         c.setFillColorRGB(0.8, 0.8, 0.8)
         c.rect(50, y, width - 100, 1, stroke=1, fill=0)
         y -= 20
         
-        # Détail des ventes
         if ventes:
             c.setFont("Helvetica-Bold", 12)
             c.setFillColorRGB(0.12, 0.24, 0.45)
@@ -1132,7 +1250,7 @@ def export_pdf_jour(date):
             
             c.setFont("Helvetica", 8)
             c.setFillColorRGB(0, 0, 0)
-            for v in ventes[:20]:  # Limite à 20 pour éviter trop de pages
+            for v in ventes[:20]:
                 if y < 50:
                     c.showPage()
                     y = height - 50
@@ -1156,7 +1274,6 @@ def export_pdf_jour(date):
             
             y -= 10
         
-        # Nouvelle page pour les entrées et pertes si besoin
         if entrees or pertes:
             c.showPage()
             y = height - 50
@@ -1169,7 +1286,6 @@ def export_pdf_jour(date):
             c.drawString(50, y, f"Date : {date_str}")
             y -= 20
         
-        # Détail des entrées
         if entrees:
             c.setFont("Helvetica-Bold", 12)
             c.setFillColorRGB(0.12, 0.24, 0.45)
@@ -1212,7 +1328,6 @@ def export_pdf_jour(date):
             
             y -= 10
         
-        # Détail des pertes
         if pertes:
             if y < 100:
                 c.showPage()
@@ -1257,7 +1372,6 @@ def export_pdf_jour(date):
                 c.drawString(440, y, p[7][:15] if p[7] else "-")
                 y -= 15
         
-        # Pied de page
         c.showPage()
         c.setFont("Helvetica", 8)
         c.setFillColorRGB(0.5, 0.5, 0.5)
