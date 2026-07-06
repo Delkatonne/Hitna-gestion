@@ -207,10 +207,15 @@ def init_db():
         c.execute('SELECT COUNT(*) FROM users')
         row = c.fetchone()
         if row and row[0] == 0:
+            # Admin
+            admin_hash = hashlib.sha256('admin123'.encode()).hexdigest()
             c.execute("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions) VALUES (%s,%s,%s,%s,%s,%s)",
-                      ('admin','Administrateur',hashlib.sha256('admin123'.encode()).hexdigest(),'Administrateur',1,'admin'))
+                      ('admin','Administrateur', admin_hash, 'Administrateur', 1, 'admin'))
+            # Employé
+            emp_hash = hashlib.sha256('emp123'.encode()).hexdigest()
             c.execute("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions) VALUES (%s,%s,%s,%s,%s,%s)",
-                      ('employe','Employé',hashlib.sha256('emp123'.encode()).hexdigest(),'Employé',1,'vente'))
+                      ('employe','Employé', emp_hash, 'Employé', 1, 'vente'))
+            print("✅ Utilisateurs par défaut créés (admin/admin123, employe/emp123)")
 
         conn.commit()
         c.close()
@@ -375,7 +380,7 @@ def check_perm(perm):
         return False
 
 # ──────────────────────────────────────────────────────────────
-# ROUTES AUTH
+# ROUTES AUTH - VERSION CORRIGÉE AVEC LOGS
 # ──────────────────────────────────────────────────────────────
 @app.route('/')
 def accueil():
@@ -384,34 +389,91 @@ def accueil():
 @app.route('/login', methods=['GET','POST'])
 def login():
     try:
-        if request.method=='POST':
+        if request.method == 'POST':
             sel = request.form.get('role', '')
-            ph = hashlib.sha256(request.form.get('password', '').encode()).hexdigest()
+            password = request.form.get('password', '')
             
-            user = q1("SELECT id,nom,actif,role_personnalise,role,permissions FROM users WHERE (role_personnalise=? OR role=?) AND password_hash=?",(sel,sel,ph))
+            # Hash du mot de passe
+            ph = hashlib.sha256(password.encode()).hexdigest()
+            
+            # 🔍 LOGS DE DÉBOGAGE
+            print("=" * 50)
+            print(f"🔍 TENTATIVE DE CONNEXION")
+            print(f"  - Rôle sélectionné: '{sel}'")
+            print(f"  - Mot de passe: '{password}'")
+            print(f"  - Hash SHA256: {ph[:30]}...")
+            print("-" * 50)
+            
+            # Vérifier d'abord si le rôle existe dans la base
+            roles_disponibles = qall("SELECT DISTINCT role, role_personnalise FROM users WHERE actif=1")
+            print(f"  - Rôles disponibles: {roles_disponibles}")
+            
+            # Rechercher l'utilisateur
+            user = q1("""
+                SELECT id, nom, actif, role_personnalise, role, permissions 
+                FROM users 
+                WHERE (role_personnalise = %s OR role = %s) AND password_hash = %s
+            """, (sel, sel, ph))
+            
+            print(f"  - Résultat recherche directe: {user}")
+            
             if not user:
-                rb = 'admin' if sel=='Administrateur' else ('employe' if sel=='Employé' else None)
+                # Essayer avec le rôle de base
+                rb = None
+                if sel == 'Administrateur':
+                    rb = 'admin'
+                elif sel == 'Employé':
+                    rb = 'employe'
+                
                 if rb:
-                    user = q1("SELECT id,nom,actif,role_personnalise,role,permissions FROM users WHERE role=? AND password_hash=?",(rb,ph))
+                    user = q1("""
+                        SELECT id, nom, actif, role_personnalise, role, permissions 
+                        FROM users 
+                        WHERE role = %s AND password_hash = %s
+                    """, (rb, ph))
+                    print(f"  - Recherche par rôle de base '{rb}': {user}")
+            
+            # Vérifier aussi si le hash correspond à un utilisateur existant
+            if not user:
+                user_by_hash = q1("""
+                    SELECT id, nom, actif, role_personnalise, role, permissions 
+                    FROM users 
+                    WHERE password_hash = %s
+                """, (ph,))
+                if user_by_hash:
+                    print(f"  ⚠️ Un utilisateur existe avec ce hash: {user_by_hash}")
+                    print(f"     Mais son rôle est '{user_by_hash[4]}' et non '{sel}'")
             
             if user:
-                if user[2]==0:
+                if user[2] == 0:
                     flash('❌ Compte désactivé.')
                     return redirect('/login')
+                
                 session.update({
-                    'user_id':user[0],
-                    'role':user[4],
-                    'user_nom':user[1],
-                    'role_affiche':user[3] or ('Administrateur' if user[4]=='admin' else 'Employé'),
-                    'permissions':user[5]
+                    'user_id': user[0],
+                    'role': user[4],
+                    'user_nom': user[1],
+                    'role_affiche': user[3] or ('Administrateur' if user[4] == 'admin' else 'Employé'),
+                    'permissions': user[5]
                 })
-                return redirect('/dashboard' if user[4]=='admin' else '/vente')
-            flash('Identifiants incorrects')
+                
+                print(f"  ✅ Connexion réussie pour {user[1]} (ID: {user[0]}, Rôle: {user[4]})")
+                print("=" * 50)
+                
+                flash(f'✅ Bonjour {user[1]} !')
+                return redirect('/dashboard' if user[4] == 'admin' else '/vente')
+            
+            print(f"  ❌ Échec de connexion pour '{sel}' avec le mot de passe fourni")
+            print("=" * 50)
+            flash('❌ Identifiants incorrects')
         
         roles = get_all_roles()
         return render_template('login.html', roles=roles)
+        
     except Exception as e:
         print(f"❌ Erreur login: {e}")
+        import traceback
+        traceback.print_exc()
         flash('Erreur de connexion')
         return redirect('/login')
 
@@ -426,20 +488,22 @@ def changer_mdp():
         if 'user_id' not in session:
             return redirect('/login')
         
-        if request.method=='POST':
-            pwd = request.form.get('new_password','')
-            if len(pwd)<4:
+        if request.method == 'POST':
+            pwd = request.form.get('new_password', '')
+            if len(pwd) < 4:
                 flash('❌ Minimum 4 caractères')
                 return redirect('/changer_mdp')
-            exe("UPDATE users SET password_hash=? WHERE id=?",(hashlib.sha256(pwd.encode()).hexdigest(),session['user_id']))
+            
+            exe("UPDATE users SET password_hash=? WHERE id=?", 
+                (hashlib.sha256(pwd.encode()).hexdigest(), session['user_id']))
             flash('✅ Mot de passe changé !')
-            return redirect('/dashboard' if session['role']=='admin' else '/vente')
+            return redirect('/dashboard' if session['role'] == 'admin' else '/vente')
         
         return render_template('changer_mdp.html')
     except Exception as e:
         print(f"❌ Erreur changer_mdp: {e}")
         flash('Erreur lors du changement de mot de passe')
-        return redirect('/dashboard' if session.get('role')=='admin' else '/vente')
+        return redirect('/dashboard' if session.get('role') == 'admin' else '/vente')
 
 # ──────────────────────────────────────────────────────────────
 # UNITÉS DE MESURE
