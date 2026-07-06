@@ -137,6 +137,23 @@
         padding: 15px 30px;
         font-size: 18px;
         width: 100%;
+        border: none;
+        border-radius: 10px;
+        color: white;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .btn-sale:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+    }
+    
+    .btn-sale:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
     }
     
     .no-results {
@@ -173,6 +190,49 @@
         border: 2px solid #e0e0e0;
         border-radius: 10px;
         margin: 20px 0;
+        font-size: 16px;
+    }
+    
+    .modal-content input:focus {
+        outline: none;
+        border-color: #2a5298;
+    }
+    
+    .modal-content .btn-group {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .modal-content .btn-group button {
+        flex: 1;
+        min-width: 100px;
+        padding: 12px 20px;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .modal-content .btn-group .btn-confirm {
+        background: #28a745;
+        color: white;
+    }
+    
+    .modal-content .btn-group .btn-confirm:hover {
+        background: #218838;
+    }
+    
+    .modal-content .btn-group .btn-skip {
+        background: #6c757d;
+        color: white;
+    }
+    
+    .modal-content .btn-group .btn-skip:hover {
+        background: #5a6268;
     }
     
     .stats-vendeurs {
@@ -259,6 +319,80 @@
         font-weight: bold;
         display: inline-block;
     }
+
+    /* ── Message hors ligne ── */
+    .offline-banner {
+        display: none;
+        background: #ffc107;
+        color: #333;
+        padding: 10px 15px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+        text-align: center;
+        font-weight: bold;
+        border: 1px solid #e0a800;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+        .products-grid {
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            max-height: 400px;
+        }
+        
+        .product-name {
+            font-size: 15px;
+        }
+        
+        .product-price {
+            font-size: 20px;
+        }
+        
+        .sale-form-container {
+            padding: 15px;
+        }
+        
+        .quantity-control input {
+            width: 80px;
+            padding: 8px;
+            font-size: 16px;
+        }
+        
+        .quantity-control button {
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+        }
+        
+        .total-amount {
+            font-size: 24px;
+        }
+        
+        .btn-sale {
+            font-size: 16px;
+            padding: 12px 20px;
+        }
+        
+        .stats-vendeurs {
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .modal-content {
+            padding: 20px;
+            max-width: 95%;
+        }
+    }
+
+    @media (max-width: 400px) {
+        .products-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .stats-vendeurs {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -272,6 +406,11 @@
         👤 Vous êtes connecté en tant qu'<strong>{{ session.user_nom }}</strong><br>
         📊 Vous voyez toutes les ventes du jour
     </p>
+</div>
+
+<!-- Bannière hors ligne -->
+<div id="offlineBanner" class="offline-banner" style="display: none;">
+    📡 Mode hors ligne activé - Les ventes seront sauvegardées localement
 </div>
 
 <!-- Statistiques des vendeurs du jour -->
@@ -320,6 +459,9 @@
         <div style="opacity: 0.7;">👆 Cliquez sur un produit ci-dessus pour le sélectionner</div>
     </div>
     
+    <!-- ════════════════════════════════════════════════════════════ -->
+    <!-- FORMULAIRE DE VENTE AVEC ID "saleForm" POUR LE MODE HORS LIGNE -->
+    <!-- ════════════════════════════════════════════════════════════ -->
     <form method="post" id="saleForm" action="/vente">
         <input type="hidden" name="produit_id" id="selectedProductId" required>
         <input type="hidden" name="client" id="clientName" value="">
@@ -340,6 +482,7 @@
             💵 Valider la vente
         </button>
     </form>
+    <!-- FIN DU FORMULAIRE -->
 </div>
 
 <!-- Historique des ventes du jour -->
@@ -399,17 +542,29 @@
 <div id="clientModal" class="modal">
     <div class="modal-content">
         <h3>👤 Nom du client</h3>
+        <p style="color: #666; font-size: 14px; margin-bottom: 10px;">
+            {% if not navigator.onLine %}
+            📡 Mode hors ligne - La vente sera sauvegardée localement
+            {% endif %}
+        </p>
         <input type="text" id="clientNameInput" placeholder="Entrez le nom du client" autocomplete="off">
-        <button onclick="confirmClientName()">✅ Confirmer</button>
-        <button onclick="skipClientName()" style="background: #6c757d;">⏭️ Passer</button>
+        <div class="btn-group">
+            <button class="btn-confirm" onclick="confirmClientName()">✅ Confirmer</button>
+            <button class="btn-skip" onclick="skipClientName()">⏭️ Passer</button>
+        </div>
     </div>
 </div>
 
 <script>
+    // ============================================================
+    // VARIABLES GLOBALES
+    // ============================================================
     let selectedProduct = null;
     let maxStock = 0;
-    
-    // Recherche
+
+    // ============================================================
+    // RECHERCHE DE PRODUITS
+    // ============================================================
     const searchInput = document.getElementById('searchInput');
     const productsGrid = document.getElementById('productsGrid');
     const productCards = document.querySelectorAll('.product-card');
@@ -434,7 +589,9 @@
     
     searchInput.addEventListener('keyup', filterProducts);
     
-    // Sélection produit
+    // ============================================================
+    // SÉLECTION PRODUIT
+    // ============================================================
     productCards.forEach(card => {
         card.addEventListener('click', () => {
             productCards.forEach(c => c.classList.remove('selected'));
@@ -490,7 +647,9 @@
         updateTotal();
     }
     
-    // Validation vente
+    // ============================================================
+    // VALIDATION VENTE
+    // ============================================================
     document.getElementById('validateSaleBtn').addEventListener('click', () => {
         const quantite = parseInt(document.getElementById('quantite').value);
         if (quantite > maxStock) {
@@ -520,5 +679,57 @@
             modal.style.display = 'none';
         }
     }
+
+    // ============================================================
+    // MODE HORS LIGNE - BANNIÈRE
+    // ============================================================
+    function updateOfflineBanner() {
+        const banner = document.getElementById('offlineBanner');
+        if (banner) {
+            if (!navigator.onLine) {
+                banner.style.display = 'block';
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+    }
+
+    // Écouter les changements de connexion
+    window.addEventListener('online', updateOfflineBanner);
+    window.addEventListener('offline', updateOfflineBanner);
+
+    // Initialiser au chargement
+    document.addEventListener('DOMContentLoaded', updateOfflineBanner);
+
+    // ============================================================
+    // SURCHARGER LA MÉTHODE SUBMIT DU FORMULAIRE POUR LE HORS LIGNE
+    // ============================================================
+    // Cette partie est déjà gérée par offline-sync.js
+    // Mais on ajoute un indicateur visuel
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('saleForm');
+        if (form) {
+            // Ajouter un attribut data pour identifier le formulaire
+            form.setAttribute('data-offline-enabled', 'true');
+            console.log('✅ Formulaire de vente prêt pour le mode hors ligne');
+        }
+    });
+
+    // ============================================================
+    // TOUCHE ENTRÉE POUR VALIDER LE CLIENT
+    // ============================================================
+    document.getElementById('clientNameInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            confirmClientName();
+        }
+    });
+</script>
+
+<!-- Message de débogage pour le mode hors ligne -->
+<script>
+    console.log('📱 Page vente.html chargée');
+    console.log('🔍 Formulaire saleForm:', document.getElementById('saleForm'));
+    console.log('🌐 Statut connexion:', navigator.onLine ? 'En ligne' : 'Hors ligne');
 </script>
 {% endblock %}
