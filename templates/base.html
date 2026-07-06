@@ -252,34 +252,6 @@
             display: none;
         }
         
-        /* Alertes stock bas */
-        /*
-        .stock-alert {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            color: white;
-            padding: 15px 20px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            z-index: 10001;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            font-size: 14px;
-        }
-        
-        .stock-alert button {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 18px;
-            cursor: pointer;
-            padding: 0 5px;
-        }
-        */
-        
         /* Notification Bell - CORRIGÉ */
         .notification-bell {
             position: relative;
@@ -641,6 +613,26 @@
         .offline-notification {
             animation: slideUp 0.3s ease-out;
         }
+
+        /* ── Indicateur de statut connexion ── */
+        #connectionStatus {
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.3s;
+        }
+        #connectionStatus:hover {
+            transform: scale(1.05);
+        }
+        /* ── Badge actions en attente ── */
+        #pendingBadge {
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.3s;
+        }
+        #pendingBadge:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -758,7 +750,7 @@
                     <h1>{% block page_title %}HITNA{% endblock %}</h1>
                     <p>{% block page_subtitle %}{% endblock %}</p>
                 </div>
-                <button id="themeToggle" class="theme-toggle" style="background: none; width: auto; margin: 0; padding: 8px 12px; border-radius: 8px;">🌙</button>
+                <button id="themeToggle" class="theme-toggle" style="background: none; width: auto; margin: 0; padding: 8px 12px; border-radius: 8px; font-size: 20px;">🌙</button>
                 <div class="notification-bell">
                     <button id="notificationBell" class="bell-btn">
                         🔔
@@ -802,18 +794,16 @@
         <button id="installBtn">Installer</button>
         <button id="closeInstallBanner">✕</button>
     </div>
-    
-   <!-- <div id="stockAlert" class="stock-alert" style="display: none;">
-        <span id="alertMessage"></span>
-        <button onclick="closeAlert()">✖</button>
-    </div> -->
 
-    <!-- Scripts offline -->
-    <script src="{{ url_for('static', filename='offline-sync.js') }}"></script>
+    <!-- Scripts offline - Chargement sécurisé -->
+    <script src="{{ url_for('static', filename='db.js') }}"></script>
     <script src="{{ url_for('static', filename='offline-cache.js') }}"></script>
+    <script src="{{ url_for('static', filename='offline-sync.js') }}"></script>
     
     <script>
-        // Menu Toggle
+        // ============================================================
+        // MENU TOGGLE - Inchangé
+        // ============================================================
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('sidebarOverlay');
@@ -846,7 +836,6 @@
             overlay.addEventListener('click', closeSidebar);
         }
         
-        // Fermer le sidebar sur mobile après clic sur un lien
         document.querySelectorAll('.sidebar .nav-link').forEach(link => {
             link.addEventListener('click', function() {
                 if (window.innerWidth <= 768) {
@@ -855,7 +844,9 @@
             });
         });
         
-        // Notification centrale
+        // ============================================================
+        // NOTIFICATION CENTRALE - Inchangée
+        // ============================================================
         function showNotification(message, type = 'success') {
             const existingNotifs = document.querySelectorAll('.center-notification');
             existingNotifs.forEach(notif => notif.remove());
@@ -895,31 +886,9 @@
             });
         });
 
-        // Vérification stock bas (désactivée)
-        /*
-        function checkStockBas() {
-            fetch('/api/stock_bas')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.length > 0 && window.location.pathname !== '/admin/alertes/produits') {
-                        const alertDiv = document.getElementById('stockAlert');
-                        const message = document.getElementById('alertMessage');
-                        message.innerHTML = `⚠️ ${data.length} produit(s) en stock bas : ${data.map(p => p.nom).join(', ')}`;
-                        alertDiv.style.display = 'flex';
-                    }
-                })
-                .catch(err => console.log('Erreur checkStock:', err));
-        }
-        
-        function closeAlert() {
-            document.getElementById('stockAlert').style.display = 'none';
-        }
-        
-        setInterval(checkStockBas, 30000);
-        checkStockBas();
-        */
-
-        // Notifications
+        // ============================================================
+        // NOTIFICATIONS - Inchangé
+        // ============================================================
         let notifications = [];
         let totalNonLus = 0;
 
@@ -980,7 +949,6 @@
                 .catch(err => console.log('Erreur:', err));
         };
 
-        // Événements notifications
         const bellBtn = document.getElementById('notificationBell');
         const dropdown = document.getElementById('notificationDropdown');
         const markAllRead = document.getElementById('markAllRead');
@@ -1019,14 +987,18 @@
         setInterval(chargerNotifications, 30000);
         chargerNotifications();
 
-        // Service Worker pour PWA
+        // ============================================================
+        // SERVICE WORKER PWA - Inchangé
+        // ============================================================
         if ('serviceWorker' in navigator) {
-             navigator.serviceWorker.register('/sw.js')
+            navigator.serviceWorker.register('/sw.js')
                 .then(reg => console.log('Service Worker enregistré', reg))
                 .catch(err => console.log('Erreur Service Worker', err));
         }
 
-        // Thème sombre
+        // ============================================================
+        // THÈME SOMBRE - Inchangé
+        // ============================================================
         const themeToggle = document.getElementById('themeToggle');
         if (themeToggle) {
             if (localStorage.getItem('theme') === 'dark') {
@@ -1042,7 +1014,9 @@
             });
         }
 
-        // Installation PWA
+        // ============================================================
+        // INSTALLATION PWA - Inchangé
+        // ============================================================
         let deferredPrompt;
         
         window.addEventListener('beforeinstallprompt', (e) => {
@@ -1066,11 +1040,29 @@
             document.getElementById('installBanner').style.display = 'none';
         });
 
-        // Initialisation offline
+        // ============================================================
+        // MODE HORS LIGNE - INITIALISATION SÉCURISÉE
+        // ============================================================
+        // ID de l'utilisateur connecté
+        window.userId = {{ session.get('user_id', 1) }};
+
+        // Initialisation avec délai pour s'assurer que tout est chargé
         document.addEventListener('DOMContentLoaded', function() {
-            if (typeof initOfflineSync === 'function') {
-                initOfflineSync();
-            }
+            // Attendre que tous les scripts soient chargés
+            setTimeout(function() {
+                try {
+                    if (typeof initOfflineSync === 'function') {
+                        initOfflineSync().catch(function(err) {
+                            console.warn('⚠️ Erreur init offline (non bloquante):', err);
+                        });
+                    } else {
+                        console.log('ℹ️ Mode hors ligne non disponible');
+                    }
+                } catch (e) {
+                    // Ne pas bloquer l'application si le mode hors ligne échoue
+                    console.warn('⚠️ Mode hors ligne désactivé:', e.message);
+                }
+            }, 500);
         });
     </script>
     {% block extra_js %}{% endblock %}
