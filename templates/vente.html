@@ -320,7 +320,6 @@
         display: inline-block;
     }
 
-    /* ── Message hors ligne ── */
     .offline-banner {
         display: none;
         background: #ffc107;
@@ -333,7 +332,6 @@
         border: 1px solid #e0a800;
     }
 
-    /* ── Responsive ── */
     @media (max-width: 768px) {
         .products-grid {
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -414,7 +412,7 @@
 </div>
 
 <!-- Statistiques des vendeurs du jour -->
-{% if stats_vendeurs %}
+{% if stats_vendeurs and stats_vendeurs|length > 0 %}
 <div class="stats-vendeurs">
     {% for v in stats_vendeurs %}
     <div class="stat-vendeur {% if v[0] == 'admin' %}admin{% else %}employe{% endif %}">
@@ -438,6 +436,7 @@
 <!-- Produits disponibles -->
 <div class="card">
     <h2 class="card-title">📦 Produits disponibles</h2>
+    {% if produits and produits|length > 0 %}
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
         <div class="product-card" data-id="{{ p[0] }}" data-name="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}">
@@ -450,6 +449,11 @@
     <div id="noResults" class="no-results" style="display: none;">
         🔍 Aucun produit trouvé
     </div>
+    {% else %}
+    <p style="text-align: center; color: #999; padding: 40px;">
+        📭 Aucun produit disponible en stock
+    </p>
+    {% endif %}
 </div>
 
 <!-- Formulaire de vente -->
@@ -459,9 +463,6 @@
         <div style="opacity: 0.7;">👆 Cliquez sur un produit ci-dessus pour le sélectionner</div>
     </div>
     
-    <!-- ════════════════════════════════════════════════════════════ -->
-    <!-- FORMULAIRE DE VENTE AVEC ID "saleForm" POUR LE MODE HORS LIGNE -->
-    <!-- ════════════════════════════════════════════════════════════ -->
     <form method="post" id="saleForm" action="/vente">
         <input type="hidden" name="produit_id" id="selectedProductId" required>
         <input type="hidden" name="client" id="clientName" value="">
@@ -482,13 +483,12 @@
             💵 Valider la vente
         </button>
     </form>
-    <!-- FIN DU FORMULAIRE -->
 </div>
 
 <!-- Historique des ventes du jour -->
 <div class="card">
     <h2 class="card-title">📜 Ventes du jour</h2>
-    {% if historique %}
+    {% if historique and historique|length > 0 %}
     <div class="table-container">
         <table class="table">
             <thead>
@@ -522,11 +522,10 @@
         </table>
     </div>
     
-    <!-- Total général du jour -->
     <div class="total-jour-card">
         <h3>💰 TOTAL DES VENTES DU JOUR</h3>
-        <div class="montant">{{ "{:,.0f}".format(total_general[0] if total_general[0] else 0) }} FCFA</div>
-        <div class="nb-ventes">{{ total_general[1] if total_general[1] else 0 }} vente(s) enregistrée(s)</div>
+        <div class="montant">{{ "{:,.0f}".format(total_general[0] if total_general and total_general[0] else 0) }} FCFA</div>
+        <div class="nb-ventes">{{ total_general[1] if total_general and total_general[1] else 0 }} vente(s) enregistrée(s)</div>
     </div>
     {% else %}
     <p style="text-align: center; color: #999; padding: 40px;">Aucune vente enregistrée aujourd'hui</p>
@@ -543,9 +542,7 @@
     <div class="modal-content">
         <h3>👤 Nom du client</h3>
         <p style="color: #666; font-size: 14px; margin-bottom: 10px;">
-            {% if not navigator.onLine %}
-            📡 Mode hors ligne - La vente sera sauvegardée localement
-            {% endif %}
+            <!-- Supprimé le code Jinja qui utilisait navigator -->
         </p>
         <input type="text" id="clientNameInput" placeholder="Entrez le nom du client" autocomplete="off">
         <div class="btn-group">
@@ -593,15 +590,15 @@
     // SÉLECTION PRODUIT
     // ============================================================
     productCards.forEach(card => {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', function() {
             productCards.forEach(c => c.classList.remove('selected'));
-            card.classList.add('selected');
+            this.classList.add('selected');
             
             selectedProduct = {
-                id: card.getAttribute('data-id'),
-                name: card.getAttribute('data-name'),
-                price: parseInt(card.getAttribute('data-price')),
-                stock: parseInt(card.getAttribute('data-stock'))
+                id: this.getAttribute('data-id'),
+                name: this.getAttribute('data-name'),
+                price: parseInt(this.getAttribute('data-price')),
+                stock: parseInt(this.getAttribute('data-stock'))
             };
             maxStock = selectedProduct.stock;
             updateSelectedDisplay();
@@ -650,7 +647,7 @@
     // ============================================================
     // VALIDATION VENTE
     // ============================================================
-    document.getElementById('validateSaleBtn').addEventListener('click', () => {
+    document.getElementById('validateSaleBtn').addEventListener('click', function() {
         const quantite = parseInt(document.getElementById('quantite').value);
         if (quantite > maxStock) {
             alert(`Stock insuffisant ! Il reste ${maxStock} unités`);
@@ -672,7 +669,6 @@
         document.getElementById('saleForm').submit();
     }
     
-    // Fermer le modal en cliquant en dehors
     window.onclick = function(event) {
         const modal = document.getElementById('clientModal');
         if (event.target == modal) {
@@ -681,12 +677,12 @@
     }
 
     // ============================================================
-    // MODE HORS LIGNE - BANNIÈRE
+    // MODE HORS LIGNE - BANNIÈRE (JavaScript pur, pas Jinja)
     // ============================================================
     function updateOfflineBanner() {
         const banner = document.getElementById('offlineBanner');
         if (banner) {
-            if (!navigator.onLine) {
+            if (typeof navigator !== 'undefined' && !navigator.onLine) {
                 banner.style.display = 'block';
             } else {
                 banner.style.display = 'none';
@@ -694,42 +690,38 @@
         }
     }
 
-    // Écouter les changements de connexion
-    window.addEventListener('online', updateOfflineBanner);
-    window.addEventListener('offline', updateOfflineBanner);
-
-    // Initialiser au chargement
-    document.addEventListener('DOMContentLoaded', updateOfflineBanner);
-
-    // ============================================================
-    // SURCHARGER LA MÉTHODE SUBMIT DU FORMULAIRE POUR LE HORS LIGNE
-    // ============================================================
-    // Cette partie est déjà gérée par offline-sync.js
-    // Mais on ajoute un indicateur visuel
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.getElementById('saleForm');
-        if (form) {
-            // Ajouter un attribut data pour identifier le formulaire
-            form.setAttribute('data-offline-enabled', 'true');
-            console.log('✅ Formulaire de vente prêt pour le mode hors ligne');
-        }
-    });
+    // Vérifier si navigator existe avant de l'utiliser
+    if (typeof navigator !== 'undefined') {
+        window.addEventListener('online', updateOfflineBanner);
+        window.addEventListener('offline', updateOfflineBanner);
+        document.addEventListener('DOMContentLoaded', updateOfflineBanner);
+    } else {
+        // Fallback si navigator n'existe pas
+        console.log('Navigator non disponible');
+    }
 
     // ============================================================
     // TOUCHE ENTRÉE POUR VALIDER LE CLIENT
     // ============================================================
-    document.getElementById('clientNameInput').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            confirmClientName();
-        }
-    });
-</script>
+    const clientNameInput = document.getElementById('clientNameInput');
+    if (clientNameInput) {
+        clientNameInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                confirmClientName();
+            }
+        });
+    }
 
-<!-- Message de débogage pour le mode hors ligne -->
-<script>
+    // ============================================================
+    // DÉBOGAGE
+    // ============================================================
     console.log('📱 Page vente.html chargée');
-    console.log('🔍 Formulaire saleForm:', document.getElementById('saleForm'));
-    console.log('🌐 Statut connexion:', navigator.onLine ? 'En ligne' : 'Hors ligne');
+    const saleForm = document.getElementById('saleForm');
+    console.log('🔍 Formulaire saleForm:', saleForm);
+    if (typeof navigator !== 'undefined') {
+        console.log('🌐 Statut connexion:', navigator.onLine ? 'En ligne' : 'Hors ligne');
+    }
+    console.log('📦 Produits disponibles:', document.querySelectorAll('.product-card').length);
 </script>
-{% endblock %}
+{% endblock %}  
