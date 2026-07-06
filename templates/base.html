@@ -152,7 +152,7 @@
             overflow-x: hidden;
             width: 0;
             min-width: 0;
-            padding-top: 72px; /* Hauteur du header fixe */
+            padding-top: 72px;
         }
         
         /* ── HEADER FIXE ── */
@@ -224,11 +224,6 @@
             margin: 0 auto;
             padding: 0 30px 30px 30px;
         }
-        
-        /* ── Ajustement pour le contenu sous le header fixe ── */
-        .content-padding {
-            padding-top: 20px;
-        }
 
         /* ── Notification Bell ── */
         .notification-bell {
@@ -293,7 +288,6 @@
             }
         }
 
-        /* Header actions (theme toggle, notifications) */
         .header-actions {
             display: flex;
             align-items: center;
@@ -318,7 +312,6 @@
             transform: scale(1.05);
         }
 
-        /* ── Scrollbar sidebar ── */
         .sidebar::-webkit-scrollbar {
             width: 5px;
         }
@@ -336,7 +329,6 @@
             background: rgba(255,255,255,0.5);
         }
 
-        /* ── Notifications centrales ── */
         .center-notification {
             position: fixed;
             top: 50%;
@@ -370,7 +362,6 @@
             display: none;
         }
 
-        /* ── Responsive Desktop ── */
         @media (min-width: 769px) and (max-width: 1024px) {
             .sidebar {
                 width: 240px;
@@ -384,7 +375,6 @@
             }
         }
 
-        /* ── Responsive Mobile ── */
         @media (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -504,7 +494,6 @@
             }
         }
 
-        /* ── Bannière d'installation PWA ── */
         #installBanner {
             display: none;
             background: #1e3c72;
@@ -544,7 +533,6 @@
             cursor: pointer;
         }
 
-        /* ── Animation notifications offline ── */
         @keyframes slideUp {
             from { transform: translate(-50%, 100%); opacity: 0; }
             to { transform: translate(-50%, 0); opacity: 1; }
@@ -554,7 +542,6 @@
             animation: slideUp 0.3s ease-out;
         }
 
-        /* ── Indicateurs de statut ── */
         #connectionStatus {
             cursor: pointer;
             user-select: none;
@@ -564,6 +551,7 @@
             border-radius: 20px;
             background: rgba(255,255,255,0.15);
             color: white;
+            display: none;
         }
         #connectionStatus:hover {
             transform: scale(1.05);
@@ -579,7 +567,6 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.25);
         }
 
-        /* ── Ajustement du dropdown notifications ── */
         .dropdown-header {
             padding: 12px 15px;
             background: linear-gradient(135deg, #1e3c72, #2a5298);
@@ -673,7 +660,6 @@
             color: #999;
         }
 
-        /* ── Thème clair/sombre ── */
         body {
             background: #f0f2f5;
             transition: all 0.3s;
@@ -891,7 +877,7 @@
                 </div>
             </div>
             
-            <!-- Contenu avec padding pour compenser le header fixe -->
+            <!-- Contenu -->
             <div class="container">
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
@@ -916,9 +902,8 @@
         <button id="closeInstallBanner">✕</button>
     </div>
 
-    <!-- Scripts offline -->
+    <!-- Scripts -->
     <script src="{{ url_for('static', filename='db.js') }}"></script>
-    <script src="{{ url_for('static', filename='offline-cache.js') }}"></script>
     <script src="{{ url_for('static', filename='offline-sync.js') }}"></script>
     
     <script>
@@ -982,7 +967,6 @@
             }, 2500);
         }
         
-        // Remplacer alert() par des notifications stylées
         const originalAlert = window.alert;
         window.alert = function(message) {
             if (message.includes('Stock') || message.includes('erreur') || message.includes('❌')) {
@@ -992,14 +976,12 @@
             }
         };
         
-        // Active link detection
         document.querySelectorAll('.nav-link').forEach(link => {
             if (link.href === window.location.href) {
                 link.classList.add('active');
             }
         });
         
-        // Fix pour iOS input zoom
         const inputs = document.querySelectorAll('input, select, textarea');
         inputs.forEach(input => {
             input.addEventListener('focus', function() { 
@@ -1162,22 +1144,25 @@
         });
 
         // ============================================================
-        // MODE HORS LIGNE - INITIALISATION
+        // MODE HORS LIGNE - INITIALISATION ULTRA SÉCURISÉE
         // ============================================================
         window.userId = {{ session.get('user_id', 1) }};
 
         document.addEventListener('DOMContentLoaded', function() {
+            // Attendre que tout soit chargé
             setTimeout(function() {
                 try {
                     if (typeof initOfflineSync === 'function') {
-                        initOfflineSync().catch(function(err) {
-                            console.warn('⚠️ Erreur init offline:', err);
-                        });
+                        console.log('🚀 Démarrage du mode hors ligne...');
+                        initOfflineSync();
+                    } else {
+                        console.log('ℹ️ Mode hors ligne non disponible');
                     }
                 } catch (e) {
-                    console.warn('⚠️ Mode hors ligne désactivé:', e.message);
+                    // NE PAS BLOQUER L'APPLICATION
+                    console.warn('⚠️ Erreur mode hors ligne (ignorée):', e.message);
                 }
-            }, 500);
+            }, 1000);
         });
     </script>
     {% block extra_js %}{% endblock %}
