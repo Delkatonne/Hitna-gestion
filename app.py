@@ -1829,8 +1829,75 @@ def reset_password(token):
         return redirect('/login')
 
 # ──────────────────────────────────────────────────────────────
-# EXPORT PDF
+# EXPORT PDF - AVEC LOGO HITNA
 # ──────────────────────────────────────────────────────────────
+
+def format_prix(valeur):
+    """Formater un nombre avec séparateurs de milliers"""
+    return f"{valeur:,.0f}".replace(",", " ")
+
+def add_logo_to_pdf(c, width, height, page_num=1, total_pages=1):
+    """Ajouter le logo HITNA en haut à gauche et à droite, et en arrière-plan"""
+    try:
+        from reportlab.lib.utils import ImageReader
+        import os
+        
+        # Chemin du logo
+        logo_path = os.path.join('static', 'images', 'logo.jpg')
+        
+        if os.path.exists(logo_path):
+            img = ImageReader(logo_path)
+            
+            # ── Logo en haut à gauche ──
+            logo_size = 40
+            c.drawImage(img, 40, height - 55, width=logo_size, height=logo_size, mask='auto')
+            
+            # ── Logo en haut à droite ──
+            c.drawImage(img, width - 40 - logo_size, height - 55, width=logo_size, height=logo_size, mask='auto')
+            
+            # ── Logo en arrière-plan (filigrane) ──
+            # Sauvegarder l'état actuel
+            c.saveState()
+            # Définir la transparence
+            c.setFillAlpha(0.07)
+            # Dessiner le logo au centre en grand
+            logo_center_size = 200
+            x_center = (width - logo_center_size) / 2
+            y_center = (height - logo_center_size) / 2
+            c.drawImage(img, x_center, y_center, width=logo_center_size, height=logo_center_size, mask='auto')
+            # Restaurer l'état
+            c.restoreState()
+            
+            return True
+        else:
+            # Alternative : logo-192.png si logo.jpg n'existe pas
+            alt_logo_path = os.path.join('static', 'images', 'logo-192.png')
+            if os.path.exists(alt_logo_path):
+                img = ImageReader(alt_logo_path)
+                
+                # Logo en haut à gauche
+                logo_size = 40
+                c.drawImage(img, 40, height - 55, width=logo_size, height=logo_size, mask='auto')
+                
+                # Logo en haut à droite
+                c.drawImage(img, width - 40 - logo_size, height - 55, width=logo_size, height=logo_size, mask='auto')
+                
+                # Logo en arrière-plan (filigrane)
+                c.saveState()
+                c.setFillAlpha(0.07)
+                logo_center_size = 200
+                x_center = (width - logo_center_size) / 2
+                y_center = (height - logo_center_size) / 2
+                c.drawImage(img, x_center, y_center, width=logo_center_size, height=logo_center_size, mask='auto')
+                c.restoreState()
+                
+                return True
+                
+    except Exception as e:
+        print(f"⚠️ Erreur ajout logo: {e}")
+    
+    return False
+
 @app.route('/export/pdf')
 def export_pdf():
     try:
@@ -1838,34 +1905,55 @@ def export_pdf():
             return redirect('/login')
         
         buffer = io.BytesIO()
-        p = canvas.Canvas(buffer, pagesize=A4)
-        w, h = A4
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
         
-        p.setFont("Helvetica-Bold", 16)
-        p.drawString(50, h-50, "HITNA - Rapport")
-        p.setFont("Helvetica", 10)
-        p.drawString(50, h-70, f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        # ============================================================
+        # AJOUT DU LOGO HITNA
+        # ============================================================
+        add_logo_to_pdf(c, width, height)
         
-        y = h - 100
+        # ============================================================
+        # CONTENU DU PDF
+        # ============================================================
+        c.setFont("Helvetica-Bold", 16)
+        c.setFillColorRGB(0.12, 0.24, 0.45)
+        c.drawString(50, height - 50, "HITNA - Rapport")
+        
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(0.4, 0.4, 0.4)
+        c.drawString(50, height - 70, f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        
+        y = height - 100
         data = qall("SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*) FROM sorties GROUP BY DATE(date_sortie::timestamp) ORDER BY 1 DESC LIMIT 30")
         
-        p.setFont("Helvetica-Bold", 10)
-        p.drawString(50, y, "Date")
-        p.drawString(150, y, "Montant (FCFA)")
-        p.drawString(280, y, "Ventes")
+        c.setFont("Helvetica-Bold", 10)
+        c.setFillColorRGB(0.12, 0.24, 0.45)
+        c.drawString(50, y, "Date")
+        c.drawString(150, y, "Montant (FCFA)")
+        c.drawString(280, y, "Ventes")
         y -= 20
         
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(0, 0, 0)
         for row in data:
-            p.setFont("Helvetica", 10)
-            p.drawString(50, y, str(row[0]))
-            p.drawString(150, y, f"{row[1]:,}")
-            p.drawString(280, y, str(row[2]))
+            c.drawString(50, y, str(row[0]))
+            c.drawString(150, y, f"{row[1]:,}")
+            c.drawString(280, y, str(row[2]))
             y -= 20
             if y < 50:
-                p.showPage()
-                y = h - 50
+                c.showPage()
+                # Ajouter le logo sur chaque nouvelle page
+                add_logo_to_pdf(c, width, height)
+                y = height - 50
+                c.setFont("Helvetica-Bold", 10)
+                c.setFillColorRGB(0.12, 0.24, 0.45)
+                c.drawString(50, y, "Date")
+                c.drawString(150, y, "Montant (FCFA)")
+                c.drawString(280, y, "Ventes")
+                y -= 20
         
-        p.save()
+        c.save()
         buffer.seek(0)
         
         return send_file(buffer, as_attachment=True,
@@ -1922,6 +2010,14 @@ def export_pdf_jour(date):
         c = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
         
+        # ============================================================
+        # AJOUT DU LOGO HITNA (sur chaque page)
+        # ============================================================
+        add_logo_to_pdf(c, width, height)
+        
+        # ============================================================
+        # CONTENU DU PDF
+        # ============================================================
         c.setFont("Helvetica-Bold", 20)
         c.setFillColorRGB(0.12, 0.24, 0.45)
         c.drawString(50, height - 50, "HITNA - Rapport Journalier")
@@ -1978,8 +2074,15 @@ def export_pdf_jour(date):
             for v in ventes[:20]:
                 if y < 50:
                     c.showPage()
+                    # Ajouter le logo sur chaque nouvelle page
+                    add_logo_to_pdf(c, width, height)
                     y = height - 50
+                    c.setFont("Helvetica-Bold", 12)
+                    c.setFillColorRGB(0.12, 0.24, 0.45)
+                    c.drawString(50, y, "🛒 VENTES DU JOUR (suite)")
+                    y -= 20
                     c.setFont("Helvetica-Bold", 9)
+                    c.setFillColorRGB(0.3, 0.3, 0.3)
                     c.drawString(50, y, "Produit")
                     c.drawString(170, y, "Qté")
                     c.drawString(210, y, "Prix unit.")
@@ -1988,6 +2091,7 @@ def export_pdf_jour(date):
                     c.drawString(440, y, "Vendeur")
                     y -= 15
                     c.setFont("Helvetica", 8)
+                    c.setFillColorRGB(0, 0, 0)
                 
                 c.drawString(50, y, v[1][:25])
                 c.drawString(170, y, str(v[2]))
@@ -1999,8 +2103,11 @@ def export_pdf_jour(date):
             
             y -= 10
         
+        # --- Page suivante pour entrées et pertes ---
         if entrees or pertes:
             c.showPage()
+            # Ajouter le logo sur la nouvelle page
+            add_logo_to_pdf(c, width, height)
             y = height - 50
             c.setFont("Helvetica-Bold", 16)
             c.setFillColorRGB(0.12, 0.24, 0.45)
@@ -2032,8 +2139,14 @@ def export_pdf_jour(date):
             for e in entrees[:15]:
                 if y < 50:
                     c.showPage()
+                    add_logo_to_pdf(c, width, height)
                     y = height - 50
+                    c.setFont("Helvetica-Bold", 12)
+                    c.setFillColorRGB(0.12, 0.24, 0.45)
+                    c.drawString(50, y, "📥 ENTRÉES DE STOCK (suite)")
+                    y -= 20
                     c.setFont("Helvetica-Bold", 9)
+                    c.setFillColorRGB(0.3, 0.3, 0.3)
                     c.drawString(50, y, "Produit")
                     c.drawString(170, y, "Qté")
                     c.drawString(210, y, "Prix unit.")
@@ -2042,6 +2155,7 @@ def export_pdf_jour(date):
                     c.drawString(440, y, "Enreg.")
                     y -= 15
                     c.setFont("Helvetica", 8)
+                    c.setFillColorRGB(0, 0, 0)
                 
                 c.drawString(50, y, e[1][:25])
                 c.drawString(170, y, str(e[2]))
@@ -2056,6 +2170,7 @@ def export_pdf_jour(date):
         if pertes:
             if y < 100:
                 c.showPage()
+                add_logo_to_pdf(c, width, height)
                 y = height - 50
             
             c.setFont("Helvetica-Bold", 12)
@@ -2078,8 +2193,14 @@ def export_pdf_jour(date):
             for p in pertes[:15]:
                 if y < 50:
                     c.showPage()
+                    add_logo_to_pdf(c, width, height)
                     y = height - 50
+                    c.setFont("Helvetica-Bold", 12)
+                    c.setFillColorRGB(0.86, 0.21, 0.21)
+                    c.drawString(50, y, "⚠️ PERTES (suite)")
+                    y -= 20
                     c.setFont("Helvetica-Bold", 9)
+                    c.setFillColorRGB(0.3, 0.3, 0.3)
                     c.drawString(50, y, "Produit")
                     c.drawString(170, y, "Qté")
                     c.drawString(210, y, "Prix unit.")
@@ -2088,6 +2209,7 @@ def export_pdf_jour(date):
                     c.drawString(440, y, "Enreg.")
                     y -= 15
                     c.setFont("Helvetica", 8)
+                    c.setFillColorRGB(0, 0, 0)
                 
                 c.drawString(50, y, p[1][:25])
                 c.drawString(170, y, str(p[2]))
@@ -2097,7 +2219,9 @@ def export_pdf_jour(date):
                 c.drawString(440, y, p[7][:15] if p[7] else "-")
                 y -= 15
         
+        # Pied de page
         c.showPage()
+        add_logo_to_pdf(c, width, height)
         c.setFont("Helvetica", 8)
         c.setFillColorRGB(0.5, 0.5, 0.5)
         c.drawString(50, 30, "HITNA - Système de gestion - Rapport généré automatiquement")
@@ -2116,11 +2240,6 @@ def export_pdf_jour(date):
         print(f"❌ Erreur export PDF: {e}")
         flash(f'❌ Erreur lors de l\'export PDF: {str(e)}')
         return redirect('/admin/archives')
-
-def format_prix(valeur):
-    """Formater un nombre avec séparateurs de milliers"""
-    return f"{valeur:,.0f}".replace(",", " ")
-
 # ──────────────────────────────────────────────────────────────
 # API JSON
 # ──────────────────────────────────────────────────────────────
