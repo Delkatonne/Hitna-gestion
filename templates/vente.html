@@ -332,6 +332,23 @@
         border: 1px solid #e0a800;
     }
 
+    /* Spinner de chargement */
+    .spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 0.8s ease-in-out infinite;
+        vertical-align: middle;
+        margin-right: 10px;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
     @media (max-width: 768px) {
         .products-grid {
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -479,7 +496,7 @@
             </div>
         </div>
         
-        <button type="button" id="validateSaleBtn" class="btn-sale" style="display: none;">
+        <button type="button" id="validateSaleBtn" class="btn-sale" style="display: none;" onclick="validateSale()">
             💵 Valider la vente
         </button>
     </form>
@@ -541,9 +558,7 @@
 <div id="clientModal" class="modal">
     <div class="modal-content">
         <h3>👤 Nom du client</h3>
-        <p style="color: #666; font-size: 14px; margin-bottom: 10px;">
-            <!-- Supprimé le code Jinja qui utilisait navigator -->
-        </p>
+        <p style="color: #666; font-size: 14px; margin-bottom: 10px;"></p>
         <input type="text" id="clientNameInput" placeholder="Entrez le nom du client" autocomplete="off">
         <div class="btn-group">
             <button class="btn-confirm" onclick="confirmClientName()">✅ Confirmer</button>
@@ -645,39 +660,119 @@
     }
     
     // ============================================================
-    // VALIDATION VENTE
+    // VALIDATION VENTE - CORRIGÉE AVEC ACTION DE SECOURS
     // ============================================================
-    document.getElementById('validateSaleBtn').addEventListener('click', function() {
-        const quantite = parseInt(document.getElementById('quantite').value);
-        if (quantite > maxStock) {
-            alert(`Stock insuffisant ! Il reste ${maxStock} unités`);
-            return;
+    function validateSale() {
+        try {
+            console.log('🔍 validateSale() appelée');
+            
+            // Vérifier qu'un produit est sélectionné
+            if (!selectedProduct) {
+                alert('Veuillez sélectionner un produit');
+                return;
+            }
+            
+            const quantite = parseInt(document.getElementById('quantite').value);
+            
+            // Vérifier la quantité
+            if (isNaN(quantite) || quantite < 1) {
+                alert('La quantité doit être supérieure à 0');
+                return;
+            }
+            
+            if (quantite > maxStock) {
+                alert(`Stock insuffisant ! Il reste ${maxStock} unités`);
+                return;
+            }
+            
+            // Afficher le modal client
+            document.getElementById('clientModal').style.display = 'flex';
+            document.getElementById('clientNameInput').focus();
+            
+        } catch (error) {
+            console.error('❌ Erreur validation vente:', error);
+            alert('Erreur: ' + error.message);
         }
-        document.getElementById('clientModal').style.display = 'flex';
-        document.getElementById('clientNameInput').focus();
+    }
+    
+    // ============================================================
+    // ÉCOUTEURS D'ÉVÉNEMENTS - DOUBLE SÉCURITÉ
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', function() {
+        // 1. Ajouter un écouteur d'événement sur le bouton
+        const btn = document.getElementById('validateSaleBtn');
+        if (btn) {
+            btn.addEventListener('click', validateSale);
+            console.log('✅ Écouteur validateSaleBtn ajouté');
+        } else {
+            console.error('❌ Bouton validateSaleBtn non trouvé');
+        }
+        
+        // 2. Vérifier que le formulaire existe
+        const form = document.getElementById('saleForm');
+        if (form) {
+            console.log('✅ Formulaire saleForm trouvé');
+        } else {
+            console.error('❌ Formulaire saleForm non trouvé');
+        }
+        
+        // 3. Mettre à jour la bannière hors ligne
+        updateOfflineBanner();
     });
     
+    // ============================================================
+    // CONFIRMATION CLIENT
+    // ============================================================
     function confirmClientName() {
-        document.getElementById('clientName').value = document.getElementById('clientNameInput').value;
-        document.getElementById('clientModal').style.display = 'none';
-        document.getElementById('saleForm').submit();
+        try {
+            const clientName = document.getElementById('clientNameInput').value;
+            document.getElementById('clientName').value = clientName;
+            document.getElementById('clientModal').style.display = 'none';
+            
+            // Soumettre le formulaire
+            const form = document.getElementById('saleForm');
+            if (form) {
+                console.log('📤 Soumission du formulaire...');
+                form.submit();
+            } else {
+                console.error('❌ Formulaire non trouvé');
+                alert('Erreur: formulaire non trouvé');
+            }
+        } catch (error) {
+            console.error('❌ Erreur confirmClientName:', error);
+            alert('Erreur: ' + error.message);
+        }
     }
     
     function skipClientName() {
-        document.getElementById('clientName').value = '';
-        document.getElementById('clientModal').style.display = 'none';
-        document.getElementById('saleForm').submit();
+        try {
+            document.getElementById('clientName').value = '';
+            document.getElementById('clientModal').style.display = 'none';
+            
+            const form = document.getElementById('saleForm');
+            if (form) {
+                console.log('📤 Soumission du formulaire (sans client)...');
+                form.submit();
+            } else {
+                console.error('❌ Formulaire non trouvé');
+                alert('Erreur: formulaire non trouvé');
+            }
+        } catch (error) {
+            console.error('❌ Erreur skipClientName:', error);
+            alert('Erreur: ' + error.message);
+        }
     }
     
+    // Fermer le modal en cliquant en dehors
     window.onclick = function(event) {
         const modal = document.getElementById('clientModal');
-        if (event.target == modal) {
+        if (modal && event.target == modal) {
             modal.style.display = 'none';
         }
     }
 
     // ============================================================
-    // MODE HORS LIGNE - BANNIÈRE (JavaScript pur, pas Jinja)
+    // MODE HORS LIGNE - BANNIÈRE
     // ============================================================
     function updateOfflineBanner() {
         const banner = document.getElementById('offlineBanner');
@@ -694,10 +789,6 @@
     if (typeof navigator !== 'undefined') {
         window.addEventListener('online', updateOfflineBanner);
         window.addEventListener('offline', updateOfflineBanner);
-        document.addEventListener('DOMContentLoaded', updateOfflineBanner);
-    } else {
-        // Fallback si navigator n'existe pas
-        console.log('Navigator non disponible');
     }
 
     // ============================================================
@@ -714,14 +805,14 @@
     }
 
     // ============================================================
-    // DÉBOGAGE
+    // DÉBOGAGE - AFFICHER L'ÉTAT DE LA PAGE
     // ============================================================
     console.log('📱 Page vente.html chargée');
-    const saleForm = document.getElementById('saleForm');
-    console.log('🔍 Formulaire saleForm:', saleForm);
+    console.log('🔍 Formulaire saleForm:', document.getElementById('saleForm'));
+    console.log('🔍 Bouton validateSaleBtn:', document.getElementById('validateSaleBtn'));
     if (typeof navigator !== 'undefined') {
         console.log('🌐 Statut connexion:', navigator.onLine ? 'En ligne' : 'Hors ligne');
     }
     console.log('📦 Produits disponibles:', document.querySelectorAll('.product-card').length);
 </script>
-{% endblock %}  
+{% endblock %}
