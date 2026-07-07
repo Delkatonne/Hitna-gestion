@@ -137,6 +137,96 @@
         padding: 15px 30px;
         font-size: 18px;
         width: 100%;
+        border: none;
+        border-radius: 10px;
+        color: white;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .btn-sale:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+    }
+    
+    .btn-sale:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+    
+    .no-results {
+        text-align: center;
+        padding: 40px;
+        color: #999;
+    }
+    
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 10001;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .modal-content {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        max-width: 400px;
+        width: 90%;
+        text-align: center;
+    }
+    
+    .modal-content input {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        margin: 20px 0;
+    }
+    
+    .modal-content .btn-group {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .modal-content .btn-group button {
+        flex: 1;
+        min-width: 100px;
+        padding: 12px 20px;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .modal-content .btn-group .btn-confirm {
+        background: #28a745;
+        color: white;
+    }
+    
+    .modal-content .btn-group .btn-confirm:hover {
+        background: #218838;
+    }
+    
+    .modal-content .btn-group .btn-skip {
+        background: #6c757d;
+        color: white;
+    }
+    
+    .modal-content .btn-group .btn-skip:hover {
+        background: #5a6268;
     }
     
     .stats-vendeurs {
@@ -186,42 +276,6 @@
         font-weight: bold;
     }
     
-    .modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.5);
-        z-index: 10001;
-        justify-content: center;
-        align-items: center;
-    }
-    
-    .modal-content {
-        background: white;
-        border-radius: 20px;
-        padding: 30px;
-        max-width: 400px;
-        width: 90%;
-        text-align: center;
-    }
-    
-    .modal-content input {
-        width: 100%;
-        padding: 12px;
-        border: 2px solid #e0e0e0;
-        border-radius: 10px;
-        margin: 20px 0;
-    }
-    
-    .no-results {
-        text-align: center;
-        padding: 40px;
-        color: #999;
-    }
-    
     .vendeur-admin {
         background: #ffc107;
         color: #333;
@@ -240,7 +294,7 @@
         font-weight: bold;
     }
 
-    /* ── Responsive mobile pour admin ventes ── */
+    /* ── Responsive ── */
     @media (max-width: 768px) {
         .stats-vendeurs {
             grid-template-columns: repeat(2, 1fr);
@@ -310,6 +364,7 @@
         .table-container {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
+            width: 100%;
         }
 
         table {
@@ -319,12 +374,6 @@
 
         th, td {
             padding: 7px 5px;
-        }
-
-        .table-container {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            width: 100%;
         }
 
         .search-box {
@@ -408,23 +457,23 @@
         <div style="opacity: 0.7;">👆 Cliquez sur un produit ci-dessus pour le sélectionner</div>
     </div>
     
-    <form method="post" id="saleForm" action="/admin/ventes">
-        <input type="hidden" name="produit_id" id="selectedProductId" required>
-        <input type="hidden" name="client" id="clientName" value="">
+    <form method="post" id="adminSaleForm" action="/admin/ventes">
+        <input type="hidden" name="produit_id" id="adminSelectedProductId" required>
+        <input type="hidden" name="client" id="adminClientName" value="">
         
-        <div class="quantity-control" style="display: none;" id="quantityControls">
-            <button type="button" onclick="decrementQuantity()">-</button>
-            <input type="number" name="quantite" id="quantite" value="1" min="1" onchange="updateTotal()">
-            <button type="button" onclick="incrementQuantity()">+</button>
+        <div class="quantity-control" style="display: none;" id="adminQuantityControls">
+            <button type="button" onclick="adminDecrementQuantity()">-</button>
+            <input type="number" name="quantite" id="adminQuantite" value="1" min="1" onchange="adminUpdateTotal()">
+            <button type="button" onclick="adminIncrementQuantity()">+</button>
         </div>
         
-        <div id="totalDisplay" style="display: none;">
+        <div id="adminTotalDisplay" style="display: none;">
             <div class="total-amount">
-                Total: <span id="totalAmount">0</span> FCFA
+                Total: <span id="adminTotalAmount">0</span> FCFA
             </div>
         </div>
         
-        <button type="button" id="validateSaleBtn" class="btn-sale" style="display: none;">
+        <button type="button" id="adminValidateSaleBtn" class="btn-sale" style="display: none;" onclick="adminValidateSale()">
             💵 Valider la vente
         </button>
     </form>
@@ -467,32 +516,43 @@
     </div>
 </div>
 
+<div class="nav-links">
+    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/admin/archives">📚 Archives</a>
+    <a href="/admin/stats">📊 Statistiques</a>
+</div>
+
 <!-- Modal client -->
-<div id="clientModal" class="modal">
+<div id="adminClientModal" class="modal">
     <div class="modal-content">
         <h3>👤 Nom du client</h3>
-        <input type="text" id="clientNameInput" placeholder="Entrez le nom du client" autocomplete="off">
-        <button onclick="confirmClientName()">✅ Confirmer</button>
-        <button onclick="skipClientName()" style="background: #6c757d;">⏭️ Passer</button>
+        <input type="text" id="adminClientNameInput" placeholder="Entrez le nom du client" autocomplete="off">
+        <div class="btn-group">
+            <button class="btn-confirm" onclick="adminConfirmClientName()">✅ Confirmer</button>
+            <button class="btn-skip" onclick="adminSkipClientName()">⏭️ Passer</button>
+        </div>
     </div>
 </div>
 
 <script>
-    let selectedProduct = null;
-    let maxStock = 0;
-    let pendingSale = false;
+    // ============================================================
+    // ADMIN - VARIABLES GLOBALES
+    // ============================================================
+    let adminSelectedProduct = null;
+    let adminMaxStock = 0;
+
+    // ============================================================
+    // ADMIN - RECHERCHE DE PRODUITS
+    // ============================================================
+    const adminSearchInput = document.getElementById('searchInput');
+    const adminProductCards = document.querySelectorAll('.product-card');
+    const adminNoResults = document.getElementById('noResults');
     
-    // Recherche
-    const searchInput = document.getElementById('searchInput');
-    const productsGrid = document.getElementById('productsGrid');
-    const productCards = document.querySelectorAll('.product-card');
-    const noResults = document.getElementById('noResults');
-    
-    function filterProducts() {
-        const searchTerm = searchInput.value.toLowerCase().trim();
+    function adminFilterProducts() {
+        const searchTerm = adminSearchInput.value.toLowerCase().trim();
         let hasResults = false;
         
-        productCards.forEach(card => {
+        adminProductCards.forEach(card => {
             const productName = card.getAttribute('data-name').toLowerCase();
             if (searchTerm === '' || productName.includes(searchTerm)) {
                 card.style.display = 'block';
@@ -502,89 +562,184 @@
             }
         });
         
-        noResults.style.display = hasResults ? 'none' : 'block';
+        adminNoResults.style.display = hasResults ? 'none' : 'block';
     }
     
-    searchInput.addEventListener('keyup', filterProducts);
+    adminSearchInput.addEventListener('keyup', adminFilterProducts);
     
-    // Sélection produit
-    productCards.forEach(card => {
-        card.addEventListener('click', () => {
-            productCards.forEach(c => c.classList.remove('selected'));
-            card.classList.add('selected');
+    // ============================================================
+    // ADMIN - SÉLECTION PRODUIT
+    // ============================================================
+    adminProductCards.forEach(card => {
+        card.addEventListener('click', function() {
+            adminProductCards.forEach(c => c.classList.remove('selected'));
+            this.classList.add('selected');
             
-            selectedProduct = {
-                id: card.getAttribute('data-id'),
-                name: card.getAttribute('data-name'),
-                price: parseInt(card.getAttribute('data-price')),
-                stock: parseInt(card.getAttribute('data-stock'))
+            adminSelectedProduct = {
+                id: this.getAttribute('data-id'),
+                name: this.getAttribute('data-name'),
+                price: parseInt(this.getAttribute('data-price')),
+                stock: parseInt(this.getAttribute('data-stock'))
             };
-            maxStock = selectedProduct.stock;
-            updateSelectedDisplay();
+            adminMaxStock = adminSelectedProduct.stock;
+            adminUpdateSelectedDisplay();
         });
     });
     
-    function updateSelectedDisplay() {
-        if (selectedProduct) {
+    function adminUpdateSelectedDisplay() {
+        if (adminSelectedProduct) {
             document.getElementById('selectedProductDisplay').innerHTML = `
                 <div>
-                    <div class="selected-product-name">${selectedProduct.name}</div>
-                    <div class="selected-product-price">${selectedProduct.price} FCFA</div>
-                    <div>📦 Stock: ${selectedProduct.stock} unités</div>
+                    <div class="selected-product-name">${adminSelectedProduct.name}</div>
+                    <div class="selected-product-price">${adminSelectedProduct.price} FCFA</div>
+                    <div>📦 Stock: ${adminSelectedProduct.stock} unités</div>
                 </div>
             `;
-            document.getElementById('selectedProductId').value = selectedProduct.id;
-            document.getElementById('quantityControls').style.display = 'flex';
-            document.getElementById('totalDisplay').style.display = 'block';
-            document.getElementById('validateSaleBtn').style.display = 'block';
-            document.getElementById('quantite').value = 1;
-            updateTotal();
+            document.getElementById('adminSelectedProductId').value = adminSelectedProduct.id;
+            document.getElementById('adminQuantityControls').style.display = 'flex';
+            document.getElementById('adminTotalDisplay').style.display = 'block';
+            document.getElementById('adminValidateSaleBtn').style.display = 'block';
+            document.getElementById('adminQuantite').value = 1;
+            adminUpdateTotal();
         }
     }
     
-    function updateTotal() {
-        let quantite = parseInt(document.getElementById('quantite').value);
+    function adminUpdateTotal() {
+        let quantite = parseInt(document.getElementById('adminQuantite').value);
         if (isNaN(quantite)) quantite = 1;
-        if (quantite > maxStock) quantite = maxStock;
+        if (quantite > adminMaxStock) quantite = adminMaxStock;
         if (quantite < 1) quantite = 1;
-        document.getElementById('quantite').value = quantite;
-        document.getElementById('totalAmount').innerText = quantite * selectedProduct.price;
+        document.getElementById('adminQuantite').value = quantite;
+        document.getElementById('adminTotalAmount').innerText = quantite * adminSelectedProduct.price;
     }
     
-    function incrementQuantity() {
-        let q = parseInt(document.getElementById('quantite').value);
-        if (q < maxStock) document.getElementById('quantite').value = q + 1;
-        updateTotal();
+    function adminIncrementQuantity() {
+        let q = parseInt(document.getElementById('adminQuantite').value);
+        if (q < adminMaxStock) document.getElementById('adminQuantite').value = q + 1;
+        adminUpdateTotal();
     }
     
-    function decrementQuantity() {
-        let q = parseInt(document.getElementById('quantite').value);
-        if (q > 1) document.getElementById('quantite').value = q - 1;
-        updateTotal();
+    function adminDecrementQuantity() {
+        let q = parseInt(document.getElementById('adminQuantite').value);
+        if (q > 1) document.getElementById('adminQuantite').value = q - 1;
+        adminUpdateTotal();
     }
     
-    // Validation vente
-    document.getElementById('validateSaleBtn').addEventListener('click', () => {
-        const quantite = parseInt(document.getElementById('quantite').value);
-        if (quantite > maxStock) {
-            alert(`Stock insuffisant ! Il reste ${maxStock} unités`);
-            return;
+    // ============================================================
+    // ADMIN - VALIDATION VENTE (CORRIGÉE)
+    // ============================================================
+    function adminValidateSale() {
+        try {
+            console.log('🔍 adminValidateSale() appelée');
+            
+            if (!adminSelectedProduct) {
+                alert('Veuillez sélectionner un produit');
+                return;
+            }
+            
+            const quantite = parseInt(document.getElementById('adminQuantite').value);
+            
+            if (isNaN(quantite) || quantite < 1) {
+                alert('La quantité doit être supérieure à 0');
+                return;
+            }
+            
+            if (quantite > adminMaxStock) {
+                alert(`Stock insuffisant ! Il reste ${adminMaxStock} unités`);
+                return;
+            }
+            
+            document.getElementById('adminClientModal').style.display = 'flex';
+            document.getElementById('adminClientNameInput').focus();
+            
+        } catch (error) {
+            console.error('❌ Erreur validation vente admin:', error);
+            alert('Erreur: ' + error.message);
         }
-        pendingSale = { quantite };
-        document.getElementById('clientModal').style.display = 'flex';
-        document.getElementById('clientNameInput').focus();
+    }
+    
+    // ============================================================
+    // ADMIN - ÉCOUTEURS D'ÉVÉNEMENTS
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', function() {
+        const btn = document.getElementById('adminValidateSaleBtn');
+        if (btn) {
+            btn.addEventListener('click', adminValidateSale);
+            console.log('✅ Écouteur adminValidateSaleBtn ajouté');
+        } else {
+            console.error('❌ Bouton adminValidateSaleBtn non trouvé');
+        }
     });
     
-    function confirmClientName() {
-        document.getElementById('clientName').value = document.getElementById('clientNameInput').value;
-        document.getElementById('clientModal').style.display = 'none';
-        document.getElementById('saleForm').submit();
+    // ============================================================
+    // ADMIN - CONFIRMATION CLIENT
+    // ============================================================
+    function adminConfirmClientName() {
+        try {
+            const clientName = document.getElementById('adminClientNameInput').value;
+            document.getElementById('adminClientName').value = clientName;
+            document.getElementById('adminClientModal').style.display = 'none';
+            
+            const form = document.getElementById('adminSaleForm');
+            if (form) {
+                console.log('📤 Soumission du formulaire admin...');
+                form.submit();
+            } else {
+                console.error('❌ Formulaire admin non trouvé');
+                alert('Erreur: formulaire non trouvé');
+            }
+        } catch (error) {
+            console.error('❌ Erreur adminConfirmClientName:', error);
+            alert('Erreur: ' + error.message);
+        }
     }
     
-    function skipClientName() {
-        document.getElementById('clientName').value = '';
-        document.getElementById('clientModal').style.display = 'none';
-        document.getElementById('saleForm').submit();
+    function adminSkipClientName() {
+        try {
+            document.getElementById('adminClientName').value = '';
+            document.getElementById('adminClientModal').style.display = 'none';
+            
+            const form = document.getElementById('adminSaleForm');
+            if (form) {
+                console.log('📤 Soumission du formulaire admin (sans client)...');
+                form.submit();
+            } else {
+                console.error('❌ Formulaire admin non trouvé');
+                alert('Erreur: formulaire non trouvé');
+            }
+        } catch (error) {
+            console.error('❌ Erreur adminSkipClientName:', error);
+            alert('Erreur: ' + error.message);
+        }
     }
+    
+    // Fermer le modal en cliquant en dehors
+    window.onclick = function(event) {
+        const modal = document.getElementById('adminClientModal');
+        if (modal && event.target == modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    // ============================================================
+    // ADMIN - TOUCHE ENTRÉE POUR VALIDER LE CLIENT
+    // ============================================================
+    const adminClientInput = document.getElementById('adminClientNameInput');
+    if (adminClientInput) {
+        adminClientInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                adminConfirmClientName();
+            }
+        });
+    }
+
+    // ============================================================
+    // ADMIN - DÉBOGAGE
+    // ============================================================
+    console.log('📱 Page admin_ventes.html chargée');
+    console.log('🔍 Formulaire adminSaleForm:', document.getElementById('adminSaleForm'));
+    console.log('🔍 Bouton adminValidateSaleBtn:', document.getElementById('adminValidateSaleBtn'));
+    console.log('📦 Produits disponibles:', document.querySelectorAll('.product-card').length);
 </script>
 {% endblock %}
