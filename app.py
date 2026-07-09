@@ -848,8 +848,7 @@ def vente():
             return redirect('/dashboard' if session.get('role') == 'admin' else '/login')
         
         # Récupérer les produits
-        produits = qall("SELECT id, nom, prix, stock FROM produits WHERE stock > 0 ORDER BY nom")
-        
+        produits = qall("SELECT id,nom,prix,stock FROM produits WHERE stock>0 ORDER BY nom LIMIT 30")        
         # Traitement POST
         if request.method == 'POST':
             try:
