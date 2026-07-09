@@ -2,16 +2,12 @@ from flask import Flask, render_template, request, redirect, session, flash, jso
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
 import hashlib, os, random, string, io
-
-# ══════════════════════════════════════════════════════════════
-# MIGRATION SQLite → PostgreSQL
-# Remplace les deux fichiers SQLite (hitna.db + archive.db)
-# par une seule base PostgreSQL persistante sur Render.
-# ══════════════════════════════════════════════════════════════
 import psycopg2
 import psycopg2.extras
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from time import time
+from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'hitna_secret')
@@ -29,49 +25,100 @@ app.config['MAIL_DEFAULT_SENDER'] = ('HITNA Gestion', 'hitnasuperette@gmail.com'
 
 mail = Mail(app)
 
-# ──────────────────────────────────────────────────────────────
-# CONNEXION POSTGRESQL
-# ──────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# SYSTÈME DE CACHE AVANCÉ
+# ══════════════════════════════════════════════════════════════
+_cache = {}
+CACHE_TTL = {
+    'produits': 60,        # 1 minute
+    'stats': 120,          # 2 minutes
+    'historique': 30,      # 30 secondes
+    'notifications': 10,   # 10 secondes
+    'ventes': 30,          # 30 secondes
+    'dashboard': 60,       # 1 minute
+}
+
+def get_cached(key, ttl=60):
+    """Récupérer une valeur du cache"""
+    if key in _cache:
+        value, timestamp = _cache[key]
+        if time() - timestamp < ttl:
+            return value
+    return None
+
+def set_cached(key, value):
+    """Stocker une valeur dans le cache"""
+    _cache[key] = (value, time())
+
+def clear_cache():
+    """Vider le cache"""
+    _cache.clear()
+
+# ══════════════════════════════════════════════════════════════
+# POOL DE CONNEXIONS POSTGRESQL
+# ══════════════════════════════════════════════════════════════
+_db_pool = None
+
+def get_db_pool():
+    global _db_pool
+    if _db_pool is None:
+        url = os.environ.get('DATABASE_URL', '')
+        if url.startswith('postgres://'):
+            url = url.replace('postgres://', 'postgresql://', 1)
+        if not url:
+            raise RuntimeError("DATABASE_URL manquante. Ajoutez-la dans les variables d'environnement Render.")
+        _db_pool = psycopg2.pool.SimpleConnectionPool(1, 10, url)
+    return _db_pool
+
 def get_db():
-    url = os.environ.get('DATABASE_URL', '')
-    if url.startswith('postgres://'):
-        url = url.replace('postgres://', 'postgresql://', 1)
-    if not url:
-        raise RuntimeError("DATABASE_URL manquante. Ajoutez-la dans les variables d'environnement Render.")
-    return psycopg2.connect(url)
+    """Obtenir une connexion depuis le pool"""
+    pool = get_db_pool()
+    return pool.getconn()
+
+def release_db(conn):
+    """Libérer une connexion"""
+    pool = get_db_pool()
+    pool.putconn(conn)
 
 def q1(sql, params=()):
-    """fetchone — retourne un tuple ou None."""
+    """fetchone avec pool de connexions"""
+    conn = None
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute(sql.replace('?','%s'), params)
+        cur.execute(sql.replace('?', '%s'), params)
         row = cur.fetchone()
         cur.close()
-        conn.close()
         return row
     except Exception as e:
         print(f"❌ Erreur q1: {e}")
         return None
+    finally:
+        if conn:
+            release_db(conn)
 
 def qall(sql, params=()):
-    """fetchall — retourne une liste de tuples."""
+    """fetchall avec pool de connexions"""
+    conn = None
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute(sql.replace('?','%s'), params)
+        cur.execute(sql.replace('?', '%s'), params)
         rows = cur.fetchall()
         cur.close()
-        conn.close()
         return rows
     except Exception as e:
         print(f"❌ Erreur qall: {e}")
         return []
+    finally:
+        if conn:
+            release_db(conn)
 
 def exe(sql, params=(), returning=False):
-    """INSERT / UPDATE / DELETE avec commit. returning=True retourne le nouvel id."""
+    """INSERT / UPDATE / DELETE avec pool de connexions"""
+    conn = None
     try:
-        sql2 = sql.replace('?','%s')
+        sql2 = sql.replace('?', '%s')
         if returning and 'INSERT' in sql2.upper() and 'RETURNING' not in sql2.upper():
             sql2 += ' RETURNING id'
         conn = get_db()
@@ -80,16 +127,20 @@ def exe(sql, params=(), returning=False):
         result = cur.fetchone()[0] if returning else None
         conn.commit()
         cur.close()
-        conn.close()
+        clear_cache()  # Vider le cache après modification
         return result
     except Exception as e:
         print(f"❌ Erreur exe: {e}")
         return None
+    finally:
+        if conn:
+            release_db(conn)
 
 # ──────────────────────────────────────────────────────────────
 # INITIALISATION BASE DE DONNÉES
 # ──────────────────────────────────────────────────────────────
 def init_db():
+    conn = None
     try:
         conn = get_db()
         c = conn.cursor()
@@ -179,10 +230,13 @@ def init_db():
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne unite_id: {e}")
 
+        # ====== INDEX POUR ACCÉLÉRER LES REQUÊTES ======
         c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_date ON sorties(date_sortie)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_produit_id ON sorties(produit_id)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_entrees_date ON entrees(date_entree)')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_archive_vd ON archive_ventes(date_vente)')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_archive_ed ON archive_entrees(date_entree)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_produits_nom ON produits(nom)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_employe_id ON sorties(employe_id)')
 
         # ====== UNITÉS PAR DÉFAUT ======
         c.execute("SELECT COUNT(*) FROM unites_mesure")
@@ -219,10 +273,12 @@ def init_db():
 
         conn.commit()
         c.close()
-        conn.close()
-        print("✅ Base de données initialisée avec unités de mesure")
+        print("✅ Base de données initialisée avec unités de mesure et index")
     except Exception as e:
         print(f"❌ Erreur init_db: {e}")
+    finally:
+        if conn:
+            release_db(conn)
 
 # ──────────────────────────────────────────────────────────────
 # ARCHIVAGE HEBDOMADAIRE
@@ -380,7 +436,7 @@ def check_perm(perm):
         return False
 
 # ──────────────────────────────────────────────────────────────
-# ROUTES AUTH - VERSION CORRIGÉE AVEC LOGS
+# ROUTES AUTH
 # ──────────────────────────────────────────────────────────────
 @app.route('/')
 def accueil():
@@ -392,57 +448,26 @@ def login():
         if request.method == 'POST':
             sel = request.form.get('role', '')
             password = request.form.get('password', '')
-            
-            # Hash du mot de passe
             ph = hashlib.sha256(password.encode()).hexdigest()
             
-            # 🔍 LOGS DE DÉBOGAGE
-            print("=" * 50)
-            print(f"🔍 TENTATIVE DE CONNEXION")
-            print(f"  - Rôle sélectionné: '{sel}'")
-            print(f"  - Mot de passe: '{password}'")
-            print(f"  - Hash SHA256: {ph[:30]}...")
-            print("-" * 50)
-            
-            # Vérifier d'abord si le rôle existe dans la base
-            roles_disponibles = qall("SELECT DISTINCT role, role_personnalise FROM users WHERE actif=1")
-            print(f"  - Rôles disponibles: {roles_disponibles}")
-            
-            # Rechercher l'utilisateur
             user = q1("""
                 SELECT id, nom, actif, role_personnalise, role, permissions 
                 FROM users 
                 WHERE (role_personnalise = %s OR role = %s) AND password_hash = %s
             """, (sel, sel, ph))
             
-            print(f"  - Résultat recherche directe: {user}")
-            
             if not user:
-                # Essayer avec le rôle de base
                 rb = None
                 if sel == 'Administrateur':
                     rb = 'admin'
                 elif sel == 'Employé':
                     rb = 'employe'
-                
                 if rb:
                     user = q1("""
                         SELECT id, nom, actif, role_personnalise, role, permissions 
                         FROM users 
                         WHERE role = %s AND password_hash = %s
                     """, (rb, ph))
-                    print(f"  - Recherche par rôle de base '{rb}': {user}")
-            
-            # Vérifier aussi si le hash correspond à un utilisateur existant
-            if not user:
-                user_by_hash = q1("""
-                    SELECT id, nom, actif, role_personnalise, role, permissions 
-                    FROM users 
-                    WHERE password_hash = %s
-                """, (ph,))
-                if user_by_hash:
-                    print(f"  ⚠️ Un utilisateur existe avec ce hash: {user_by_hash}")
-                    print(f"     Mais son rôle est '{user_by_hash[4]}' et non '{sel}'")
             
             if user:
                 if user[2] == 0:
@@ -457,14 +482,9 @@ def login():
                     'permissions': user[5]
                 })
                 
-                print(f"  ✅ Connexion réussie pour {user[1]} (ID: {user[0]}, Rôle: {user[4]})")
-                print("=" * 50)
-                
                 flash(f'✅ Bonjour {user[1]} !')
                 return redirect('/dashboard' if user[4] == 'admin' else '/vente')
             
-            print(f"  ❌ Échec de connexion pour '{sel}' avec le mot de passe fourni")
-            print("=" * 50)
             flash('❌ Identifiants incorrects')
         
         roles = get_all_roles()
@@ -472,8 +492,6 @@ def login():
         
     except Exception as e:
         print(f"❌ Erreur login: {e}")
-        import traceback
-        traceback.print_exc()
         flash('Erreur de connexion')
         return redirect('/login')
 
@@ -570,7 +588,6 @@ def supprimer_unite(id):
         if session.get('role') != 'admin':
             return redirect('/login')
         
-        # Vérifier si l'unité est utilisée par des produits
         used = q1("SELECT COUNT(*) FROM produits WHERE unite_id=?", (id,))
         if used and used[0] > 0:
             flash('❌ Cette unité est utilisée par des produits. Supprimez-les d\'abord.')
@@ -587,7 +604,7 @@ def supprimer_unite(id):
     return redirect('/admin/unites')
 
 # ──────────────────────────────────────────────────────────────
-# PRODUITS — AVEC UNITÉS DE MESURE
+# PRODUITS — AVEC UNITÉS DE MESURE ET CACHE
 # ──────────────────────────────────────────────────────────────
 @app.route('/admin/produits')
 def produits_list():
@@ -595,15 +612,21 @@ def produits_list():
         if session.get('role') != 'admin':
             return redirect('/login')
         
-        produits = qall('''SELECT p.id, p.nom, p.prix, p.stock, p.stock_min,
-                                  COALESCE(u.symbole, '') as unite_symbole,
-                                  COALESCE(u.nom, '') as unite_nom,
-                                  p.unite_id
-                           FROM produits p 
-                           LEFT JOIN unites_mesure u ON p.unite_id = u.id 
-                           ORDER BY p.nom''')
+        cache_key = 'produits_list'
+        cached_data = get_cached(cache_key, 60)
         
-        unites = qall("SELECT id, nom, symbole FROM unites_mesure WHERE actif = 1 ORDER BY nom")
+        if cached_data:
+            produits, unites = cached_data
+        else:
+            produits = qall('''SELECT p.id, p.nom, p.prix, p.stock, p.stock_min,
+                                      COALESCE(u.symbole, '') as unite_symbole,
+                                      COALESCE(u.nom, '') as unite_nom,
+                                      p.unite_id
+                               FROM produits p 
+                               LEFT JOIN unites_mesure u ON p.unite_id = u.id 
+                               ORDER BY p.nom''')
+            unites = qall("SELECT id, nom, symbole FROM unites_mesure WHERE actif = 1 ORDER BY nom")
+            set_cached(cache_key, (produits, unites))
         
         return render_template('produits.html', produits=produits, unites=unites)
     except Exception as e:
@@ -673,7 +696,6 @@ def supprimer_produit(id):
         
         p = q1("SELECT nom FROM produits WHERE id=?", (id,))
         if p:
-            # Vérifier si le produit a des ventes/entrées/pertes avant de supprimer
             ventes = q1("SELECT COUNT(*) FROM sorties WHERE produit_id=?", (id,))
             entrees = q1("SELECT COUNT(*) FROM entrees WHERE produit_id=?", (id,))
             pertes = q1("SELECT COUNT(*) FROM pertes WHERE produit_id=?", (id,))
@@ -709,7 +731,6 @@ def supprimer_produits_multiple():
                 pid_int = int(pid)
                 p = q1("SELECT nom FROM produits WHERE id=?", (pid_int,))
                 if p:
-                    # Vérifier si le produit a des mouvements
                     ventes = q1("SELECT COUNT(*) FROM sorties WHERE produit_id=?", (pid_int,))
                     entrees = q1("SELECT COUNT(*) FROM entrees WHERE produit_id=?", (pid_int,))
                     pertes = q1("SELECT COUNT(*) FROM pertes WHERE produit_id=?", (pid_int,))
@@ -743,9 +764,17 @@ def entrees_list():
             flash('❌ Permission refusée')
             return redirect('/vente')
         
-        entrees = qall('''SELECT e.id,p.nom,e.quantite,e.prix_unitaire,e.total,e.date_entree,e.fournisseur
-            FROM entrees e JOIN produits p ON e.produit_id=p.id ORDER BY e.date_entree DESC LIMIT 50''')
-        produits = qall("SELECT id,nom,stock FROM produits ORDER BY nom")
+        cache_key = 'entrees_list'
+        cached_data = get_cached(cache_key, 30)
+        
+        if cached_data:
+            entrees, produits = cached_data
+        else:
+            entrees = qall('''SELECT e.id,p.nom,e.quantite,e.prix_unitaire,e.total,e.date_entree,e.fournisseur
+                FROM entrees e JOIN produits p ON e.produit_id=p.id ORDER BY e.date_entree DESC LIMIT 30''')
+            produits = qall("SELECT id,nom,stock FROM produits ORDER BY nom")
+            set_cached(cache_key, (entrees, produits))
+        
         return render_template('entrees.html', entrees=entrees, produits=produits)
     except Exception as e:
         print(f"❌ Erreur entrees_list: {e}")
@@ -784,7 +813,7 @@ def ajouter_entree():
     return redirect('/admin/entrees')
 
 # ──────────────────────────────────────────────────────────────
-# VENTES ADMIN
+# VENTES ADMIN - OPTIMISÉE
 # ──────────────────────────────────────────────────────────────
 @app.route('/admin/ventes', methods=['GET','POST'])
 def admin_ventes():
@@ -792,9 +821,7 @@ def admin_ventes():
         if session.get('role') != 'admin':
             return redirect('/login')
         
-        produits = qall("SELECT id,nom,prix,stock FROM produits WHERE stock>0 ORDER BY nom")
-        
-        if request.method=='POST':
+        if request.method == 'POST':
             pid = int(request.form.get('produit_id', 0))
             qty = int(request.form.get('quantite', 0))
             client = request.form.get('client', '')
@@ -809,7 +836,7 @@ def admin_ventes():
                 return redirect('/admin/ventes')
             
             if qty > p[2]:
-                flash(f'❌ Stock insuffisant ! {p[2]} unités restantes de {p[0]}')
+                flash(f'❌ Stock insuffisant ! {p[2]} unités restantes')
             else:
                 total = p[1] * qty
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -818,13 +845,24 @@ def admin_ventes():
                 exe("UPDATE produits SET stock=stock-? WHERE id=?",(qty,pid))
                 flash(f'✅ Vente : {qty} {p[0]} → {total} FCFA')
                 verifier_alertes_stock()
+            return redirect('/admin/ventes')
         
-        historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client
-            FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
-            ORDER BY s.date_sortie DESC LIMIT 20''')
-        stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
-            FROM sorties s JOIN users u ON s.employe_id=u.id
-            WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
+        # GET - Avec cache
+        cache_key = 'admin_ventes_data'
+        cached_data = get_cached(cache_key, 30)
+        
+        if cached_data:
+            produits, historique, stats_vendeurs = cached_data
+        else:
+            produits = qall("SELECT id,nom,prix,stock FROM produits WHERE stock>0 ORDER BY nom LIMIT 50")
+            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client
+                FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
+                ORDER BY s.date_sortie DESC LIMIT 20''')
+            stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
+                FROM sorties s JOIN users u ON s.employe_id=u.id
+                WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
+            
+            set_cached(cache_key, (produits, historique, stats_vendeurs))
         
         return render_template('admin_ventes.html', produits=produits, historique=historique, stats_vendeurs=stats_vendeurs)
     except Exception as e:
@@ -833,12 +871,11 @@ def admin_ventes():
         return redirect('/dashboard')
 
 # ──────────────────────────────────────────────────────────────
-# VENTES EMPLOYÉ - CORRIGÉE AVEC GESTION D'ERREURS
+# VENTES EMPLOYÉ - OPTIMISÉE
 # ──────────────────────────────────────────────────────────────
 @app.route('/vente', methods=['GET','POST'])
 def vente():
     try:
-        # Vérification de la session
         if 'user_id' not in session:
             flash('❌ Veuillez vous connecter')
             return redirect('/login')
@@ -847,16 +884,13 @@ def vente():
             flash('❌ Accès réservé aux employés')
             return redirect('/dashboard' if session.get('role') == 'admin' else '/login')
         
-        # Récupérer les produits
-        produits = qall("SELECT id,nom,prix,stock FROM produits WHERE stock>0 ORDER BY nom LIMIT 30")        
-        # Traitement POST
+        # POST - Traitement de la vente
         if request.method == 'POST':
             try:
                 pid = int(request.form.get('produit_id', 0))
                 qty = int(request.form.get('quantite', 0))
                 client = request.form.get('client', '').strip()
                 
-                # Validation
                 if pid <= 0:
                     flash('❌ Veuillez sélectionner un produit')
                     return redirect('/vente')
@@ -865,28 +899,23 @@ def vente():
                     flash('❌ La quantité doit être supérieure à 0')
                     return redirect('/vente')
                 
-                # Vérifier le produit
                 p = q1("SELECT nom, prix, stock FROM produits WHERE id=?", (pid,))
                 if not p:
                     flash('❌ Produit introuvable')
                     return redirect('/vente')
                 
-                # Vérifier le stock
                 if qty > p[2]:
-                    flash(f'❌ Stock insuffisant ! {p[2]} unités restantes de {p[0]}')
+                    flash(f'❌ Stock insuffisant ! {p[2]} unités restantes')
                     return redirect('/vente')
                 
-                # Calculer le total
                 total = p[1] * qty
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 
-                # Insérer la vente
                 exe("""INSERT INTO sorties 
                     (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id) 
                     VALUES (?,?,?,?,?,?,?)""",
                     (pid, qty, p[1], total, now, client, session.get('user_id', 1)))
                 
-                # Mettre à jour le stock
                 exe("UPDATE produits SET stock = stock - ? WHERE id = ?", (qty, pid))
                 
                 flash(f'✅ Vente : {qty} {p[0]} → {total} FCFA')
@@ -899,32 +928,30 @@ def vente():
             
             return redirect('/vente')
         
-        # GET - Récupérer les données pour l'affichage
-        try:
+        # GET - Avec cache
+        cache_key = 'vente_data'
+        cached_data = get_cached(cache_key, 30)
+        
+        if cached_data:
+            produits, historique, stats_vendeurs, total_general = cached_data
+        else:
+            produits = qall("SELECT id,nom,prix,stock FROM produits WHERE stock>0 ORDER BY nom LIMIT 30")
             historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role
                 FROM sorties s 
                 JOIN produits p ON s.produit_id = p.id 
                 JOIN users u ON s.employe_id = u.id
                 WHERE DATE(s.date_sortie) = CURRENT_DATE 
-                ORDER BY s.date_sortie DESC''')
-        except Exception:
-            historique = []
-        
-        try:
+                ORDER BY s.date_sortie DESC LIMIT 20''')
             stats_vendeurs = qall('''SELECT u.role, COUNT(s.id), COALESCE(SUM(s.total), 0)
                 FROM sorties s 
                 JOIN users u ON s.employe_id = u.id
                 WHERE DATE(s.date_sortie) = CURRENT_DATE 
                 GROUP BY u.role''')
-        except Exception:
-            stats_vendeurs = []
-        
-        try:
             total_general = q1("SELECT COALESCE(SUM(total), 0), COUNT(*) FROM sorties WHERE DATE(date_sortie) = CURRENT_DATE")
             if not total_general:
                 total_general = (0, 0)
-        except Exception:
-            total_general = (0, 0)
+            
+            set_cached(cache_key, (produits, historique, stats_vendeurs, total_general))
         
         return render_template('vente.html', 
             produits=produits, 
@@ -939,7 +966,7 @@ def vente():
         return redirect('/login')
 
 # ──────────────────────────────────────────────────────────────
-# DASHBOARD
+# DASHBOARD - OPTIMISÉ
 # ──────────────────────────────────────────────────────────────
 @app.route('/dashboard')
 def dashboard():
@@ -950,39 +977,51 @@ def dashboard():
         archiver_si_necessaire()
         verifier_alertes_stock()
         
-        total_jour = q1("SELECT COALESCE(SUM(total),0) FROM sorties WHERE DATE(date_sortie)=CURRENT_DATE")
-        total_jour = total_jour[0] if total_jour else 0
+        cache_key = 'dashboard_data'
+        cached_data = get_cached(cache_key, 60)
         
-        nb_produits = q1("SELECT COUNT(*) FROM produits")
-        nb_produits = nb_produits[0] if nb_produits else 0
-        
-        stock_total = q1("SELECT COALESCE(SUM(stock),0) FROM produits")
-        stock_total = stock_total[0] if stock_total else 0
-        
-        nb_stock_bas = q1("SELECT COUNT(*) FROM produits WHERE stock<=stock_min")
-        nb_stock_bas = nb_stock_bas[0] if nb_stock_bas else 0
-        
-        historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client
-            FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
-            ORDER BY s.date_sortie DESC LIMIT 50''')
-        
-        stock_bas = qall("SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min")
-        
-        top_produits = qall('''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
-            FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
-            GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 5''')
-        
-        stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
-            FROM sorties s JOIN users u ON s.employe_id=u.id
-            WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
-        
-        ventes_7_jours = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0)
-            FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
-            GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
-        
-        ventes_par_heure = qall('''SELECT EXTRACT(HOUR FROM date_sortie::timestamp)::int,COALESCE(SUM(total),0)
-            FROM sorties WHERE DATE(date_sortie::timestamp) = CURRENT_DATE
-            GROUP BY 1 ORDER BY 1''')
+        if cached_data:
+            (total_jour, nb_produits, stock_total, nb_stock_bas, 
+             historique, stock_bas, top_produits, stats_vendeurs,
+             ventes_7_jours, ventes_par_heure) = cached_data
+        else:
+            total_jour = q1("SELECT COALESCE(SUM(total),0) FROM sorties WHERE DATE(date_sortie)=CURRENT_DATE")
+            total_jour = total_jour[0] if total_jour else 0
+            
+            nb_produits = q1("SELECT COUNT(*) FROM produits")
+            nb_produits = nb_produits[0] if nb_produits else 0
+            
+            stock_total = q1("SELECT COALESCE(SUM(stock),0) FROM produits")
+            stock_total = stock_total[0] if stock_total else 0
+            
+            nb_stock_bas = q1("SELECT COUNT(*) FROM produits WHERE stock<=stock_min")
+            nb_stock_bas = nb_stock_bas[0] if nb_stock_bas else 0
+            
+            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client
+                FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
+                ORDER BY s.date_sortie DESC LIMIT 20''')
+            
+            stock_bas = qall("SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min LIMIT 20")
+            
+            top_produits = qall('''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
+                FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
+                GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 5''')
+            
+            stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
+                FROM sorties s JOIN users u ON s.employe_id=u.id
+                WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
+            
+            ventes_7_jours = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0)
+                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
+                GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
+            
+            ventes_par_heure = qall('''SELECT EXTRACT(HOUR FROM date_sortie::timestamp)::int,COALESCE(SUM(total),0)
+                FROM sorties WHERE DATE(date_sortie::timestamp) = CURRENT_DATE
+                GROUP BY 1 ORDER BY 1''')
+            
+            set_cached(cache_key, (total_jour, nb_produits, stock_total, nb_stock_bas, 
+                                   historique, stock_bas, top_produits, stats_vendeurs,
+                                   ventes_7_jours, ventes_par_heure))
         
         return render_template('dashboard.html',
             total_jour=total_jour, nb_produits=nb_produits,
@@ -1089,16 +1128,24 @@ def api_notifications():
         if 'user_id' not in session:
             return jsonify({'error':'Non autorisé'}),401
         
+        cache_key = f'notifications_{session["user_id"]}'
+        cached_data = get_cached(cache_key, 10)
+        
+        if cached_data:
+            return jsonify(cached_data)
+        
         notifs = qall('''SELECT id,type,title,message,lien,date_creation
             FROM notifications WHERE user_id=? AND est_lu=0
             ORDER BY date_creation DESC LIMIT 20''',(session['user_id'],))
         
         total = q1("SELECT COUNT(*) FROM notifications WHERE user_id=? AND est_lu=0",(session['user_id'],))
         
-        return jsonify({
+        data = {
             'notifications':[{'id':n[0],'type':n[1],'title':n[2],'message':n[3],'lien':n[4],'date':n[5]} for n in notifs],
             'total_non_lus': total[0] if total else 0
-        })
+        }
+        set_cached(cache_key, data)
+        return jsonify(data)
     except Exception as e:
         print(f"❌ Erreur api_notifications: {e}")
         return jsonify({'error': str(e)}), 500
@@ -1501,28 +1548,36 @@ def admin_stats():
         if session.get('role') != 'admin':
             return redirect('/login')
         
-        ventes_jour = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*)
-            FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
-            GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
+        cache_key = 'stats_data'
+        cached_data = get_cached(cache_key, 120)
         
-        ventes_mois = qall('''SELECT TO_CHAR(date_sortie::timestamp,'YYYY-MM'),COALESCE(SUM(total),0),COUNT(*)
-            FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '6 months'
-            GROUP BY 1 ORDER BY 1''')
-        
-        top_produits = qall('''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
-            FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
-            GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 10''')
-        
-        marge = q1('''SELECT COALESCE((SELECT SUM(total) FROM sorties),0),
-                             COALESCE((SELECT SUM(total) FROM entrees),0)''')
-        marge = marge if marge else (0,0)
-        
-        marge_produits = qall('''SELECT p.nom,COALESCE(SUM(s.total),0),COALESCE(SUM(e.total),0),
-            COALESCE(SUM(s.total),0)-COALESCE(SUM(e.total),0)
-            FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
-            LEFT JOIN entrees e ON p.id=e.produit_id GROUP BY p.id,p.nom
-            HAVING COALESCE(SUM(s.total),0)+COALESCE(SUM(e.total),0)>0
-            ORDER BY 4 DESC LIMIT 10''')
+        if cached_data:
+            ventes_jour, ventes_mois, top_produits, marge, marge_produits = cached_data
+        else:
+            ventes_jour = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*)
+                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
+                GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
+            
+            ventes_mois = qall('''SELECT TO_CHAR(date_sortie::timestamp,'YYYY-MM'),COALESCE(SUM(total),0),COUNT(*)
+                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '6 months'
+                GROUP BY 1 ORDER BY 1''')
+            
+            top_produits = qall('''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
+                FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
+                GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 10''')
+            
+            marge = q1('''SELECT COALESCE((SELECT SUM(total) FROM sorties),0),
+                                 COALESCE((SELECT SUM(total) FROM entrees),0)''')
+            marge = marge if marge else (0,0)
+            
+            marge_produits = qall('''SELECT p.nom,COALESCE(SUM(s.total),0),COALESCE(SUM(e.total),0),
+                COALESCE(SUM(s.total),0)-COALESCE(SUM(e.total),0)
+                FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
+                LEFT JOIN entrees e ON p.id=e.produit_id GROUP BY p.id,p.nom
+                HAVING COALESCE(SUM(s.total),0)+COALESCE(SUM(e.total),0)>0
+                ORDER BY 4 DESC LIMIT 10''')
+            
+            set_cached(cache_key, (ventes_jour, ventes_mois, top_produits, marge, marge_produits))
         
         return render_template('admin_stats.html', ventes_jour=ventes_jour, ventes_mois=ventes_mois,
             top_produits=top_produits, marge_totale=marge, marge_produits=marge_produits)
@@ -1630,7 +1685,6 @@ def admin_archives():
 # ──────────────────────────────────────────────────────────────
 @app.route('/api/sync/sorties', methods=['POST'])
 def api_sync_sorties():
-    """Synchroniser une vente effectuée hors ligne"""
     try:
         data = request.get_json()
         
@@ -1660,7 +1714,6 @@ def api_sync_sorties():
 
 @app.route('/api/sync/entrees', methods=['POST'])
 def api_sync_entrees():
-    """Synchroniser une entrée de stock effectuée hors ligne"""
     try:
         data = request.get_json()
         
@@ -1690,7 +1743,6 @@ def api_sync_entrees():
 
 @app.route('/api/sync/pertes', methods=['POST'])
 def api_sync_pertes():
-    """Synchroniser une perte effectuée hors ligne"""
     try:
         data = request.get_json()
         
@@ -1830,58 +1882,36 @@ def reset_password(token):
 # ──────────────────────────────────────────────────────────────
 # EXPORT PDF - AVEC LOGO HITNA
 # ──────────────────────────────────────────────────────────────
-
 def format_prix(valeur):
-    """Formater un nombre avec séparateurs de milliers"""
     return f"{valeur:,.0f}".replace(",", " ")
 
 def add_logo_to_pdf(c, width, height, page_num=1, total_pages=1):
-    """Ajouter le logo HITNA en haut à gauche et à droite, et en arrière-plan"""
     try:
         from reportlab.lib.utils import ImageReader
-        import os
-        
-        # Chemin du logo
         logo_path = os.path.join('static', 'images', 'logo.jpg')
         
         if os.path.exists(logo_path):
             img = ImageReader(logo_path)
-            
-            # ── Logo en haut à gauche ──
             logo_size = 40
             c.drawImage(img, 40, height - 55, width=logo_size, height=logo_size, mask='auto')
-            
-            # ── Logo en haut à droite ──
             c.drawImage(img, width - 40 - logo_size, height - 55, width=logo_size, height=logo_size, mask='auto')
             
-            # ── Logo en arrière-plan (filigrane) ──
-            # Sauvegarder l'état actuel
             c.saveState()
-            # Définir la transparence
             c.setFillAlpha(0.07)
-            # Dessiner le logo au centre en grand
             logo_center_size = 200
             x_center = (width - logo_center_size) / 2
             y_center = (height - logo_center_size) / 2
             c.drawImage(img, x_center, y_center, width=logo_center_size, height=logo_center_size, mask='auto')
-            # Restaurer l'état
             c.restoreState()
-            
             return True
         else:
-            # Alternative : logo-192.png si logo.jpg n'existe pas
             alt_logo_path = os.path.join('static', 'images', 'logo-192.png')
             if os.path.exists(alt_logo_path):
                 img = ImageReader(alt_logo_path)
-                
-                # Logo en haut à gauche
                 logo_size = 40
                 c.drawImage(img, 40, height - 55, width=logo_size, height=logo_size, mask='auto')
-                
-                # Logo en haut à droite
                 c.drawImage(img, width - 40 - logo_size, height - 55, width=logo_size, height=logo_size, mask='auto')
                 
-                # Logo en arrière-plan (filigrane)
                 c.saveState()
                 c.setFillAlpha(0.07)
                 logo_center_size = 200
@@ -1889,7 +1919,6 @@ def add_logo_to_pdf(c, width, height, page_num=1, total_pages=1):
                 y_center = (height - logo_center_size) / 2
                 c.drawImage(img, x_center, y_center, width=logo_center_size, height=logo_center_size, mask='auto')
                 c.restoreState()
-                
                 return True
                 
     except Exception as e:
@@ -1907,14 +1936,8 @@ def export_pdf():
         c = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
         
-        # ============================================================
-        # AJOUT DU LOGO HITNA
-        # ============================================================
         add_logo_to_pdf(c, width, height)
         
-        # ============================================================
-        # CONTENU DU PDF
-        # ============================================================
         c.setFont("Helvetica-Bold", 16)
         c.setFillColorRGB(0.12, 0.24, 0.45)
         c.drawString(50, height - 50, "HITNA - Rapport")
@@ -1942,7 +1965,6 @@ def export_pdf():
             y -= 20
             if y < 50:
                 c.showPage()
-                # Ajouter le logo sur chaque nouvelle page
                 add_logo_to_pdf(c, width, height)
                 y = height - 50
                 c.setFont("Helvetica-Bold", 10)
@@ -1964,7 +1986,6 @@ def export_pdf():
 
 @app.route('/export/pdf_jour/<date>')
 def export_pdf_jour(date):
-    """Exporter le rapport d'une journée spécifique en PDF"""
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
@@ -2009,14 +2030,8 @@ def export_pdf_jour(date):
         c = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
         
-        # ============================================================
-        # AJOUT DU LOGO HITNA (sur chaque page)
-        # ============================================================
         add_logo_to_pdf(c, width, height)
         
-        # ============================================================
-        # CONTENU DU PDF
-        # ============================================================
         c.setFont("Helvetica-Bold", 20)
         c.setFillColorRGB(0.12, 0.24, 0.45)
         c.drawString(50, height - 50, "HITNA - Rapport Journalier")
@@ -2073,7 +2088,6 @@ def export_pdf_jour(date):
             for v in ventes[:20]:
                 if y < 50:
                     c.showPage()
-                    # Ajouter le logo sur chaque nouvelle page
                     add_logo_to_pdf(c, width, height)
                     y = height - 50
                     c.setFont("Helvetica-Bold", 12)
@@ -2102,10 +2116,8 @@ def export_pdf_jour(date):
             
             y -= 10
         
-        # --- Page suivante pour entrées et pertes ---
         if entrees or pertes:
             c.showPage()
-            # Ajouter le logo sur la nouvelle page
             add_logo_to_pdf(c, width, height)
             y = height - 50
             c.setFont("Helvetica-Bold", 16)
@@ -2218,7 +2230,6 @@ def export_pdf_jour(date):
                 c.drawString(440, y, p[7][:15] if p[7] else "-")
                 y -= 15
         
-        # Pied de page
         c.showPage()
         add_logo_to_pdf(c, width, height)
         c.setFont("Helvetica", 8)
@@ -2239,6 +2250,7 @@ def export_pdf_jour(date):
         print(f"❌ Erreur export PDF: {e}")
         flash(f'❌ Erreur lors de l\'export PDF: {str(e)}')
         return redirect('/admin/archives')
+
 # ──────────────────────────────────────────────────────────────
 # API JSON
 # ──────────────────────────────────────────────────────────────
@@ -2248,11 +2260,19 @@ def api_produits():
         if 'user_id' not in session:
             return jsonify({'error':'Non autorisé'}),401
         
+        cache_key = 'api_produits'
+        cached_data = get_cached(cache_key, 60)
+        
+        if cached_data:
+            return jsonify(cached_data)
+        
         produits = qall("SELECT id,nom,prix,stock FROM produits ORDER BY nom")
-        return jsonify({
+        data = {
             'produits':[{'id':p[0],'nom':p[1],'prix':p[2],'stock':p[3]} for p in produits],
             'timestamp':datetime.now().isoformat()
-        })
+        }
+        set_cached(cache_key, data)
+        return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -2285,10 +2305,6 @@ def manifest():
 # ──────────────────────────────────────────────────────────────
 # LANCEMENT
 # ──────────────────────────────────────────────────────────────
-print("🔧 Initialisation de la base de données...")
-init_db()
-print("✅ Base de données initialisée")
-
 if __name__ == '__main__':
     init_db()
     port = int(os.environ.get('PORT', 5000))
