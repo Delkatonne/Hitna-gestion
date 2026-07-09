@@ -26,19 +26,12 @@ app.config['MAIL_DEFAULT_SENDER'] = ('HITNA Gestion', 'hitnasuperette@gmail.com'
 mail = Mail(app)
 
 # ══════════════════════════════════════════════════════════════
-# SYSTÈME DE CACHE AVANCÉ
+# SYSTÈME DE CACHE SIMPLE
 # ══════════════════════════════════════════════════════════════
 _cache = {}
-CACHE_TTL = {
-    'produits': 60,        # 1 minute
-    'stats': 120,          # 2 minutes
-    'historique': 30,      # 30 secondes
-    'notifications': 10,   # 10 secondes
-    'ventes': 30,          # 30 secondes
-    'dashboard': 60,       # 1 minute
-}
+CACHE_TTL = 30  # 30 secondes par défaut
 
-def get_cached(key, ttl=60):
+def get_cached(key, ttl=30):
     """Récupérer une valeur du cache"""
     if key in _cache:
         value, timestamp = _cache[key]
@@ -54,69 +47,48 @@ def clear_cache():
     """Vider le cache"""
     _cache.clear()
 
-# ══════════════════════════════════════════════════════════════
-# POOL DE CONNEXIONS POSTGRESQL
-# ══════════════════════════════════════════════════════════════
-_db_pool = None
 
-def get_db_pool():
-    global _db_pool
-    if _db_pool is None:
-        url = os.environ.get('DATABASE_URL', '')
-        if url.startswith('postgres://'):
-            url = url.replace('postgres://', 'postgresql://', 1)
-        if not url:
-            raise RuntimeError("DATABASE_URL manquante. Ajoutez-la dans les variables d'environnement Render.")
-        _db_pool = psycopg2.pool.SimpleConnectionPool(1, 10, url)
-    return _db_pool
-
+# ──────────────────────────────────────────────────────────────
+# CONNEXION POSTGRESQL (SANS POOL)
+# ──────────────────────────────────────────────────────────────
 def get_db():
-    """Obtenir une connexion depuis le pool"""
-    pool = get_db_pool()
-    return pool.getconn()
-
-def release_db(conn):
-    """Libérer une connexion"""
-    pool = get_db_pool()
-    pool.putconn(conn)
+    url = os.environ.get('DATABASE_URL', '')
+    if url.startswith('postgres://'):
+        url = url.replace('postgres://', 'postgresql://', 1)
+    if not url:
+        raise RuntimeError("DATABASE_URL manquante. Ajoutez-la dans les variables d'environnement Render.")
+    return psycopg2.connect(url)
 
 def q1(sql, params=()):
-    """fetchone avec pool de connexions"""
-    conn = None
+    """fetchone — retourne un tuple ou None."""
     try:
         conn = get_db()
         cur = conn.cursor()
         cur.execute(sql.replace('?', '%s'), params)
         row = cur.fetchone()
         cur.close()
+        conn.close()
         return row
     except Exception as e:
         print(f"❌ Erreur q1: {e}")
         return None
-    finally:
-        if conn:
-            release_db(conn)
 
 def qall(sql, params=()):
-    """fetchall avec pool de connexions"""
-    conn = None
+    """fetchall — retourne une liste de tuples."""
     try:
         conn = get_db()
         cur = conn.cursor()
         cur.execute(sql.replace('?', '%s'), params)
         rows = cur.fetchall()
         cur.close()
+        conn.close()
         return rows
     except Exception as e:
         print(f"❌ Erreur qall: {e}")
         return []
-    finally:
-        if conn:
-            release_db(conn)
 
 def exe(sql, params=(), returning=False):
-    """INSERT / UPDATE / DELETE avec pool de connexions"""
-    conn = None
+    """INSERT / UPDATE / DELETE avec commit. returning=True retourne le nouvel id."""
     try:
         sql2 = sql.replace('?', '%s')
         if returning and 'INSERT' in sql2.upper() and 'RETURNING' not in sql2.upper():
@@ -127,25 +99,35 @@ def exe(sql, params=(), returning=False):
         result = cur.fetchone()[0] if returning else None
         conn.commit()
         cur.close()
+        conn.close()
         clear_cache()  # Vider le cache après modification
         return result
     except Exception as e:
         print(f"❌ Erreur exe: {e}")
         return None
-    finally:
-        if conn:
-            release_db(conn)
 
 # ──────────────────────────────────────────────────────────────
-# INITIALISATION BASE DE DONNÉES
+# INITIALISATION BASE DE DONNÉES (SÉCURISÉE - SANS SUPPRESSION)
 # ──────────────────────────────────────────────────────────────
 def init_db():
-    conn = None
     try:
         conn = get_db()
         c = conn.cursor()
+        
+        # ✅ VÉRIFIER SI LES TABLES EXISTENT DÉJÀ
+        c.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='users'")
+        tables_existent = c.fetchone()[0] > 0
+        
+        if tables_existent:
+            print("✅ Tables existantes - AUCUNE MODIFICATION")
+            conn.commit()
+            c.close()
+            conn.close()
+            return  # ⚠️ SORTIE IMMÉDIATE
 
-        # ====== TABLES EXISTANTES ======
+        print("⚠️ Tables non trouvées - Création des tables...")
+        
+        # ====== TABLES ======
         c.execute('''CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY, role TEXT, role_personnalise TEXT,
             password_hash TEXT, nom TEXT, actif INTEGER DEFAULT 1,
@@ -188,7 +170,6 @@ def init_db():
             id SERIAL PRIMARY KEY, user_id INTEGER, token TEXT,
             expires_at TEXT, used INTEGER DEFAULT 0)''')
 
-        # Archives
         c.execute('''CREATE TABLE IF NOT EXISTS archive_ventes (
             id INTEGER, produit_id INTEGER, quantite INTEGER,
             prix_unitaire INTEGER, total INTEGER, date_vente TEXT,
@@ -213,7 +194,6 @@ def init_db():
             total_ventes INTEGER, nb_entrees INTEGER, total_achats INTEGER,
             archive_date TEXT)''')
 
-        # ====== NOUVELLE TABLE : UNITÉS DE MESURE ======
         c.execute('''CREATE TABLE IF NOT EXISTS unites_mesure (
             id SERIAL PRIMARY KEY, 
             nom TEXT UNIQUE, 
@@ -221,7 +201,6 @@ def init_db():
             description TEXT,
             actif INTEGER DEFAULT 1)''')
 
-        # ====== AJOUT DE LA COLONNE unite_id DANS produits ======
         try:
             c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='unite_id'")
             if not c.fetchone():
@@ -230,15 +209,10 @@ def init_db():
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne unite_id: {e}")
 
-        # ====== INDEX POUR ACCÉLÉRER LES REQUÊTES ======
         c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_date ON sorties(date_sortie)')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_produit_id ON sorties(produit_id)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_entrees_date ON entrees(date_entree)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_produits_nom ON produits(nom)')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_employe_id ON sorties(employe_id)')
 
-        # ====== UNITÉS PAR DÉFAUT ======
         c.execute("SELECT COUNT(*) FROM unites_mesure")
         row = c.fetchone()
         if row and row[0] == 0:
@@ -257,28 +231,23 @@ def init_db():
                           (u[0], u[1], u[2], 1))
             print("✅ Unités de mesure par défaut ajoutées")
 
-        # ====== DONNÉES INITIALES ======
         c.execute('SELECT COUNT(*) FROM users')
         row = c.fetchone()
         if row and row[0] == 0:
-            # Admin
             admin_hash = hashlib.sha256('admin123'.encode()).hexdigest()
             c.execute("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions) VALUES (%s,%s,%s,%s,%s,%s)",
                       ('admin','Administrateur', admin_hash, 'Administrateur', 1, 'admin'))
-            # Employé
             emp_hash = hashlib.sha256('emp123'.encode()).hexdigest()
             c.execute("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions) VALUES (%s,%s,%s,%s,%s,%s)",
                       ('employe','Employé', emp_hash, 'Employé', 1, 'vente'))
-            print("✅ Utilisateurs par défaut créés (admin/admin123, employe/emp123)")
+            print("✅ Utilisateurs par défaut créés")
 
         conn.commit()
         c.close()
-        print("✅ Base de données initialisée avec unités de mesure et index")
+        conn.close()
+        print("✅ Base de données initialisée")
     except Exception as e:
         print(f"❌ Erreur init_db: {e}")
-    finally:
-        if conn:
-            release_db(conn)
 
 # ──────────────────────────────────────────────────────────────
 # ARCHIVAGE HEBDOMADAIRE
