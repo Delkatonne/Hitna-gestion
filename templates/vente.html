@@ -332,7 +332,6 @@
         border: 1px solid #e0a800;
     }
 
-    /* Spinner de chargement */
     .spinner {
         display: inline-block;
         width: 20px;
@@ -349,7 +348,6 @@
         to { transform: rotate(360deg); }
     }
 
-    /* ── Style pour la nav-links avec le bouton export ── */
     .nav-links {
         display: flex;
         gap: 12px;
@@ -713,13 +711,12 @@
     }
     
     // ============================================================
-    // VALIDATION VENTE - CORRIGÉE AVEC ACTION DE SECOURS
+    // VALIDATION VENTE
     // ============================================================
     function validateSale() {
         try {
             console.log('🔍 validateSale() appelée');
             
-            // Vérifier qu'un produit est sélectionné
             if (!selectedProduct) {
                 alert('Veuillez sélectionner un produit');
                 return;
@@ -727,7 +724,6 @@
             
             const quantite = parseInt(document.getElementById('quantite').value);
             
-            // Vérifier la quantité
             if (isNaN(quantite) || quantite < 1) {
                 alert('La quantité doit être supérieure à 0');
                 return;
@@ -738,7 +734,6 @@
                 return;
             }
             
-            // Afficher le modal client
             document.getElementById('clientModal').style.display = 'flex';
             document.getElementById('clientNameInput').focus();
             
@@ -749,10 +744,9 @@
     }
     
     // ============================================================
-    // ÉCOUTEURS D'ÉVÉNEMENTS - DOUBLE SÉCURITÉ
+    // ÉCOUTEURS D'ÉVÉNEMENTS
     // ============================================================
     document.addEventListener('DOMContentLoaded', function() {
-        // 1. Ajouter un écouteur d'événement sur le bouton
         const btn = document.getElementById('validateSaleBtn');
         if (btn) {
             btn.addEventListener('click', validateSale);
@@ -761,7 +755,6 @@
             console.error('❌ Bouton validateSaleBtn non trouvé');
         }
         
-        // 2. Vérifier que le formulaire existe
         const form = document.getElementById('saleForm');
         if (form) {
             console.log('✅ Formulaire saleForm trouvé');
@@ -769,7 +762,6 @@
             console.error('❌ Formulaire saleForm non trouvé');
         }
         
-        // 3. Mettre à jour la bannière hors ligne
         updateOfflineBanner();
     });
     
@@ -782,7 +774,6 @@
             document.getElementById('clientName').value = clientName;
             document.getElementById('clientModal').style.display = 'none';
             
-            // Soumettre le formulaire
             const form = document.getElementById('saleForm');
             if (form) {
                 console.log('📤 Soumission du formulaire...');
@@ -816,7 +807,6 @@
         }
     }
     
-    // Fermer le modal en cliquant en dehors
     window.onclick = function(event) {
         const modal = document.getElementById('clientModal');
         if (modal && event.target == modal) {
@@ -825,7 +815,7 @@
     }
 
     // ============================================================
-    // MODE HORS LIGNE - BANNIÈRE
+    // MODE HORS LIGNE
     // ============================================================
     function updateOfflineBanner() {
         const banner = document.getElementById('offlineBanner');
@@ -838,14 +828,13 @@
         }
     }
 
-    // Vérifier si navigator existe avant de l'utiliser
     if (typeof navigator !== 'undefined') {
         window.addEventListener('online', updateOfflineBanner);
         window.addEventListener('offline', updateOfflineBanner);
     }
 
     // ============================================================
-    // TOUCHE ENTRÉE POUR VALIDER LE CLIENT
+    // TOUCHE ENTRÉE
     // ============================================================
     const clientNameInput = document.getElementById('clientNameInput');
     if (clientNameInput) {
@@ -858,7 +847,7 @@
     }
 
     // ============================================================
-    // DÉBOGAGE - AFFICHER L'ÉTAT DE LA PAGE
+    // DÉBOGAGE
     // ============================================================
     console.log('📱 Page vente.html chargée');
     console.log('🔍 Formulaire saleForm:', document.getElementById('saleForm'));
