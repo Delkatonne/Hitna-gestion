@@ -349,6 +349,44 @@
         to { transform: rotate(360deg); }
     }
 
+    /* ── Style pour la nav-links avec le bouton export ── */
+    .nav-links {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 2px solid #e0e0e0;
+    }
+    
+    .nav-links a {
+        color: #2a5298;
+        text-decoration: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        background: #f8f9fa;
+        transition: all 0.3s;
+        display: inline-block;
+    }
+    
+    .nav-links a:hover {
+        background: #2a5298;
+        color: white;
+        transform: translateY(-2px);
+    }
+    
+    .nav-links .btn-export {
+        background: #17a2b8;
+        color: white;
+        font-weight: bold;
+    }
+    
+    .nav-links .btn-export:hover {
+        background: #138496;
+        color: white;
+    }
+
     @media (max-width: 768px) {
         .products-grid {
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -396,6 +434,15 @@
         .modal-content {
             padding: 20px;
             max-width: 95%;
+        }
+        
+        .nav-links {
+            flex-direction: column;
+        }
+        
+        .nav-links a {
+            width: 100%;
+            text-align: center;
         }
     }
 
@@ -549,9 +596,15 @@
     {% endif %}
 </div>
 
+<!-- ============================================================ -->
+<!-- NAVIGATION AVEC BOUTON EXPORT POINT DU JOUR                   -->
+<!-- ============================================================ -->
 <div class="nav-links">
     <a href="/changer_mdp">🔑 Changer mot de passe</a>
-    <a href="/logout">🚪 Déconnexion</a>
+    <a href="/export/pdf_employe" target="_blank" class="btn-export" onclick="this.innerHTML='⏳ Chargement...'; setTimeout(() => { this.innerHTML='📄 Exporter le point du jour'; }, 3000);">
+        📄 Exporter le point du jour
+    </a>
+    <a href="/logout" onclick="return confirm('Voulez-vous vraiment vous déconnecter ?')">🚪 Déconnexion</a>
 </div>
 
 <!-- Modal client -->
