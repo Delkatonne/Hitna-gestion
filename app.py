@@ -30,11 +30,11 @@ mail = Mail(app)
 # ══════════════════════════════════════════════════════════════
 _cache = {}
 CACHE_TTL = {
-    'produits': 120,       # 2 minutes
-    'ventes': 30,          # 30 secondes
-    'dashboard': 60,       # 1 minute
-    'stats': 120,          # 2 minutes
-    'notifications': 10,   # 10 secondes
+    'produits': 4,       # 4secondes
+    'ventes': 4,          # 4secondes
+    'dashboard': 4,       # 4secondes
+    'stats': 4,          # 4secondes
+    'notifications': 4,   # 4secondes
 }
 
 def get_cached(key, ttl=60):
@@ -1414,12 +1414,13 @@ def format_prix(valeur):
     return f"{valeur:,.0f}".replace(",", " ")
 
 def find_logo():
-    """Recherche le logo dans différents emplacements"""
+    """Recherche le logo dans différents emplacements - PRIORITÉ à logo-hitna"""
     logo_paths = [
-        os.path.join('static', 'images', 'logo-hitna.jpg'),
+        os.path.join('static', 'images', 'logo-hitna.jpg'),      # ← 1er choix
         os.path.join('static', 'images', 'logo-hitna.jpeg'),
         os.path.join('static', 'images', 'logo-hitna.png'),
         os.path.join('static', 'images', 'logo-hitna.webp'),
+        # Fallback vers logo.jpg si logo-hitna n'existe pas
         os.path.join('static', 'images', 'logo.jpg'),
         os.path.join('static', 'images', 'logo.jpeg'),
         os.path.join('static', 'images', 'logo.png'),
@@ -1427,9 +1428,10 @@ def find_logo():
     ]
     for path in logo_paths:
         if os.path.exists(path):
+            print(f"✅ Logo trouvé : {path}")
             return path
+    print("⚠️ Aucun logo trouvé dans static/images/")
     return None
-
 def add_header_to_pdf(c, width, height):
     """Ajouter l'en-tête personnalisé HITNA avec logo"""
     try:
@@ -1451,16 +1453,16 @@ def add_header_to_pdf(c, width, height):
         # ── En-tête texte ──
         c.setFont("Helvetica-Bold", 24)
         c.setFillColorRGB(0.12, 0.24, 0.45)
-        c.drawString(100, height - 45, "HITNA")
+        c.drawString(100, height - 45, "HITNA Superette")
         
         c.setFont("Helvetica", 10)
         c.setFillColorRGB(0.3, 0.3, 0.3)
-        c.drawString(100, height - 62, "Système de gestion de superette")
+    
         
         c.setFont("Helvetica", 9)
         c.setFillColorRGB(0.4, 0.4, 0.4)
-        c.drawString(100, height - 78, "📍 Houng-Bo, Petite Noue, Rédement")
-        c.drawString(100, height - 92, "📞 64798537 | 020-11230443")
+        c.drawString(100, height - 78, "📍 Hounsa ; Porto-Novo  Rép: Bénin")
+        c.drawString(100, height - 92, "📞 01 67 19 85 31 | IFU : 02211238429")
         
         c.setStrokeColorRGB(0.8, 0.8, 0.8)
         c.setLineWidth(1)
