@@ -1432,6 +1432,7 @@ def find_logo():
             return path
     print("⚠️ Aucun logo trouvé dans static/images/")
     return None
+
 def add_header_to_pdf(c, width, height):
     """Ajouter l'en-tête personnalisé HITNA avec logo"""
     try:
