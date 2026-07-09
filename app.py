@@ -710,193 +710,6 @@ def ajouter_entree():
         flash('❌ Erreur lors de l\'ajout de l\'entrée')
     return redirect('/admin/entrees')
 
-
-# ─── EXPORT PDF POUR EMPLOYÉ (POINT DU JOUR) ────────────────
-@app.route('/export/pdf_employe')
-def export_pdf_employe():
-    """Export du point du jour pour l'employé (ventes et entrées uniquement)"""
-    try:
-        if 'user_id' not in session:
-            flash('❌ Veuillez vous connecter')
-            return redirect('/login')
-        
-        date_sql = datetime.now().strftime('%Y-%m-%d')
-        date_str = datetime.now().strftime('%d/%m/%Y')
-        
-        ventes = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total, 
-                                s.date_sortie, s.client, u.nom as vendeur
-                         FROM sorties s 
-                         JOIN produits p ON s.produit_id = p.id 
-                         JOIN users u ON s.employe_id = u.id
-                         WHERE DATE(s.date_sortie) = %s
-                         ORDER BY s.date_sortie DESC''', (date_sql,))
-        
-        entrees = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total, 
-                                 e.date_entree, e.fournisseur, u.nom as enregistreur
-                          FROM entrees e 
-                          JOIN produits p ON e.produit_id = p.id 
-                          JOIN users u ON e.employe_id = u.id
-                          WHERE DATE(e.date_entree) = %s
-                          ORDER BY e.date_entree DESC''', (date_sql,))
-        
-        total_ventes = sum(v[4] for v in ventes) if ventes else 0
-        total_entrees = sum(e[4] for e in entrees) if entrees else 0
-        nb_ventes = len(ventes)
-        nb_entrees = len(entrees)
-        
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=A4)
-        width, height = A4
-        
-        add_header_to_pdf(c, width, height)
-        add_logo_to_pdf(c, width, height)
-        
-        # Titre
-        c.setFont("Helvetica-Bold", 16)
-        c.setFillColorRGB(0.12, 0.24, 0.45)
-        c.drawString(50, height - 125, f"📋 POINT DU JOUR - {date_str}")
-        
-        y = height - 155
-        
-        # Résumé
-        c.setFont("Helvetica-Bold", 12)
-        c.setFillColorRGB(0.12, 0.24, 0.45)
-        c.drawString(50, y, "📊 RÉSUMÉ")
-        y -= 22
-        
-        c.setFont("Helvetica", 10)
-        c.setFillColorRGB(0, 0, 0)
-        c.drawString(50, y, f"💰 Ventes : {nb_ventes} vente(s) - {format_prix(total_ventes)} FCFA")
-        y -= 18
-        c.drawString(50, y, f"📥 Entrées : {nb_entrees} entrée(s) - {format_prix(total_entrees)} FCFA")
-        y -= 25
-        
-        c.setStrokeColorRGB(0.8, 0.8, 0.8)
-        c.setLineWidth(0.5)
-        c.line(50, y, width - 50, y)
-        y -= 18
-        
-        # Ventes
-        if ventes:
-            c.setFont("Helvetica-Bold", 11)
-            c.setFillColorRGB(0.12, 0.24, 0.45)
-            c.drawString(50, y, "🛒 VENTES")
-            y -= 18
-            
-            c.setFont("Helvetica-Bold", 8)
-            c.setFillColorRGB(0.3, 0.3, 0.3)
-            c.drawString(50, y, "Produit")
-            c.drawString(170, y, "Qté")
-            c.drawString(210, y, "Prix unit.")
-            c.drawString(290, y, "Total")
-            c.drawString(370, y, "Client")
-            c.drawString(440, y, "Vendeur")
-            y -= 14
-            
-            c.setFont("Helvetica", 7.5)
-            c.setFillColorRGB(0, 0, 0)
-            for v in ventes[:25]:
-                if y < 50:
-                    c.showPage()
-                    add_header_to_pdf(c, width, height)
-                    add_logo_to_pdf(c, width, height)
-                    y = height - 100
-                    c.setFont("Helvetica-Bold", 8)
-                    c.setFillColorRGB(0.3, 0.3, 0.3)
-                    c.drawString(50, y, "Produit")
-                    c.drawString(170, y, "Qté")
-                    c.drawString(210, y, "Prix unit.")
-                    c.drawString(290, y, "Total")
-                    c.drawString(370, y, "Client")
-                    c.drawString(440, y, "Vendeur")
-                    y -= 14
-                    c.setFont("Helvetica", 7.5)
-                    c.setFillColorRGB(0, 0, 0)
-                
-                c.drawString(50, y, v[1][:28] if v[1] else "-")
-                c.drawString(170, y, str(v[2]) if v[2] else "-")
-                c.drawString(210, y, format_prix(v[3]) if v[3] else "-")
-                c.drawString(290, y, format_prix(v[4]) if v[4] else "-")
-                c.drawString(370, y, v[6][:12] if v[6] else "-")
-                c.drawString(440, y, v[7][:12] if v[7] else "-")
-                y -= 14
-            
-            y -= 8
-        
-        # Entrées
-        if entrees:
-            if y < 100:
-                c.showPage()
-                add_header_to_pdf(c, width, height)
-                add_logo_to_pdf(c, width, height)
-                y = height - 100
-            
-            c.setFont("Helvetica-Bold", 11)
-            c.setFillColorRGB(0.12, 0.24, 0.45)
-            c.drawString(50, y, "📥 ENTRÉES")
-            y -= 18
-            
-            c.setFont("Helvetica-Bold", 8)
-            c.setFillColorRGB(0.3, 0.3, 0.3)
-            c.drawString(50, y, "Produit")
-            c.drawString(170, y, "Qté")
-            c.drawString(210, y, "Prix unit.")
-            c.drawString(290, y, "Total")
-            c.drawString(370, y, "Fournisseur")
-            c.drawString(440, y, "Enreg.")
-            y -= 14
-            
-            c.setFont("Helvetica", 7.5)
-            c.setFillColorRGB(0, 0, 0)
-            for e in entrees[:20]:
-                if y < 50:
-                    c.showPage()
-                    add_header_to_pdf(c, width, height)
-                    add_logo_to_pdf(c, width, height)
-                    y = height - 100
-                    c.setFont("Helvetica-Bold", 8)
-                    c.setFillColorRGB(0.3, 0.3, 0.3)
-                    c.drawString(50, y, "Produit")
-                    c.drawString(170, y, "Qté")
-                    c.drawString(210, y, "Prix unit.")
-                    c.drawString(290, y, "Total")
-                    c.drawString(370, y, "Fournisseur")
-                    c.drawString(440, y, "Enreg.")
-                    y -= 14
-                    c.setFont("Helvetica", 7.5)
-                    c.setFillColorRGB(0, 0, 0)
-                
-                c.drawString(50, y, e[1][:28] if e[1] else "-")
-                c.drawString(170, y, str(e[2]) if e[2] else "-")
-                c.drawString(210, y, format_prix(e[3]) if e[3] else "-")
-                c.drawString(290, y, format_prix(e[4]) if e[4] else "-")
-                c.drawString(370, y, e[6][:12] if e[6] else "-")
-                c.drawString(440, y, e[7][:12] if e[7] else "-")
-                y -= 14
-        
-        c.showPage()
-        add_header_to_pdf(c, width, height)
-        add_logo_to_pdf(c, width, height)
-        c.setFont("Helvetica", 8)
-        c.setFillColorRGB(0.5, 0.5, 0.5)
-        c.drawString(50, 30, f"HITNA - Point du jour {date_str} - Généré automatiquement")
-        
-        c.save()
-        buffer.seek(0)
-        
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name=f"point_du_jour_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mimetype='application/pdf'
-        )
-        
-    except Exception as e:
-        print(f"❌ Erreur export PDF employé: {e}")
-        flash(f'❌ Erreur lors de l\'export PDF: {str(e)}')
-        return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
-    
-    
 # ─── VENTES ADMIN ──────────────────────────────────────────────
 @app.route('/admin/ventes', methods=['GET','POST'])
 def admin_ventes():
@@ -1209,10 +1022,389 @@ def api_stock_bas():
         return jsonify({'error': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════
-# ALERTES PRODUITS, ACTEURS, FOURNISSEURS, STATS, ARCHIVES
+# ACTEURS
 # ══════════════════════════════════════════════════════════════
-# (Garder vos routes existantes pour acteurs, fournisseurs, stats, archives)
-# Je les ai raccourcies pour la lisibilité mais elles restent identiques
+@app.route('/admin/acteurs')
+def admin_acteurs():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        acteurs = qall('''SELECT id,nom,role,role_personnalise,password_hash,
+            COALESCE(actif,1),COALESCE(motif_absence,''),COALESCE(permissions,'vente'),COALESCE(email,'')
+            FROM users ORDER BY role DESC,actif DESC,id''')
+        return render_template('admin_acteurs.html', acteurs=acteurs)
+    except Exception as e:
+        print(f"❌ Erreur admin_acteurs: {e}")
+        flash('Erreur lors du chargement des acteurs')
+        return redirect('/dashboard')
+
+@app.route('/admin/acteurs/ajouter', methods=['POST'])
+def ajouter_acteur():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nom = request.form.get('nom', '')
+        rb = request.form.get('role_base', 'employe')
+        rp = request.form.get('role_personnalise', '')
+        mdp = request.form.get('mot_de_passe', '')
+        email = request.form.get('email', '')
+        if not nom or not mdp:
+            flash('❌ Nom et mot de passe obligatoires')
+            return redirect('/admin/acteurs')
+        ph = hashlib.sha256(mdp.encode()).hexdigest()
+        perms = 'admin' if rb == 'admin' else 'vente'
+        exe("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions,email) VALUES (?,?,?,?,1,?,?)",
+            (rb,rp,ph,nom,perms,email))
+        flash(f'✅ Acteur "{nom}" créé')
+    except Exception as e:
+        print(f"❌ Erreur ajouter_acteur: {e}")
+        flash('❌ Erreur lors de la création de l\'acteur')
+    return redirect('/admin/acteurs')
+
+@app.route('/admin/acteurs/modifier/<int:id>', methods=['POST'])
+def modifier_acteur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nom = request.form.get('nom', '')
+        rp = request.form.get('role_personnalise', '')
+        email = request.form.get('email', '')
+        perms = ','.join(request.form.getlist('permissions')) or 'vente'
+        actif = int(request.form.get('actif', 1))
+        motif = request.form.get('motif_absence', '')
+        exe("UPDATE users SET nom=?,role_personnalise=?,email=?,permissions=?,actif=?,motif_absence=? WHERE id=?",
+            (nom,rp,email,perms,actif,motif,id))
+        if request.form.get('new_password'):
+            exe("UPDATE users SET password_hash=? WHERE id=?",
+                (hashlib.sha256(request.form['new_password'].encode()).hexdigest(),id))
+        flash(f'✅ Acteur "{nom}" modifié')
+    except Exception as e:
+        print(f"❌ Erreur modifier_acteur: {e}")
+        flash('❌ Erreur lors de la modification')
+    return redirect('/admin/acteurs')
+
+@app.route('/admin/acteurs/permissions/<int:id>', methods=['POST'])
+def modifier_permissions_acteur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        perms = request.form.getlist('permissions')
+        if not perms:
+            perms = ['vente']
+        permissions_str = ','.join(perms)
+        exe("UPDATE users SET permissions = %s WHERE id = %s", (permissions_str, id))
+        flash('✅ Permissions mises à jour avec succès')
+    except Exception as e:
+        print(f"❌ Erreur modifier_permissions_acteur: {e}")
+        flash(f'❌ Erreur: {str(e)}')
+    return redirect('/admin/acteurs')
+
+@app.route('/admin/acteurs/modifier_email/<int:id>', methods=['POST'])
+def modifier_email_acteur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        email = request.form.get('email', '')
+        exe("UPDATE users SET email = %s WHERE id = %s", (email, id))
+        flash('✅ Email mis à jour avec succès')
+    except Exception as e:
+        print(f"❌ Erreur modifier_email_acteur: {e}")
+        flash(f'❌ Erreur: {str(e)}')
+    return redirect('/admin/acteurs')
+
+@app.route('/admin/acteurs/modifier_role/<int:id>', methods=['POST'])
+def modifier_role_acteur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        role_personnalise = request.form.get('role_personnalise', '')
+        exe("UPDATE users SET role_personnalise = %s WHERE id = %s", (role_personnalise, id))
+        flash('✅ Rôle personnalisé mis à jour avec succès')
+    except Exception as e:
+        print(f"❌ Erreur modifier_role_acteur: {e}")
+        flash(f'❌ Erreur: {str(e)}')
+    return redirect('/admin/acteurs')
+
+@app.route('/admin/acteurs/reset_mdp/<int:id>', methods=['POST'])
+def reset_mdp_acteur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nouveau_mdp = request.form.get('nouveau_mdp', '')
+        if len(nouveau_mdp) < 4:
+            flash('❌ Le mot de passe doit contenir au moins 4 caractères')
+            return redirect('/admin/acteurs')
+        password_hash = hashlib.sha256(nouveau_mdp.encode()).hexdigest()
+        exe("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, id))
+        flash('✅ Mot de passe réinitialisé avec succès')
+    except Exception as e:
+        print(f"❌ Erreur reset_mdp_acteur: {e}")
+        flash(f'❌ Erreur: {str(e)}')
+    return redirect('/admin/acteurs')
+
+@app.route('/admin/acteurs/desactiver/<int:id>', methods=['POST'])
+def desactiver_acteur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        if id == session.get('user_id'):
+            flash('❌ Impossible de désactiver votre propre compte')
+            return redirect('/admin/acteurs')
+        motif = request.form.get('motif', '')
+        motif_autre = request.form.get('motif_autre', '')
+        if motif == 'Autre' and motif_autre:
+            motif = motif_autre
+        exe("UPDATE users SET actif = 0, motif_absence = %s WHERE id = %s", (motif, id))
+        flash(f'✅ Compte désactivé avec succès. Motif: {motif}')
+    except Exception as e:
+        print(f"❌ Erreur desactiver_acteur: {e}")
+        flash(f'❌ Erreur: {str(e)}')
+    return redirect('/admin/acteurs')
+
+@app.route('/admin/acteurs/reactiver/<int:id>')
+def reactiver_acteur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        if id == session.get('user_id'):
+            flash('❌ Impossible de réactiver votre propre compte')
+            return redirect('/admin/acteurs')
+        exe("UPDATE users SET actif = 1, motif_absence = '' WHERE id = %s", (id,))
+        flash('✅ Compte réactivé avec succès')
+    except Exception as e:
+        print(f"❌ Erreur reactiver_acteur: {e}")
+        flash(f'❌ Erreur: {str(e)}')
+    return redirect('/admin/acteurs')
+
+@app.route('/admin/acteurs/supprimer/<int:id>')
+def supprimer_acteur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        if id == session.get('user_id'):
+            flash('❌ Impossible de supprimer votre propre compte')
+            return redirect('/admin/acteurs')
+        u = q1("SELECT nom FROM users WHERE id=?",(id,))
+        if u:
+            exe("DELETE FROM users WHERE id=?",(id,))
+            flash(f'🗑️ "{u[0]}" supprimé')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_acteur: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/acteurs')
+
+@app.route('/admin/acteurs/verifier_mdp', methods=['POST'])
+def verifier_mdp_admin():
+    try:
+        if session.get('role') != 'admin':
+            return jsonify({'success':False,'message':'Non autorisé'})
+        data = request.get_json()
+        mdp = data.get('mot_de_passe','')
+        r = q1("SELECT password_hash FROM users WHERE id=? AND role='admin'",(session.get('user_id'),))
+        if r and r[0] == hashlib.sha256(mdp.encode()).hexdigest():
+            session['mdp_verifie'] = True
+            return jsonify({'success':True})
+        return jsonify({'success':False,'message':'Mot de passe incorrect'})
+    except Exception as e:
+        return jsonify({'success':False,'message': str(e)})
+
+# ══════════════════════════════════════════════════════════════
+# FOURNISSEURS
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/fournisseurs')
+def admin_fournisseurs():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        fournisseurs = qall("SELECT * FROM fournisseurs ORDER BY nom")
+        return render_template('admin_fournisseurs.html', fournisseurs=fournisseurs)
+    except Exception as e:
+        print(f"❌ Erreur admin_fournisseurs: {e}")
+        flash('Erreur lors du chargement des fournisseurs')
+        return redirect('/dashboard')
+
+@app.route('/admin/fournisseurs/ajouter', methods=['POST'])
+def ajouter_fournisseur():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nom = request.form.get('nom', '')
+        produits = request.form.get('produits', '')
+        telephone = request.form.get('telephone', '')
+        email = request.form.get('email', '')
+        adresse = request.form.get('adresse', '')
+        if not nom:
+            flash('❌ Le nom du fournisseur est obligatoire')
+            return redirect('/admin/fournisseurs')
+        exe("INSERT INTO fournisseurs (nom,produits,telephone,email,adresse) VALUES (?,?,?,?,?)",
+            (nom,produits,telephone,email,adresse))
+        flash('✅ Fournisseur ajouté')
+    except Exception as e:
+        print(f"❌ Erreur ajouter_fournisseur: {e}")
+        flash('❌ Erreur lors de l\'ajout du fournisseur')
+    return redirect('/admin/fournisseurs')
+
+@app.route('/admin/fournisseurs/modifier/<int:id>', methods=['POST'])
+def modifier_fournisseur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nom = request.form.get('nom', '')
+        produits = request.form.get('produits', '')
+        telephone = request.form.get('telephone', '')
+        email = request.form.get('email', '')
+        adresse = request.form.get('adresse', '')
+        exe("UPDATE fournisseurs SET nom=?,produits=?,telephone=?,email=?,adresse=? WHERE id=?",
+            (nom,produits,telephone,email,adresse,id))
+        flash(f'✅ "{nom}" modifié')
+    except Exception as e:
+        print(f"❌ Erreur modifier_fournisseur: {e}")
+        flash('❌ Erreur lors de la modification')
+    return redirect('/admin/fournisseurs')
+
+@app.route('/admin/fournisseurs/supprimer/<int:id>')
+def supprimer_fournisseur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        f = q1("SELECT nom FROM fournisseurs WHERE id=?",(id,))
+        if f:
+            exe("DELETE FROM fournisseurs WHERE id=?",(id,))
+            flash(f'🗑️ "{f[0]}" supprimé')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_fournisseur: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/fournisseurs')
+
+# ══════════════════════════════════════════════════════════════
+# STATISTIQUES
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/stats')
+def admin_stats():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        cache_key = 'stats_data'
+        cached_data = get_cached(cache_key, 120)
+        if cached_data:
+            ventes_jour, ventes_mois, top_produits, marge, marge_produits = cached_data
+        else:
+            ventes_jour = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*)
+                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
+                GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
+            ventes_mois = qall('''SELECT TO_CHAR(date_sortie::timestamp,'YYYY-MM'),COALESCE(SUM(total),0),COUNT(*)
+                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '6 months'
+                GROUP BY 1 ORDER BY 1''')
+            top_produits = qall('''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
+                FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
+                GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 10''')
+            marge = q1('''SELECT COALESCE((SELECT SUM(total) FROM sorties),0),
+                                 COALESCE((SELECT SUM(total) FROM entrees),0)''')
+            marge = marge if marge else (0,0)
+            marge_produits = qall('''SELECT p.nom,COALESCE(SUM(s.total),0),COALESCE(SUM(e.total),0),
+                COALESCE(SUM(s.total),0)-COALESCE(SUM(e.total),0)
+                FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
+                LEFT JOIN entrees e ON p.id=e.produit_id GROUP BY p.id,p.nom
+                HAVING COALESCE(SUM(s.total),0)+COALESCE(SUM(e.total),0)>0
+                ORDER BY 4 DESC LIMIT 10''')
+            set_cached(cache_key, (ventes_jour, ventes_mois, top_produits, marge, marge_produits))
+        return render_template('admin_stats.html', ventes_jour=ventes_jour, ventes_mois=ventes_mois,
+            top_produits=top_produits, marge_totale=marge, marge_produits=marge_produits)
+    except Exception as e:
+        print(f"❌ Erreur admin_stats: {e}")
+        flash('Erreur lors du chargement des statistiques')
+        return redirect('/dashboard')
+
+# ══════════════════════════════════════════════════════════════
+# ARCHIVES
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/archives')
+def admin_archives():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        type_arch = request.args.get('type', 'ventes')
+        date_debut = request.args.get('date_debut', '')
+        date_fin = request.args.get('date_fin', '')
+        produit_filtre = request.args.get('produit', '')
+        tri = request.args.get('tri', 'date_desc')
+        order = 'DESC' if 'desc' in tri else 'ASC'
+
+        rows = []
+        if type_arch == 'entrees':
+            rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_entree,fournisseur,employe_nom,archive_date
+                FROM archive_entrees WHERE 1=1
+                {"AND date_entree>='"+date_debut+"'" if date_debut else ""}
+                {"AND date_entree<='"+date_fin+" 23:59:59'" if date_fin else ""}
+                {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
+                ORDER BY date_entree {order} LIMIT 200''')
+        elif type_arch == 'pertes':
+            rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,motif,date_perte,employe_nom,archive_date
+                FROM archive_pertes WHERE 1=1
+                {"AND date_perte>='"+date_debut+"'" if date_debut else ""}
+                {"AND date_perte<='"+date_fin+" 23:59:59'" if date_fin else ""}
+                {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
+                ORDER BY date_perte {order} LIMIT 200''')
+        else:
+            rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_vente,client,employe_nom,archive_date
+                FROM archive_ventes WHERE 1=1
+                {"AND date_vente>='"+date_debut+"'" if date_debut else ""}
+                {"AND date_vente<='"+date_fin+" 23:59:59'" if date_fin else ""}
+                {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
+                ORDER BY date_vente {order} LIMIT 200''')
+
+        nb_ventes_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_ventes") or (0,0)
+        nb_entrees_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_entrees") or (0,0)
+        nb_pertes_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_pertes") or (0,0)
+
+        total_ca_archive = nb_ventes_arch[1] if nb_ventes_arch else 0
+        total_achats_archive = nb_entrees_arch[1] if nb_entrees_arch else 0
+        total_pertes_ca = nb_pertes_arch[1] if nb_pertes_arch else 0
+
+        return render_template('archives.html', 
+            archives=rows, 
+            type_archive=type_arch,
+            ventes_archive=rows if type_arch=='ventes' else [],
+            entrees_archive=rows if type_arch=='entrees' else [],
+            pertes_archive=rows if type_arch=='pertes' else [],
+            nb_ventes_arch=nb_ventes_arch[0] if nb_ventes_arch else 0,
+            nb_entrees_arch=nb_entrees_arch[0] if nb_entrees_arch else 0,
+            nb_pertes_arch=nb_pertes_arch[0] if nb_pertes_arch else 0,
+            total_ventes_archive=nb_ventes_arch[0] if nb_ventes_arch else 0,
+            total_entrees_archive=nb_entrees_arch[0] if nb_entrees_arch else 0,
+            total_pertes_archive=nb_pertes_arch[0] if nb_pertes_arch else 0,
+            total_ca_archive=total_ca_archive,
+            total_achats_archive=total_achats_archive,
+            total_pertes_ca=total_pertes_ca,
+            date_debut=date_debut, 
+            date_fin=date_fin, 
+            produit_filtre=produit_filtre, 
+            tri=tri,
+            type_data=type_arch)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash(f'❌ Erreur lors du chargement des archives: {str(e)}')
+        return render_template('archives.html', 
+            archives=[],
+            type_archive=type_arch,
+            ventes_archive=[],
+            entrees_archive=[],
+            pertes_archive=[],
+            nb_ventes_arch=0,
+            nb_entrees_arch=0,
+            nb_pertes_arch=0,
+            total_ventes_archive=0,
+            total_entrees_archive=0,
+            total_pertes_archive=0,
+            total_ca_archive=0,
+            total_achats_archive=0,
+            total_pertes_ca=0,
+            date_debut=date_debut,
+            date_fin=date_fin,
+            produit_filtre=produit_filtre,
+            tri=tri,
+            type_data=type_arch)
 
 # ══════════════════════════════════════════════════════════════
 # EXPORT PDF - AVEC LOGO CORRIGÉ
@@ -1300,10 +1492,246 @@ def add_logo_to_pdf(c, width, height):
         print(f"⚠️ Erreur ajout filigrane: {e}")
     return False
 
-# ─── EXPORT PDF POUR EMPLOYÉ ──────────────────────────────────
+# ─── EXPORT PDF POUR ADMIN ────────────────────────────────────
+@app.route('/export/pdf')
+def export_pdf():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(0.4, 0.4, 0.4)
+        c.drawString(50, height - 125, f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        
+        y = height - 150
+        data = qall("SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*) FROM sorties GROUP BY DATE(date_sortie::timestamp) ORDER BY 1 DESC LIMIT 30")
+        
+        c.setFont("Helvetica-Bold", 10)
+        c.setFillColorRGB(0.12, 0.24, 0.45)
+        c.drawString(50, y, "Date")
+        c.drawString(150, y, "Montant (FCFA)")
+        c.drawString(280, y, "Ventes")
+        y -= 20
+        
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(0, 0, 0)
+        for row in data:
+            c.drawString(50, y, str(row[0]))
+            c.drawString(150, y, f"{row[1]:,}")
+            c.drawString(280, y, str(row[2]))
+            y -= 20
+            if y < 50:
+                c.showPage()
+                add_header_to_pdf(c, width, height)
+                add_logo_to_pdf(c, width, height)
+                y = height - 100
+                c.setFont("Helvetica-Bold", 10)
+                c.setFillColorRGB(0.12, 0.24, 0.45)
+                c.drawString(50, y, "Date")
+                c.drawString(150, y, "Montant (FCFA)")
+                c.drawString(280, y, "Ventes")
+                y -= 20
+        
+        c.save()
+        buffer.seek(0)
+        
+        return send_file(buffer, as_attachment=True,
+            download_name=f"rapport_{datetime.now().strftime('%Y%m%d')}.pdf", mimetype='application/pdf')
+    except Exception as e:
+        print(f"❌ Erreur export_pdf: {e}")
+        flash('Erreur lors de l\'export PDF')
+        return redirect('/dashboard')
+
+# ─── EXPORT PDF POUR ADMIN (JOURNÉE SPÉCIFIQUE) ─────────────
+@app.route('/export/pdf_jour/<date>')
+def export_pdf_jour(date):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        
+        date_obj = datetime.strptime(date, '%Y-%m-%d')
+        date_str = date_obj.strftime('%d/%m/%Y')
+        date_sql = date_obj.strftime('%Y-%m-%d')
+        
+        ventes = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total, 
+                                s.date_sortie, s.client, u.nom as vendeur
+                         FROM sorties s 
+                         JOIN produits p ON s.produit_id = p.id 
+                         JOIN users u ON s.employe_id = u.id
+                         WHERE DATE(s.date_sortie) = %s
+                         ORDER BY s.date_sortie DESC''', (date_sql,))
+        
+        entrees = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total, 
+                                 e.date_entree, e.fournisseur, u.nom as enregistreur
+                          FROM entrees e 
+                          JOIN produits p ON e.produit_id = p.id 
+                          JOIN users u ON e.employe_id = u.id
+                          WHERE DATE(e.date_entree) = %s
+                          ORDER BY e.date_entree DESC''', (date_sql,))
+        
+        total_ventes = sum(v[4] for v in ventes) if ventes else 0
+        total_entrees = sum(e[4] for e in entrees) if entrees else 0
+        nb_ventes = len(ventes)
+        nb_entrees = len(entrees)
+        
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        
+        y = height - 130
+        
+        # ── RÉSUMÉ DU JOUR (SANS PERTES NI BÉNÉFICE) ──
+        c.setFont("Helvetica-Bold", 14)
+        c.setFillColorRGB(0.12, 0.24, 0.45)
+        c.drawString(50, y, "📊 RÉSUMÉ DU JOUR")
+        y -= 25
+        
+        c.setFont("Helvetica", 11)
+        c.setFillColorRGB(0, 0, 0)
+        c.drawString(50, y, f"💰 Ventes : {nb_ventes} vente(s) - {format_prix(total_ventes)} FCFA")
+        y -= 20
+        c.drawString(50, y, f"📥 Entrées : {nb_entrees} entrée(s) - {format_prix(total_entrees)} FCFA")
+        y -= 30
+        
+        c.setStrokeColorRGB(0.8, 0.8, 0.8)
+        c.setLineWidth(0.5)
+        c.line(50, y, width - 50, y)
+        y -= 20
+        
+        # ── VENTES ──
+        if ventes:
+            c.setFont("Helvetica-Bold", 12)
+            c.setFillColorRGB(0.12, 0.24, 0.45)
+            c.drawString(50, y, "🛒 VENTES DU JOUR")
+            y -= 20
+            
+            c.setFont("Helvetica-Bold", 9)
+            c.setFillColorRGB(0.3, 0.3, 0.3)
+            c.drawString(50, y, "Produit")
+            c.drawString(180, y, "Qté")
+            c.drawString(220, y, "Prix unit.")
+            c.drawString(300, y, "Total")
+            c.drawString(380, y, "Client")
+            c.drawString(440, y, "Vendeur")
+            y -= 15
+            
+            c.setFont("Helvetica", 8)
+            c.setFillColorRGB(0, 0, 0)
+            for v in ventes[:20]:
+                if y < 50:
+                    c.showPage()
+                    add_header_to_pdf(c, width, height)
+                    add_logo_to_pdf(c, width, height)
+                    y = height - 100
+                    c.setFont("Helvetica-Bold", 9)
+                    c.setFillColorRGB(0.3, 0.3, 0.3)
+                    c.drawString(50, y, "Produit")
+                    c.drawString(180, y, "Qté")
+                    c.drawString(220, y, "Prix unit.")
+                    c.drawString(300, y, "Total")
+                    c.drawString(380, y, "Client")
+                    c.drawString(440, y, "Vendeur")
+                    y -= 15
+                    c.setFont("Helvetica", 8)
+                    c.setFillColorRGB(0, 0, 0)
+                
+                c.drawString(50, y, v[1][:30])
+                c.drawString(180, y, str(v[2]))
+                c.drawString(220, y, format_prix(v[3]))
+                c.drawString(300, y, format_prix(v[4]))
+                c.drawString(380, y, v[6][:15] if v[6] else "-")
+                c.drawString(440, y, v[7][:15] if v[7] else "-")
+                y -= 15
+            
+            y -= 10
+        
+        # ── ENTRÉES ──
+        if entrees:
+            if y < 100:
+                c.showPage()
+                add_header_to_pdf(c, width, height)
+                add_logo_to_pdf(c, width, height)
+                y = height - 100
+            
+            c.setFont("Helvetica-Bold", 12)
+            c.setFillColorRGB(0.12, 0.24, 0.45)
+            c.drawString(50, y, "📥 ENTRÉES DE STOCK")
+            y -= 20
+            
+            c.setFont("Helvetica-Bold", 9)
+            c.setFillColorRGB(0.3, 0.3, 0.3)
+            c.drawString(50, y, "Produit")
+            c.drawString(180, y, "Qté")
+            c.drawString(220, y, "Prix unit.")
+            c.drawString(300, y, "Total")
+            c.drawString(380, y, "Fournisseur")
+            c.drawString(440, y, "Enreg.")
+            y -= 15
+            
+            c.setFont("Helvetica", 8)
+            c.setFillColorRGB(0, 0, 0)
+            for e in entrees[:15]:
+                if y < 50:
+                    c.showPage()
+                    add_header_to_pdf(c, width, height)
+                    add_logo_to_pdf(c, width, height)
+                    y = height - 100
+                    c.setFont("Helvetica-Bold", 9)
+                    c.setFillColorRGB(0.3, 0.3, 0.3)
+                    c.drawString(50, y, "Produit")
+                    c.drawString(180, y, "Qté")
+                    c.drawString(220, y, "Prix unit.")
+                    c.drawString(300, y, "Total")
+                    c.drawString(380, y, "Fournisseur")
+                    c.drawString(440, y, "Enreg.")
+                    y -= 15
+                    c.setFont("Helvetica", 8)
+                    c.setFillColorRGB(0, 0, 0)
+                
+                c.drawString(50, y, e[1][:30])
+                c.drawString(180, y, str(e[2]))
+                c.drawString(220, y, format_prix(e[3]))
+                c.drawString(300, y, format_prix(e[4]))
+                c.drawString(380, y, e[6][:15] if e[6] else "-")
+                c.drawString(440, y, e[7][:15] if e[7] else "-")
+                y -= 15
+        
+        c.showPage()
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(0.5, 0.5, 0.5)
+        c.drawString(50, 30, "HITNA - Système de gestion - Rapport généré automatiquement")
+        
+        c.save()
+        buffer.seek(0)
+        
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"rapport_{date}.pdf",
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        print(f"❌ Erreur export PDF: {e}")
+        flash(f'❌ Erreur lors de l\'export PDF: {str(e)}')
+        return redirect('/admin/archives')
+
+# ─── EXPORT PDF POUR EMPLOYÉ (POINT DU JOUR) ────────────────
 @app.route('/export/pdf_employe')
 def export_pdf_employe():
-    """Export du point du jour pour l'employé"""
+    """Export du point du jour pour l'employé (ventes et entrées uniquement)"""
     try:
         if 'user_id' not in session:
             flash('❌ Veuillez vous connecter')
@@ -1486,7 +1914,173 @@ def export_pdf_employe():
         return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
 
 # ══════════════════════════════════════════════════════════════
-# API ET AUTRES ROUTES
+# API DE SYNCHRONISATION POUR MODE HORS LIGNE
+# ══════════════════════════════════════════════════════════════
+@app.route('/api/sync/sorties', methods=['POST'])
+def api_sync_sorties():
+    try:
+        data = request.get_json()
+        if not data.get('produit_id') or not data.get('quantite'):
+            return jsonify({'error': 'Données manquantes'}), 400
+        produit = q1("SELECT prix FROM produits WHERE id = %s", (data['produit_id'],))
+        if not produit:
+            return jsonify({'error': 'Produit non trouvé'}), 404
+        prix_unitaire = produit[0]
+        total = data['quantite'] * prix_unitaire
+        exe("""INSERT INTO sorties 
+            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (data['produit_id'], data['quantite'], prix_unitaire, total,
+             data.get('date_sortie', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+             data.get('client', ''), data.get('employe_id', 1)))
+        exe("UPDATE produits SET stock = stock - %s WHERE id = %s", (data['quantite'], data['produit_id']))
+        verifier_alertes_stock()
+        return jsonify({'success': True, 'message': 'Vente synchronisée'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sync/entrees', methods=['POST'])
+def api_sync_entrees():
+    try:
+        data = request.get_json()
+        if not data.get('produit_id') or not data.get('quantite'):
+            return jsonify({'error': 'Données manquantes'}), 400
+        produit = q1("SELECT prix FROM produits WHERE id = %s", (data['produit_id'],))
+        if not produit:
+            return jsonify({'error': 'Produit non trouvé'}), 404
+        prix_unitaire = data.get('prix_unitaire', produit[0])
+        total = data['quantite'] * prix_unitaire
+        exe("""INSERT INTO entrees 
+            (produit_id, quantite, prix_unitaire, total, date_entree, fournisseur, employe_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (data['produit_id'], data['quantite'], prix_unitaire, total,
+             data.get('date_entree', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+             data.get('fournisseur', ''), data.get('employe_id', 1)))
+        exe("UPDATE produits SET stock = stock + %s WHERE id = %s", (data['quantite'], data['produit_id']))
+        verifier_alertes_stock()
+        return jsonify({'success': True, 'message': 'Entrée synchronisée'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sync/pertes', methods=['POST'])
+def api_sync_pertes():
+    try:
+        data = request.get_json()
+        if not data.get('produit_id') or not data.get('quantite'):
+            return jsonify({'error': 'Données manquantes'}), 400
+        produit = q1("SELECT prix FROM produits WHERE id = %s", (data['produit_id'],))
+        if not produit:
+            return jsonify({'error': 'Produit non trouvé'}), 404
+        prix_unitaire = produit[0]
+        total = data['quantite'] * prix_unitaire
+        exe("""INSERT INTO pertes 
+            (produit_id, quantite, prix_unitaire, total, motif, date_perte, employe_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (data['produit_id'], data['quantite'], prix_unitaire, total,
+             data.get('motif', 'Synchronisation hors ligne'),
+             data.get('date_perte', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+             data.get('employe_id', 1)))
+        exe("UPDATE produits SET stock = GREATEST(0, stock - %s) WHERE id = %s", (data['quantite'], data['produit_id']))
+        return jsonify({'success': True, 'message': 'Perte synchronisée'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ══════════════════════════════════════════════════════════════
+# MOT DE PASSE OUBLIÉ
+# ══════════════════════════════════════════════════════════════
+@app.route('/mot_de_passe_oublie', methods=['GET','POST'])
+def mot_de_passe_oublie():
+    try:
+        if request.method == 'POST':
+            email = request.form.get('email', '').strip()
+            if email != 'hitnasuperette@gmail.com':
+                flash('❌ Seul l\'administrateur peut réinitialiser son mot de passe.', 'error')
+                return redirect('/mot_de_passe_oublie')
+            user = q1("SELECT id, nom FROM users WHERE role='admin' AND email = %s AND actif = 1", (email,))
+            if user:
+                token = generate_reset_token(user[0])
+                reset_url = url_for('reset_password', token=token, _external=True)
+                try:
+                    msg = Message(
+                        subject="🔐 Réinitialisation de votre mot de passe - HITNA",
+                        recipients=[email],
+                        body=f"""
+Bonjour {user[1]},
+
+Vous avez demandé la réinitialisation de votre mot de passe pour l'application HITNA.
+
+Cliquez sur le lien ci-dessous pour créer un nouveau mot de passe :
+{reset_url}
+
+Ce lien est valable 24 heures.
+
+Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
+
+Cordialement,
+L'équipe HITNA
+""",
+                        html=f"""
+<h2>🔐 Réinitialisation de votre mot de passe</h2>
+<p>Bonjour <strong>{user[1]}</strong>,</p>
+<p>Vous avez demandé la réinitialisation de votre mot de passe pour l'application <strong>HITNA</strong>.</p>
+<p>Cliquez sur le bouton ci-dessous pour créer un nouveau mot de passe :</p>
+<p><a href="{reset_url}" style="background: #1e3c72; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none;">🔑 Réinitialiser mon mot de passe</a></p>
+<p>Ce lien est valable <strong>24 heures</strong>.</p>
+<p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
+<br>
+<p>Cordialement,<br><strong>L'équipe HITNA</strong></p>
+"""
+                    )
+                    mail.send(msg)
+                    flash('✅ Un email de réinitialisation a été envoyé à hitnasuperette@gmail.com', 'success')
+                except Exception as e:
+                    print(f"Erreur envoi email: {e}")
+                    flash(f'🔗 Lien de réinitialisation : {reset_url}', 'info')
+            else:
+                flash('❌ Aucun administrateur actif avec cet email', 'error')
+            return redirect('/login')
+        return render_template('mot_de_passe_oublie.html')
+    except Exception as e:
+        print(f"❌ Erreur mot_de_passe_oublie: {e}")
+        flash('Erreur lors de la réinitialisation')
+        return redirect('/login')
+
+@app.route('/reset_password/<token>', methods=['GET','POST'])
+def reset_password(token):
+    try:
+        td = q1('''SELECT rt.user_id,rt.expires_at,rt.used,u.actif,u.nom
+            FROM reset_tokens rt JOIN users u ON rt.user_id=u.id WHERE rt.token=? AND rt.used=0''',(token,))
+        if not td:
+            flash('❌ Lien invalide')
+            return redirect('/login')
+        user_id, expires, used, actif, nom = td
+        if actif == 0:
+            flash('❌ Compte désactivé')
+            return redirect('/login')
+        if datetime.now() > datetime.strptime(expires, '%Y-%m-%d %H:%M:%S'):
+            flash('❌ Lien expiré')
+            return redirect('/mot_de_passe_oublie')
+        if request.method == 'POST':
+            pwd = request.form.get('new_password', '')
+            cpwd = request.form.get('confirm_password', '')
+            if pwd != cpwd:
+                flash('❌ Mots de passe différents')
+                return redirect(f'/reset_password/{token}')
+            if len(pwd) < 4:
+                flash('❌ Minimum 4 caractères')
+                return redirect(f'/reset_password/{token}')
+            exe("UPDATE users SET password_hash=? WHERE id=?",(hashlib.sha256(pwd.encode()).hexdigest(), user_id))
+            exe("UPDATE reset_tokens SET used=1 WHERE token=?",(token,))
+            flash('✅ Mot de passe réinitialisé !')
+            return redirect('/login')
+        return render_template('reset_password.html', token=token)
+    except Exception as e:
+        print(f"❌ Erreur reset_password: {e}")
+        flash('Erreur lors de la réinitialisation')
+        return redirect('/login')
+
+# ══════════════════════════════════════════════════════════════
+# API JSON
 # ══════════════════════════════════════════════════════════════
 @app.route('/api/produits')
 def api_produits():
