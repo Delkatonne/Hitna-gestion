@@ -821,7 +821,7 @@ def admin_ventes():
         
         historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client
             FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
-            ORDER BY s.date_sortie DESC LIMIT 100''')
+            ORDER BY s.date_sortie DESC LIMIT 20''')
         stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
             FROM sorties s JOIN users u ON s.employe_id=u.id
             WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
