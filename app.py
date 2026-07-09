@@ -710,6 +710,193 @@ def ajouter_entree():
         flash('❌ Erreur lors de l\'ajout de l\'entrée')
     return redirect('/admin/entrees')
 
+
+# ─── EXPORT PDF POUR EMPLOYÉ (POINT DU JOUR) ────────────────
+@app.route('/export/pdf_employe')
+def export_pdf_employe():
+    """Export du point du jour pour l'employé (ventes et entrées uniquement)"""
+    try:
+        if 'user_id' not in session:
+            flash('❌ Veuillez vous connecter')
+            return redirect('/login')
+        
+        date_sql = datetime.now().strftime('%Y-%m-%d')
+        date_str = datetime.now().strftime('%d/%m/%Y')
+        
+        ventes = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total, 
+                                s.date_sortie, s.client, u.nom as vendeur
+                         FROM sorties s 
+                         JOIN produits p ON s.produit_id = p.id 
+                         JOIN users u ON s.employe_id = u.id
+                         WHERE DATE(s.date_sortie) = %s
+                         ORDER BY s.date_sortie DESC''', (date_sql,))
+        
+        entrees = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total, 
+                                 e.date_entree, e.fournisseur, u.nom as enregistreur
+                          FROM entrees e 
+                          JOIN produits p ON e.produit_id = p.id 
+                          JOIN users u ON e.employe_id = u.id
+                          WHERE DATE(e.date_entree) = %s
+                          ORDER BY e.date_entree DESC''', (date_sql,))
+        
+        total_ventes = sum(v[4] for v in ventes) if ventes else 0
+        total_entrees = sum(e[4] for e in entrees) if entrees else 0
+        nb_ventes = len(ventes)
+        nb_entrees = len(entrees)
+        
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        
+        # Titre
+        c.setFont("Helvetica-Bold", 16)
+        c.setFillColorRGB(0.12, 0.24, 0.45)
+        c.drawString(50, height - 125, f"📋 POINT DU JOUR - {date_str}")
+        
+        y = height - 155
+        
+        # Résumé
+        c.setFont("Helvetica-Bold", 12)
+        c.setFillColorRGB(0.12, 0.24, 0.45)
+        c.drawString(50, y, "📊 RÉSUMÉ")
+        y -= 22
+        
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(0, 0, 0)
+        c.drawString(50, y, f"💰 Ventes : {nb_ventes} vente(s) - {format_prix(total_ventes)} FCFA")
+        y -= 18
+        c.drawString(50, y, f"📥 Entrées : {nb_entrees} entrée(s) - {format_prix(total_entrees)} FCFA")
+        y -= 25
+        
+        c.setStrokeColorRGB(0.8, 0.8, 0.8)
+        c.setLineWidth(0.5)
+        c.line(50, y, width - 50, y)
+        y -= 18
+        
+        # Ventes
+        if ventes:
+            c.setFont("Helvetica-Bold", 11)
+            c.setFillColorRGB(0.12, 0.24, 0.45)
+            c.drawString(50, y, "🛒 VENTES")
+            y -= 18
+            
+            c.setFont("Helvetica-Bold", 8)
+            c.setFillColorRGB(0.3, 0.3, 0.3)
+            c.drawString(50, y, "Produit")
+            c.drawString(170, y, "Qté")
+            c.drawString(210, y, "Prix unit.")
+            c.drawString(290, y, "Total")
+            c.drawString(370, y, "Client")
+            c.drawString(440, y, "Vendeur")
+            y -= 14
+            
+            c.setFont("Helvetica", 7.5)
+            c.setFillColorRGB(0, 0, 0)
+            for v in ventes[:25]:
+                if y < 50:
+                    c.showPage()
+                    add_header_to_pdf(c, width, height)
+                    add_logo_to_pdf(c, width, height)
+                    y = height - 100
+                    c.setFont("Helvetica-Bold", 8)
+                    c.setFillColorRGB(0.3, 0.3, 0.3)
+                    c.drawString(50, y, "Produit")
+                    c.drawString(170, y, "Qté")
+                    c.drawString(210, y, "Prix unit.")
+                    c.drawString(290, y, "Total")
+                    c.drawString(370, y, "Client")
+                    c.drawString(440, y, "Vendeur")
+                    y -= 14
+                    c.setFont("Helvetica", 7.5)
+                    c.setFillColorRGB(0, 0, 0)
+                
+                c.drawString(50, y, v[1][:28] if v[1] else "-")
+                c.drawString(170, y, str(v[2]) if v[2] else "-")
+                c.drawString(210, y, format_prix(v[3]) if v[3] else "-")
+                c.drawString(290, y, format_prix(v[4]) if v[4] else "-")
+                c.drawString(370, y, v[6][:12] if v[6] else "-")
+                c.drawString(440, y, v[7][:12] if v[7] else "-")
+                y -= 14
+            
+            y -= 8
+        
+        # Entrées
+        if entrees:
+            if y < 100:
+                c.showPage()
+                add_header_to_pdf(c, width, height)
+                add_logo_to_pdf(c, width, height)
+                y = height - 100
+            
+            c.setFont("Helvetica-Bold", 11)
+            c.setFillColorRGB(0.12, 0.24, 0.45)
+            c.drawString(50, y, "📥 ENTRÉES")
+            y -= 18
+            
+            c.setFont("Helvetica-Bold", 8)
+            c.setFillColorRGB(0.3, 0.3, 0.3)
+            c.drawString(50, y, "Produit")
+            c.drawString(170, y, "Qté")
+            c.drawString(210, y, "Prix unit.")
+            c.drawString(290, y, "Total")
+            c.drawString(370, y, "Fournisseur")
+            c.drawString(440, y, "Enreg.")
+            y -= 14
+            
+            c.setFont("Helvetica", 7.5)
+            c.setFillColorRGB(0, 0, 0)
+            for e in entrees[:20]:
+                if y < 50:
+                    c.showPage()
+                    add_header_to_pdf(c, width, height)
+                    add_logo_to_pdf(c, width, height)
+                    y = height - 100
+                    c.setFont("Helvetica-Bold", 8)
+                    c.setFillColorRGB(0.3, 0.3, 0.3)
+                    c.drawString(50, y, "Produit")
+                    c.drawString(170, y, "Qté")
+                    c.drawString(210, y, "Prix unit.")
+                    c.drawString(290, y, "Total")
+                    c.drawString(370, y, "Fournisseur")
+                    c.drawString(440, y, "Enreg.")
+                    y -= 14
+                    c.setFont("Helvetica", 7.5)
+                    c.setFillColorRGB(0, 0, 0)
+                
+                c.drawString(50, y, e[1][:28] if e[1] else "-")
+                c.drawString(170, y, str(e[2]) if e[2] else "-")
+                c.drawString(210, y, format_prix(e[3]) if e[3] else "-")
+                c.drawString(290, y, format_prix(e[4]) if e[4] else "-")
+                c.drawString(370, y, e[6][:12] if e[6] else "-")
+                c.drawString(440, y, e[7][:12] if e[7] else "-")
+                y -= 14
+        
+        c.showPage()
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(0.5, 0.5, 0.5)
+        c.drawString(50, 30, f"HITNA - Point du jour {date_str} - Généré automatiquement")
+        
+        c.save()
+        buffer.seek(0)
+        
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"point_du_jour_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        print(f"❌ Erreur export PDF employé: {e}")
+        flash(f'❌ Erreur lors de l\'export PDF: {str(e)}')
+        return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
+    
+    
 # ─── VENTES ADMIN ──────────────────────────────────────────────
 @app.route('/admin/ventes', methods=['GET','POST'])
 def admin_ventes():
