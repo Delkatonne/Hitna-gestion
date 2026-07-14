@@ -501,7 +501,7 @@
     {% if produits and produits|length > 0 %}
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
-        <div class="product-card" data-id="{{ p[0] }}" data-name="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}">
+        <div class="product-card" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}">
             <div class="product-name">{{ p[1] }}</div>
             <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
             <div class="product-stock">📦 Stock: {{ p[3] }} unités</div>
@@ -634,11 +634,13 @@
     const noResults = document.getElementById('noResults');
     
     function filterProducts() {
-        const searchTerm = searchInput.value.toLowerCase().trim();
+        const searchTerm = searchInput.value.toLowerCase().trim()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         let hasResults = false;
         
         productCards.forEach(card => {
-            const productName = card.getAttribute('data-name').toLowerCase();
+            const productName = card.getAttribute('data-name')
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             if (searchTerm === '' || productName.includes(searchTerm)) {
                 card.style.display = 'block';
                 hasResults = true;
@@ -650,6 +652,7 @@
         noResults.style.display = hasResults ? 'none' : 'block';
     }
     
+    searchInput.addEventListener('input', filterProducts);
     searchInput.addEventListener('keyup', filterProducts);
     
     // ============================================================
