@@ -65,46 +65,73 @@ def cached_query(sql, params=(), ttl=120):
     return result
 
 # ──────────────────────────────────────────────────────────────
-# CONNEXION POSTGRESQL (SANS POOL)
+# CONNEXION POSTGRESQL AVEC POOL
+# Évite d'ouvrir une nouvelle connexion TCP à chaque requête.
+# Chaque connexion coûtait 200-500ms sur Render → lenteur.
 # ──────────────────────────────────────────────────────────────
+from psycopg2 import pool as pg_pool
+
+_db_pool = None
+
+def _get_pool():
+    global _db_pool
+    if _db_pool is None:
+        url = os.environ.get('DATABASE_URL', '')
+        if url.startswith('postgres://'):
+            url = url.replace('postgres://', 'postgresql://', 1)
+        if not url:
+            raise RuntimeError("DATABASE_URL manquante.")
+        _db_pool = pg_pool.ThreadedConnectionPool(minconn=1, maxconn=5, dsn=url)
+        print("✅ Pool de connexions PostgreSQL initialisé")
+    return _db_pool
+
 def get_db():
-    url = os.environ.get('DATABASE_URL', '')
-    if url.startswith('postgres://'):
-        url = url.replace('postgres://', 'postgresql://', 1)
-    if not url:
-        raise RuntimeError("DATABASE_URL manquante. Ajoutez-la dans les variables d'environnement Render.")
-    return psycopg2.connect(url)
+    return _get_pool().getconn()
+
+def release_db(conn):
+    """Remettre la connexion dans le pool plutôt que la fermer."""
+    try:
+        _get_pool().putconn(conn)
+    except Exception:
+        pass
 
 def q1(sql, params=()):
     """fetchone — retourne un tuple ou None."""
+    conn = None
     try:
         conn = get_db()
         cur = conn.cursor()
         cur.execute(sql.replace('?', '%s'), params)
         row = cur.fetchone()
         cur.close()
-        conn.close()
         return row
     except Exception as e:
         print(f"❌ Erreur q1: {e}")
         return None
+    finally:
+        if conn:
+            release_db(conn)
 
 def qall(sql, params=()):
     """fetchall — retourne une liste de tuples."""
+    conn = None
     try:
         conn = get_db()
         cur = conn.cursor()
         cur.execute(sql.replace('?', '%s'), params)
         rows = cur.fetchall()
         cur.close()
-        conn.close()
         return rows
     except Exception as e:
         print(f"❌ Erreur qall: {e}")
         return []
+    finally:
+        if conn:
+            release_db(conn)
 
 def exe(sql, params=(), returning=False):
     """INSERT / UPDATE / DELETE avec commit. returning=True retourne le nouvel id."""
+    conn = None
     try:
         sql2 = sql.replace('?', '%s')
         if returning and 'INSERT' in sql2.upper() and 'RETURNING' not in sql2.upper():
@@ -115,17 +142,22 @@ def exe(sql, params=(), returning=False):
         result = cur.fetchone()[0] if returning else None
         conn.commit()
         cur.close()
-        conn.close()
         clear_cache()
         return result
     except Exception as e:
         print(f"❌ Erreur exe: {e}")
+        if conn:
+            conn.rollback()
         return None
+    finally:
+        if conn:
+            release_db(conn)
 
 # ──────────────────────────────────────────────────────────────
 # INITIALISATION BASE DE DONNÉES (SÉCURISÉE)
 # ──────────────────────────────────────────────────────────────
 def init_db():
+    conn = None
     try:
         conn = get_db()
         c = conn.cursor()
@@ -137,7 +169,8 @@ def init_db():
             print("✅ Tables existantes - AUCUNE MODIFICATION")
             conn.commit()
             c.close()
-            conn.close()
+            release_db(conn)
+            conn = None
             return
 
         print("⚠️ Tables non trouvées - Création des tables...")
@@ -258,10 +291,14 @@ def init_db():
 
         conn.commit()
         c.close()
-        conn.close()
+        release_db(conn)
+        conn = None
         print("✅ Base de données initialisée")
     except Exception as e:
         print(f"❌ Erreur init_db: {e}")
+    finally:
+        if conn:
+            release_db(conn)
 
 # ──────────────────────────────────────────────────────────────
 # ARCHIVAGE HEBDOMADAIRE
@@ -329,7 +366,7 @@ def archiver_hebdomadaire():
                     len(ventes),tv,len(entrees),ta,now_s))
         conn.commit()
         cm.close()
-        conn.close()
+        release_db(conn)
     except Exception as e:
         print(f"❌ Erreur archiver_hebdomadaire: {e}")
 
