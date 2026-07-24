@@ -542,22 +542,25 @@
     let adminMaxStock = 0;
 
     // ============================================================
-    // ADMIN - RECHERCHE DE PRODUITS
+    // ADMIN - RECHERCHE DE PRODUITS (CORRIGÉE)
     // ============================================================
     const adminSearchInput = document.getElementById('searchInput');
     const adminProductCards = document.querySelectorAll('.product-card');
     const adminNoResults = document.getElementById('noResults');
     
     function adminFilterProducts() {
-        // Normaliser : supprimer les accents pour chercher "farine" et trouver "Farine"
+        // Normaliser le terme de recherche : supprimer les accents et mettre en minuscules
         const searchTerm = adminSearchInput.value.toLowerCase().trim()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         let hasResults = false;
         
         adminProductCards.forEach(card => {
-            const productName = card.getAttribute('data-name')
-                .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            if (searchTerm === '' || productName.includes(searchTerm)) {
+            // Récupérer le nom du produit en minuscules
+            const productName = card.getAttribute('data-name') || '';
+            // Normaliser aussi le nom du produit pour la comparaison
+            const normalizedName = productName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            
+            if (searchTerm === '' || normalizedName.includes(searchTerm)) {
                 card.style.display = 'block';
                 hasResults = true;
             } else {
@@ -568,7 +571,7 @@
         adminNoResults.style.display = hasResults ? 'none' : 'block';
     }
     
-    // 'input' capte aussi le collage, la voix, l'autocomplétion (plus fiable que keyup)
+    // Écouteurs d'événements pour la recherche
     adminSearchInput.addEventListener('input', adminFilterProducts);
     adminSearchInput.addEventListener('keyup', adminFilterProducts);
     
@@ -631,7 +634,7 @@
     }
     
     // ============================================================
-    // ADMIN - VALIDATION VENTE (CORRIGÉE)
+    // ADMIN - VALIDATION VENTE
     // ============================================================
     function adminValidateSale() {
         try {
