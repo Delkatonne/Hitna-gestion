@@ -634,15 +634,13 @@
     const noResults = document.getElementById('noResults');
     
     function filterProducts() {
-        // Normaliser le terme de recherche : supprimer les accents et mettre en minuscules
+        // Normaliser le terme de recherche (supprimer les accents)
         const searchTerm = searchInput.value.toLowerCase().trim()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         let hasResults = false;
         
         productCards.forEach(card => {
-            // Récupérer le nom du produit en minuscules
             const productName = card.getAttribute('data-name') || '';
-            // Normaliser aussi le nom du produit pour la comparaison
             const normalizedName = productName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             
             if (searchTerm === '' || normalizedName.includes(searchTerm)) {
@@ -655,7 +653,6 @@
         
         noResults.style.display = hasResults ? 'none' : 'block';
     }
-    
     // Écouteurs d'événements
     searchInput.addEventListener('input', filterProducts);
     searchInput.addEventListener('keyup', filterProducts);

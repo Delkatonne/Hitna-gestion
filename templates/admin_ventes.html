@@ -549,15 +549,15 @@
     const adminNoResults = document.getElementById('noResults');
     
     function adminFilterProducts() {
-        // Normaliser le terme de recherche : supprimer les accents et mettre en minuscules
+        // Normaliser le terme de recherche (supprimer les accents)
         const searchTerm = adminSearchInput.value.toLowerCase().trim()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         let hasResults = false;
         
         adminProductCards.forEach(card => {
-            // Récupérer le nom du produit en minuscules
+            // Récupérer le nom du produit
             const productName = card.getAttribute('data-name') || '';
-            // Normaliser aussi le nom du produit pour la comparaison
+            // Normaliser aussi le nom du produit
             const normalizedName = productName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             
             if (searchTerm === '' || normalizedName.includes(searchTerm)) {
