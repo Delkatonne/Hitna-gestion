@@ -388,7 +388,6 @@ def inject_now():
 
 def get_all_roles():
     try:
-        # Essayer de récupérer les rôles depuis la base
         roles_raw = qall("SELECT DISTINCT role, role_personnalise FROM users WHERE actif=1 ORDER BY role")
         result, seen = [], set()
         for role, rp in roles_raw:
@@ -399,13 +398,8 @@ def get_all_roles():
                 result.append({'role_base':role,'role_affiche':'Administrateur' if role=='admin' else 'Employé'})
                 seen.add(role)
         return result
-    except Exception as e:
-        # ── SECOURS : en cas d'erreur, on renvoie les rôles par défaut ──
-        print(f"⚠️ Erreur get_all_roles : {e}")
-        return [
-            {'role_base': 'admin', 'role_affiche': 'Administrateur'},
-            {'role_base': 'employe', 'role_affiche': 'Employé'}
-        ]
+    except Exception:
+        return []
 
 def creer_notification(user_id, type_n, titre, message, lien=None):
     try:
@@ -2174,9 +2168,16 @@ def manifest():
         return "Manifest non disponible", 404
 
 # ──────────────────────────────────────────────────────────────
-# LANCEMENT
+# INITIALISATION AU CHARGEMENT DU MODULE
+# Important : avec gunicorn (Render), le bloc "if __name__ == '__main__'"
+# n'est JAMAIS exécuté. Il faut donc appeler init_db() ici, en dehors
+# de ce bloc, pour que les tables soient créées aussi en production.
+# ──────────────────────────────────────────────────────────────
+init_db()
+
+# ──────────────────────────────────────────────────────────────
+# LANCEMENT (uniquement en local, ex: python app.py)
 # ──────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
