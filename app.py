@@ -388,6 +388,7 @@ def inject_now():
 
 def get_all_roles():
     try:
+        # Essayer de récupérer les rôles depuis la base
         roles_raw = qall("SELECT DISTINCT role, role_personnalise FROM users WHERE actif=1 ORDER BY role")
         result, seen = [], set()
         for role, rp in roles_raw:
@@ -398,8 +399,13 @@ def get_all_roles():
                 result.append({'role_base':role,'role_affiche':'Administrateur' if role=='admin' else 'Employé'})
                 seen.add(role)
         return result
-    except Exception:
-        return []
+    except Exception as e:
+        # ── SECOURS : en cas d'erreur, on renvoie les rôles par défaut ──
+        print(f"⚠️ Erreur get_all_roles : {e}")
+        return [
+            {'role_base': 'admin', 'role_affiche': 'Administrateur'},
+            {'role_base': 'employe', 'role_affiche': 'Employé'}
+        ]
 
 def creer_notification(user_id, type_n, titre, message, lien=None):
     try:
