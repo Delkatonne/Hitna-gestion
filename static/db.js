@@ -1,250 +1,112 @@
-// static/db.js - VERSION CORRIGÉE
-// Base de données IndexedDB pour le mode hors ligne
+// ============================================================
+// db.js — Couche IndexedDB pour HITNA Gestion
+// Deux "object stores" :
+//   - sync_queue : actions écrites hors ligne, en attente d'envoi au serveur
+//   - produits_cache : dernière copie connue des produits (lecture hors ligne)
+// ============================================================
 
-const DB_NAME = 'hitna_offline_db';
-const DB_VERSION = 3; // Version incrémentée
+const HITNA_DB_NAME = 'hitna_offline';
+const HITNA_DB_VERSION = 1;
 
-let db = null;
-let dbReady = false;
-
-function openDB() {
+function hitnaOpenDB() {
     return new Promise((resolve, reject) => {
-        if (db && dbReady) {
-            resolve(db);
+        if (!('indexedDB' in window)) {
+            reject(new Error('IndexedDB non supporté sur ce navigateur'));
             return;
         }
-        
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-        
-        request.onerror = () => {
-            console.error('Erreur d\'ouverture de la DB:', request.error);
-            reject(request.error);
-        };
-        
-        request.onsuccess = () => {
-            db = request.result;
-            dbReady = true;
-            
-            db.onerror = (event) => {
-                console.error('Erreur DB:', event.target.error);
-            };
-            
-            resolve(db);
-        };
-        
+        const request = indexedDB.open(HITNA_DB_NAME, HITNA_DB_VERSION);
+
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
-            
-            // Supprimer les anciennes stores si elles existent (pour reconstruction propre)
-            if (db.objectStoreNames.contains('ventes_offline')) {
-                db.deleteObjectStore('ventes_offline');
+            if (!db.objectStoreNames.contains('sync_queue')) {
+                const store = db.createObjectStore('sync_queue', { keyPath: 'client_id' });
+                store.createIndex('created_at', 'created_at', { unique: false });
             }
-            if (db.objectStoreNames.contains('entrees_offline')) {
-                db.deleteObjectStore('entrees_offline');
+            if (!db.objectStoreNames.contains('produits_cache')) {
+                db.createObjectStore('produits_cache', { keyPath: 'id' });
             }
-            if (db.objectStoreNames.contains('pertes_offline')) {
-                db.deleteObjectStore('pertes_offline');
-            }
-            if (db.objectStoreNames.contains('produits_cache')) {
-                db.deleteObjectStore('produits_cache');
-            }
-            
-            // Table des ventes hors ligne
-            const ventesStore = db.createObjectStore('ventes_offline', { 
-                keyPath: 'id', 
-                autoIncrement: true 
-            });
-            ventesStore.createIndex('synced', 'synced');
-            ventesStore.createIndex('date', 'date');
-            ventesStore.createIndex('offline_id', 'offline_id', { unique: true });
-            ventesStore.createIndex('created_at', 'created_at');
-            
-            // Table des entrées hors ligne
-            const entreesStore = db.createObjectStore('entrees_offline', { 
-                keyPath: 'id', 
-                autoIncrement: true 
-            });
-            entreesStore.createIndex('synced', 'synced');
-            entreesStore.createIndex('date', 'date');
-            entreesStore.createIndex('offline_id', 'offline_id', { unique: true });
-            entreesStore.createIndex('created_at', 'created_at');
-            
-            // Table des pertes hors ligne
-            const pertesStore = db.createObjectStore('pertes_offline', { 
-                keyPath: 'id', 
-                autoIncrement: true 
-            });
-            pertesStore.createIndex('synced', 'synced');
-            pertesStore.createIndex('date', 'date');
-            pertesStore.createIndex('offline_id', 'offline_id', { unique: true });
-            pertesStore.createIndex('created_at', 'created_at');
-            
-            // Table des produits en cache
-            const produitsStore = db.createObjectStore('produits_cache', { 
-                keyPath: 'id' 
-            });
-            produitsStore.createIndex('nom', 'nom');
-            
-            console.log('✅ Structure de la base de données créée');
         };
+
+        request.onsuccess = (event) => resolve(event.target.result);
+        request.onerror = (event) => reject(event.target.error);
     });
 }
 
-// Ajouter une action hors ligne
-async function addOfflineAction(type, data, endpoint) {
-    await openDB();
-    
+function hitnaGenerateClientId() {
+    return 'off_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+}
+
+// ── FILE D'ATTENTE DES ACTIONS ────────────────────────────────
+async function hitnaQueueAction(type, payload) {
+    const db = await hitnaOpenDB();
+    const action = {
+        client_id: hitnaGenerateClientId(),
+        type: type, // 'vente' | 'entree' | 'perte'
+        payload: payload,
+        created_at: new Date().toISOString(),
+        status: 'pending'
+    };
     return new Promise((resolve, reject) => {
-        const storeName = type + '_offline';
-        
-        // Vérifier que la store existe
-        if (!db.objectStoreNames.contains(storeName)) {
-            reject(new Error(`La table ${storeName} n'existe pas`));
-            return;
-        }
-        
-        const transaction = db.transaction([storeName], 'readwrite');
-        const store = transaction.objectStore(storeName);
-        
-        const action = {
-            ...data,
-            synced: false,
-            created_at: new Date().toISOString(),
-            offline_id: Date.now() + '_' + Math.random().toString(36).substr(2, 8),
-            _endpoint: endpoint || ''
-        };
-        
-        const request = store.add(action);
-        
-        request.onsuccess = () => {
-            console.log(`✅ Action ${type} ajoutée avec ID: ${request.result}`);
-            resolve(request.result);
-        };
-        
-        request.onerror = () => {
-            console.error(`❌ Erreur ajout ${type}:`, request.error);
-            reject(request.error);
-        };
-        
-        transaction.onerror = () => {
-            reject(transaction.error);
-        };
+        const tx = db.transaction('sync_queue', 'readwrite');
+        tx.objectStore('sync_queue').add(action);
+        tx.oncomplete = () => resolve(action);
+        tx.onerror = () => reject(tx.error);
     });
 }
 
-// Récupérer les actions non synchronisées
-async function getUnsyncedActions(type) {
-    await openDB();
-    
+async function hitnaGetQueue() {
+    const db = await hitnaOpenDB();
     return new Promise((resolve, reject) => {
-        const storeName = type + '_offline';
-        
-        if (!db.objectStoreNames.contains(storeName)) {
-            resolve([]);
-            return;
-        }
-        
-        const transaction = db.transaction([storeName], 'readonly');
-        const store = transaction.objectStore(storeName);
-        const index = store.index('synced');
-        
-        const request = index.getAll(false);
-        
-        request.onsuccess = () => {
-            resolve(request.result || []);
-        };
-        
-        request.onerror = () => {
-            console.error('Erreur récupération actions:', request.error);
-            reject(request.error);
-        };
+        const tx = db.transaction('sync_queue', 'readonly');
+        const req = tx.objectStore('sync_queue').getAll();
+        req.onsuccess = () => resolve(req.result.sort((a, b) => a.created_at.localeCompare(b.created_at)));
+        req.onerror = () => reject(req.error);
     });
 }
 
-// Marquer une action comme synchronisée
-async function markAsSynced(type, id) {
-    await openDB();
-    
+async function hitnaRemoveFromQueue(clientId) {
+    const db = await hitnaOpenDB();
     return new Promise((resolve, reject) => {
-        const storeName = type + '_offline';
-        
-        if (!db.objectStoreNames.contains(storeName)) {
-            resolve();
-            return;
-        }
-        
-        const transaction = db.transaction([storeName], 'readwrite');
-        const store = transaction.objectStore(storeName);
-        
-        const request = store.get(id);
-        
-        request.onsuccess = () => {
-            const data = request.result;
-            if (data) {
-                data.synced = true;
-                data.synced_at = new Date().toISOString();
-                const updateRequest = store.put(data);
-                updateRequest.onsuccess = () => resolve();
-                updateRequest.onerror = () => reject(updateRequest.error);
-            } else {
-                resolve();
-            }
-        };
-        
-        request.onerror = () => reject(request.error);
+        const tx = db.transaction('sync_queue', 'readwrite');
+        tx.objectStore('sync_queue').delete(clientId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
     });
 }
 
-// Supprimer une action
-async function removeSyncedAction(type, id) {
-    await openDB();
-    
+async function hitnaQueueCount() {
+    const items = await hitnaGetQueue();
+    return items.length;
+}
+
+// ── CACHE LOCAL DES PRODUITS (lecture hors ligne) ───────────────
+async function hitnaSaveProduitsCache(produits) {
+    const db = await hitnaOpenDB();
     return new Promise((resolve, reject) => {
-        const storeName = type + '_offline';
-        
-        if (!db.objectStoreNames.contains(storeName)) {
-            resolve();
-            return;
-        }
-        
-        const transaction = db.transaction([storeName], 'readwrite');
-        const store = transaction.objectStore(storeName);
-        
-        const request = store.delete(id);
-        
-        request.onsuccess = () => {
-            console.log(`✅ Action ${type} #${id} supprimée`);
-            resolve();
-        };
-        
-        request.onerror = () => reject(request.error);
+        const tx = db.transaction('produits_cache', 'readwrite');
+        const store = tx.objectStore('produits_cache');
+        store.clear();
+        produits.forEach((p) => store.put(p));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
     });
 }
 
-// Compter les actions non synchronisées
-async function countUnsyncedActions() {
-    await openDB();
-    
-    const types = ['ventes', 'entrees', 'pertes'];
-    let total = 0;
-    
-    for (const type of types) {
-        try {
-            const actions = await getUnsyncedActions(type);
-            total += actions.length;
-        } catch (error) {
-            console.error(`Erreur comptage ${type}:`, error);
-        }
-    }
-    return total;
+async function hitnaGetProduitsCache() {
+    const db = await hitnaOpenDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('produits_cache', 'readonly');
+        const req = tx.objectStore('produits_cache').getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
 }
 
-// Exporter les fonctions
-window.OfflineDB = {
-    openDB,
-    addOfflineAction,
-    getUnsyncedActions,
-    markAsSynced,
-    removeSyncedAction,
-    countUnsyncedActions
+window.HitnaDB = {
+    queueAction: hitnaQueueAction,
+    getQueue: hitnaGetQueue,
+    removeFromQueue: hitnaRemoveFromQueue,
+    queueCount: hitnaQueueCount,
+    saveProduitsCache: hitnaSaveProduitsCache,
+    getProduitsCache: hitnaGetProduitsCache
 };

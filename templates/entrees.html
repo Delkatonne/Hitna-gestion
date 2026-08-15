@@ -595,6 +595,25 @@
             e.preventDefault();
             return false;
         }
+
+        // Mode hors ligne : on met l'entrée en file d'attente au lieu de soumettre
+        if (typeof navigator !== 'undefined' && !navigator.onLine && window.hitnaQueueIfOffline) {
+            e.preventDefault();
+            const fournisseur = document.getElementById('fournisseur').value;
+            window.hitnaQueueIfOffline('entree', {
+                produit_id: selectedProduit.id,
+                quantite: quantite,
+                prix_unitaire: prix,
+                fournisseur: fournisseur
+            }).then(function(queued) {
+                if (queued) {
+                    alert(`📡 Entrée enregistrée hors ligne : ${quantite} ${selectedProduit.nom}. Elle sera synchronisée dès le retour du réseau.`);
+                    clearSelection();
+                }
+            });
+            return false;
+        }
+
         return confirm(`Confirmer l'entrée de ${quantite} ${selectedProduit.nom} pour ${quantite * prix} FCFA ?`);
     });
     

@@ -99,7 +99,7 @@
 <div class="card">
     <h2 class="card-title">➕ Enregistrer une perte</h2>
     
-    <form method="post" action="/admin/pertes/ajouter" class="form-perte" onsubmit="return confirm('Confirmer cette perte ? Le stock sera diminué.')">
+    <form method="post" action="/admin/pertes/ajouter" class="form-perte" id="perteForm" onsubmit="return handlePerteSubmit(event)">
         <div class="form-row">
             <div class="form-group">
                 <label>📦 Produit</label>
@@ -201,6 +201,32 @@
 </div>
 
 <script>
+    function handlePerteSubmit(e) {
+        const select = document.getElementById('produit_id');
+        const produitId = select.value;
+        const quantite = parseInt(document.getElementById('quantite').value);
+        const motif = document.querySelector('select[name="motif"]').value;
+
+        if (typeof navigator !== 'undefined' && !navigator.onLine && window.hitnaQueueIfOffline) {
+            e.preventDefault();
+            const nomProduit = (produits[produitId] && produits[produitId].nom) || 'Produit';
+            window.hitnaQueueIfOffline('perte', {
+                produit_id: produitId,
+                quantite: quantite,
+                motif: motif
+            }).then(function(queued) {
+                if (queued) {
+                    alert(`📡 Perte enregistrée hors ligne : ${quantite} ${nomProduit}. Elle sera synchronisée dès le retour du réseau.`);
+                    e.target.reset();
+                    document.getElementById('stockInfo').innerHTML = '';
+                }
+            });
+            return false;
+        }
+
+        return confirm('Confirmer cette perte ? Le stock sera diminué.');
+    }
+
     const produits = {
         {% for p in produits %}
         {{ p[0] }}: { nom: "{{ p[1] }}", prix: {{ p[2] }}, stock: {{ p[3] }} },

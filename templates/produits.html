@@ -313,6 +313,15 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="form-group">
+                <label>🗂️ Catégorie</label>
+                <select name="categorie_id">
+                    <option value="">-- Aucune catégorie --</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat[0] }}">{{ cat[2] }} {{ cat[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
         </div>
         <button type="submit" class="btn" style="background:#1e3c72;color:white;padding:11px 28px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
             ➕ Ajouter le produit
@@ -358,6 +367,7 @@
                             <input type="checkbox" id="select-all-cb" onchange="selectAllChange(this)">
                         </th>
                         <th>Produit</th>
+                        <th>Catégorie</th>
                         <th>Prix</th>
                         <th>Stock</th>
                         <th>Unité</th>
@@ -374,6 +384,13 @@
                                    onchange="onCheckboxChange(this)">
                         </td>
                         <td><strong>{{ p[1] }}</strong></td>
+                        <td>
+                            {% if p[8] %}
+                                <span class="unite-badge">{{ p[9] }} {{ p[8] }}</span>
+                            {% else %}
+                                <span style="color:#999; font-size:11px;">—</span>
+                            {% endif %}
+                        </td>
                         <td>{{ p[2] }} FCFA</td>
                         <td class="{% if p[3] <= p[4] %}badge-stock-bas{% else %}badge-stock-ok{% endif %}">
                             {{ p[3] }} unités
@@ -388,7 +405,7 @@
                         <td>{{ p[4] }}</td>
                         <td>
                             <!-- Modifier -->
-                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }}, {{ p[6]|default('') }})"
+                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }}, {{ p[6]|default('') }}, {{ p[10]|default('') }})"
                                     style="background:#1e3c72;color:white;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;">
                                 ✏️ Modifier
                             </button>
@@ -418,6 +435,10 @@
                 <span class="card-nom">{{ p[1] }}</span>
             </div>
             <div class="card-row">
+                <label>Catégorie</label>
+                <span>{% if p[8] %}{{ p[9] }} {{ p[8] }}{% else %}—{% endif %}</span>
+            </div>
+            <div class="card-row">
                 <label>Prix</label>
                 <span>{{ p[2] }} FCFA</span>
             </div>
@@ -437,7 +458,7 @@
             </div>
             <div class="card-actions">
                 <button class="card-btn-save"
-                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }}, {{ p[6]|default('') }})">
+                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }}, {{ p[6]|default('') }}, {{ p[10]|default('') }})">
                     ✏️ Modifier
                 </button>
                 <a href="/admin/produits/supprimer/{{ p[0] }}"
@@ -452,6 +473,7 @@
 <div class="nav-links">
     <a href="/dashboard">← Retour au Dashboard</a>
     <a href="/admin/unites">📏 Gérer les unités de mesure</a>
+    <a href="/admin/categories">🗂️ Gérer les catégories</a>
 </div>
 
 <!-- ══ MODAL MODIFICATION ════════════════════════════════════ -->
@@ -473,6 +495,15 @@
                     <option value="">-- Aucune unité --</option>
                     {% for unite in unites %}
                     <option value="{{ unite[0] }}">{{ unite[1] }} ({{ unite[2] }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label>🗂️ Catégorie</label>
+                <select name="categorie_id" id="modal-categorie" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
+                    <option value="">-- Aucune catégorie --</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat[0] }}">{{ cat[2] }} {{ cat[1] }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -575,12 +606,13 @@ function confirmSuppressionMultiple() {
 }
 
 // ── Modal modification ─────────────────────────
-function ouvrirModal(id, nom, prix, stockMin, uniteId) {
+function ouvrirModal(id, nom, prix, stockMin, uniteId, categorieId) {
     document.getElementById('form-modifier').action = '/admin/produits/modifier/' + id;
     document.getElementById('modal-nom').value      = nom;
     document.getElementById('modal-prix').value     = prix;
     document.getElementById('modal-stock-min').value = stockMin;
     document.getElementById('modal-unite').value    = uniteId || '';
+    document.getElementById('modal-categorie').value = categorieId || '';
     document.getElementById('modal-modifier').style.display = 'flex';
 }
 

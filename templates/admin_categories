@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block title %}Catégories de produits - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .categorie-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        background: #e9ecef;
+        color: #495057;
+    }
+    .categorie-badge.active {
+        background: #d4edda;
+        color: #155724;
+    }
+    .categorie-badge.inactive {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    .form-categorie {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+    }
+    .form-categorie .form-row {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+    .form-categorie .form-group {
+        flex: 1;
+        min-width: 150px;
+    }
+    .form-categorie input {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+    }
+    @media (max-width: 768px) {
+        .form-categorie .form-row {
+            flex-direction: column;
+        }
+        .categories-cards-mobile {
+            display: block;
+        }
+        .categories-table-desktop {
+            display: none;
+        }
+    }
+    @media (min-width: 769px) {
+        .categories-cards-mobile {
+            display: none;
+        }
+        .categories-table-desktop {
+            display: block;
+        }
+    }
+    .categorie-card {
+        background: white;
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 12px;
+        border: 1px solid #e0e0e0;
+    }
+    .categorie-card .card-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .categorie-card .card-row:last-child {
+        border-bottom: none;
+    }
+    .categorie-card .label {
+        color: #888;
+        font-size: 12px;
+    }
+    .categorie-card .value {
+        font-weight: 600;
+        font-size: 13px;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}🗂️ Catégories de produits{% endblock %}
+{% block page_subtitle %}Gérez les catégories (légumes, lait, céréales...) pour organiser vos produits{% endblock %}
+
+{% block content %}
+
+<!-- Formulaire d'ajout -->
+<div class="card">
+    <h2 class="card-title">➕ Ajouter une catégorie</h2>
+    
+    <form method="post" action="/admin/categories/ajouter" class="form-categorie">
+        <div class="form-row">
+            <div class="form-group">
+                <label>📛 Nom</label>
+                <input type="text" name="nom" placeholder="Ex: Légumes" required>
+            </div>
+            <div class="form-group">
+                <label>🎨 Icône (emoji)</label>
+                <input type="text" name="icone" placeholder="Ex: 🥬" maxlength="4">
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button type="submit" style="background: #28a745; padding: 10px 25px; width: 100%;">➕ Ajouter</button>
+            </div>
+        </div>
+        <div style="margin-top: 10px; font-size: 12px; color: #666;">
+            💡 Exemples : Légumes 🥬, Fruits 🍎, Lait & Produits laitiers 🥛, Céréales 🌾, Boissons 🥤
+        </div>
+    </form>
+</div>
+
+<!-- Liste des catégories -->
+<div class="card">
+    <h2 class="card-title">📋 Liste des catégories</h2>
+    
+    <!-- Version desktop -->
+    <div class="categories-table-desktop">
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Icône</th>
+                        <th>Nom</th>
+                        <th>Statut</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in categories %}
+                    <tr id="row-{{ c[0] }}">
+                        <td>{{ c[0] }}</td>
+                        <td style="font-size:20px;" id="icone-{{ c[0] }}">{{ c[2] }}</td>
+                        <td id="nom-{{ c[0] }}">{{ c[1] }}</td>
+                        <td>
+                            <span class="categorie-badge {% if c[3] == 1 %}active{% else %}inactive{% endif %}">
+                                {% if c[3] == 1 %}✅ Actif{% else %}⭕ Inactif{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <button onclick="activerEdition({{ c[0] }})" class="btn-small" style="background:#ffc107;">✏️ Modifier</button>
+                            <a href="/admin/categories/supprimer/{{ c[0] }}" 
+                               onclick="return confirm('Supprimer cette catégorie ?')"
+                               class="btn-small" style="background:#dc3545; color:white;">🗑️</a>
+                        </td>
+                    </tr>
+                    <tr id="edit-{{ c[0] }}" style="display:none; background:#f0f7ff;">
+                        <td colspan="5">
+                            <form method="post" action="/admin/categories/modifier/{{ c[0] }}" 
+                                  style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:5px 0;">
+                                <input type="text" name="icone" value="{{ c[2] }}" placeholder="Icône" maxlength="4"
+                                       style="flex:0.5; min-width:60px; padding:8px; border:2px solid #667eea; border-radius:6px;">
+                                <input type="text" name="nom" value="{{ c[1] }}" placeholder="Nom" required
+                                       style="flex:1; min-width:100px; padding:8px; border:2px solid #667eea; border-radius:6px;">
+                                <label style="display:flex; align-items:center; gap:5px; font-size:12px;">
+                                    <input type="checkbox" name="actif" {% if c[3] == 1 %}checked{% endif %}>
+                                    Actif
+                                </label>
+                                <button type="submit" style="background:#28a745; padding:8px 14px;">✅ Valider</button>
+                                <button type="button" onclick="annulerEdition({{ c[0] }})" 
+                                        style="background:#6c757d; padding:8px 14px;">❌ Annuler</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" style="text-align:center; color:#999; padding:30px;">
+                            📭 Aucune catégorie enregistrée
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Version mobile -->
+    <div class="categories-cards-mobile">
+        {% for c in categories %}
+        <div class="categorie-card" id="card-{{ c[0] }}">
+            <div class="card-row">
+                <span class="label">ID</span>
+                <span class="value">#{{ c[0] }}</span>
+            </div>
+            <div class="card-row">
+                <span class="label">🎨 Icône</span>
+                <span class="value" style="font-size:18px;">{{ c[2] }}</span>
+            </div>
+            <div class="card-row">
+                <span class="label">📛 Nom</span>
+                <span class="value">{{ c[1] }}</span>
+            </div>
+            <div class="card-row">
+                <span class="label">Statut</span>
+                <span class="value">
+                    <span class="categorie-badge {% if c[3] == 1 %}active{% else %}inactive{% endif %}">
+                        {% if c[3] == 1 %}✅ Actif{% else %}⭕ Inactif{% endif %}
+                    </span>
+                </span>
+            </div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <button onclick="activerEditionMobile({{ c[0] }})" class="btn-small" style="background:#ffc107; flex:1;">✏️ Modifier</button>
+                <a href="/admin/categories/supprimer/{{ c[0] }}" 
+                   onclick="return confirm('Supprimer cette catégorie ?')"
+                   class="btn-small" style="background:#dc3545; color:white; flex:0.5; text-align:center;">🗑️</a>
+            </div>
+        </div>
+        <div id="card-edit-{{ c[0] }}" style="display:none; margin-bottom:15px;">
+            <div class="categorie-card" style="background:#f0f7ff; border:2px solid #667eea;">
+                <h3 style="font-size:14px; margin-bottom:10px;">✏️ Modifier {{ c[1] }}</h3>
+                <form method="post" action="/admin/categories/modifier/{{ c[0] }}" style="display:flex; flex-direction:column; gap:8px;">
+                    <input type="text" name="icone" value="{{ c[2] }}" placeholder="Icône" maxlength="4" style="padding:8px; border:2px solid #667eea; border-radius:6px;">
+                    <input type="text" name="nom" value="{{ c[1] }}" placeholder="Nom" required style="padding:8px; border:2px solid #667eea; border-radius:6px;">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                        <input type="checkbox" name="actif" {% if c[3] == 1 %}checked{% endif %}>
+                        Actif
+                    </label>
+                    <div style="display:flex; gap:8px;">
+                        <button type="submit" style="background:#28a745; padding:8px; flex:1;">✅ Valider</button>
+                        <button type="button" onclick="annulerEditionMobile({{ c[0] }})" 
+                                style="background:#6c757d; padding:8px; flex:1;">❌ Annuler</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div style="text-align:center; color:#999; padding:40px;">
+            <div style="font-size:48px; margin-bottom:15px;">📭</div>
+            <h3>Aucune catégorie</h3>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="nav-links">
+    <a href="/admin/produits">← Retour aux produits</a>
+    <a href="/dashboard">🏠 Dashboard</a>
+</div>
+
+<script>
+    function activerEdition(id) {
+        document.getElementById('row-' + id).style.display = 'none';
+        document.getElementById('edit-' + id).style.display = 'table-row';
+    }
+    
+    function annulerEdition(id) {
+        document.getElementById('row-' + id).style.display = 'table-row';
+        document.getElementById('edit-' + id).style.display = 'none';
+    }
+    
+    function activerEditionMobile(id) {
+        document.getElementById('card-' + id).style.display = 'none';
+        document.getElementById('card-edit-' + id).style.display = 'block';
+    }
+    
+    function annulerEditionMobile(id) {
+        document.getElementById('card-' + id).style.display = 'block';
+        document.getElementById('card-edit-' + id).style.display = 'none';
+    }
+</script>
+{% endblock %}

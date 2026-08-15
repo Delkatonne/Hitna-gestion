@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify, url_for, send_file
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
-import hashlib, os, random, string, io
+import hashlib, os, random, string, io, json, uuid
 import psycopg2
 import psycopg2.extras
 from reportlab.lib.pagesizes import A4
@@ -248,6 +248,32 @@ def init_db():
             description TEXT,
             actif INTEGER DEFAULT 1)''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS categories_produits (
+            id SERIAL PRIMARY KEY,
+            nom TEXT UNIQUE,
+            icone TEXT DEFAULT '📦',
+            actif INTEGER DEFAULT 1)''')
+
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='categorie_id'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE produits ADD COLUMN categorie_id INTEGER REFERENCES categories_produits(id)")
+                print("✅ Colonne 'categorie_id' ajoutée à produits")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne categorie_id: {e}")
+
+        c.execute("SELECT COUNT(*) FROM categories_produits")
+        row = c.fetchone()
+        if row and row[0] == 0:
+            categories_defaut = [
+                ('Légumes', '🥬'), ('Fruits', '🍎'), ('Lait & Produits laitiers', '🥛'),
+                ('Céréales', '🌾'), ('Viandes & Poissons', '🥩'), ('Boissons', '🥤'),
+                ('Épicerie', '🛒'), ('Hygiène & Entretien', '🧼'), ('Autre', '📦'),
+            ]
+            for cat in categories_defaut:
+                c.execute("INSERT INTO categories_produits (nom, icone, actif) VALUES (%s,%s,1)", cat)
+            print("✅ Catégories de produits par défaut ajoutées")
+
         try:
             c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='unite_id'")
             if not c.fetchone():
@@ -255,6 +281,15 @@ def init_db():
                 print("✅ Colonne 'unite_id' ajoutée à produits")
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne unite_id: {e}")
+
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sorties' AND column_name='groupe_vente'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE sorties ADD COLUMN groupe_vente TEXT")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_sorties_groupe ON sorties(groupe_vente)")
+                print("✅ Colonne 'groupe_vente' ajoutée à sorties (paniers multi-produits + reçus)")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne groupe_vente: {e}")
 
         c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_date ON sorties(date_sortie)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_entrees_date ON entrees(date_entree)')
@@ -544,6 +579,68 @@ def changer_mdp():
 # ROUTES PRINCIPALES AVEC CACHE
 # ══════════════════════════════════════════════════════════════
 
+@app.route('/admin/categories')
+def admin_categories():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        categories = qall("SELECT * FROM categories_produits ORDER BY nom")
+        return render_template('admin_categories.html', categories=categories)
+    except Exception as e:
+        print(f"❌ Erreur admin_categories: {e}")
+        flash('Erreur lors du chargement des catégories')
+        return redirect('/dashboard')
+
+@app.route('/admin/categories/ajouter', methods=['POST'])
+def ajouter_categorie():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nom = request.form.get('nom', '').strip()
+        icone = request.form.get('icone', '').strip() or '📦'
+        if not nom:
+            flash('❌ Le nom de la catégorie est obligatoire')
+            return redirect('/admin/categories')
+        exe("INSERT INTO categories_produits (nom, icone, actif) VALUES (?,?,1)", (nom, icone))
+        flash(f'✅ Catégorie "{nom}" ajoutée')
+    except Exception as e:
+        print(f"❌ Erreur ajouter_categorie: {e}")
+        flash('❌ Erreur lors de l\'ajout (nom peut-être déjà utilisé)')
+    return redirect('/admin/categories')
+
+@app.route('/admin/categories/modifier/<int:id>', methods=['POST'])
+def modifier_categorie(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nom = request.form.get('nom', '').strip()
+        icone = request.form.get('icone', '').strip() or '📦'
+        actif = 1 if request.form.get('actif') else 0
+        exe("UPDATE categories_produits SET nom=?, icone=?, actif=? WHERE id=?", (nom, icone, actif, id))
+        flash(f'✅ Catégorie "{nom}" modifiée')
+    except Exception as e:
+        print(f"❌ Erreur modifier_categorie: {e}")
+        flash('❌ Erreur lors de la modification')
+    return redirect('/admin/categories')
+
+@app.route('/admin/categories/supprimer/<int:id>')
+def supprimer_categorie(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        used = q1("SELECT COUNT(*) FROM produits WHERE categorie_id=?", (id,))
+        if used and used[0] > 0:
+            flash('❌ Cette catégorie est utilisée par des produits. Réaffectez-les d\'abord.')
+            return redirect('/admin/categories')
+        cat = q1("SELECT nom FROM categories_produits WHERE id=?", (id,))
+        if cat:
+            exe("DELETE FROM categories_produits WHERE id=?", (id,))
+            flash(f'🗑️ Catégorie "{cat[0]}" supprimée')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_categorie: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/categories')
+
 @app.route('/admin/unites')
 def admin_unites():
     try:
@@ -619,18 +716,23 @@ def produits_list():
         cache_key = 'produits_list'
         cached_data = get_cached(cache_key, 120)
         if cached_data:
-            produits, unites = cached_data
+            produits, unites, categories = cached_data
         else:
             produits = qall('''SELECT p.id, p.nom, p.prix, p.stock, p.stock_min,
                                       COALESCE(u.symbole, '') as unite_symbole,
                                       COALESCE(u.nom, '') as unite_nom,
-                                      p.unite_id
+                                      p.unite_id,
+                                      COALESCE(c.nom, '') as categorie_nom,
+                                      COALESCE(c.icone, '') as categorie_icone,
+                                      p.categorie_id
                                FROM produits p 
                                LEFT JOIN unites_mesure u ON p.unite_id = u.id 
+                               LEFT JOIN categories_produits c ON p.categorie_id = c.id
                                ORDER BY p.nom''')
             unites = qall("SELECT id, nom, symbole FROM unites_mesure WHERE actif = 1 ORDER BY nom")
-            set_cached(cache_key, (produits, unites))
-        return render_template('produits.html', produits=produits, unites=unites)
+            categories = qall("SELECT id, nom, icone FROM categories_produits WHERE actif = 1 ORDER BY nom")
+            set_cached(cache_key, (produits, unites, categories))
+        return render_template('produits.html', produits=produits, unites=unites, categories=categories)
     except Exception as e:
         print(f"❌ Erreur produits_list: {e}")
         flash('Erreur lors du chargement des produits')
@@ -650,8 +752,13 @@ def ajouter_produit():
             unite_id = None
         else:
             unite_id = int(unite_id)
-        exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id) VALUES (?,?,?,?,?)",
-            (nom, prix, stock, smin, unite_id))
+        categorie_id = request.form.get('categorie_id')
+        if not categorie_id or categorie_id == '0':
+            categorie_id = None
+        else:
+            categorie_id = int(categorie_id)
+        exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id) VALUES (?,?,?,?,?,?)",
+            (nom, prix, stock, smin, unite_id, categorie_id))
         flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
         envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
     except Exception as e:
@@ -672,8 +779,13 @@ def modifier_produit(id):
             unite_id = None
         else:
             unite_id = int(unite_id)
-        exe("UPDATE produits SET nom=?, prix=?, stock_min=?, unite_id=? WHERE id=?", 
-            (nom, prix, smin, unite_id, id))
+        categorie_id = request.form.get('categorie_id')
+        if not categorie_id or categorie_id == '0':
+            categorie_id = None
+        else:
+            categorie_id = int(categorie_id)
+        exe("UPDATE produits SET nom=?, prix=?, stock_min=?, unite_id=?, categorie_id=? WHERE id=?", 
+            (nom, prix, smin, unite_id, categorie_id, id))
         flash(f'✅ Produit "{nom}" modifié')
     except Exception as e:
         print(f"❌ Erreur modifier_produit: {e}")
@@ -722,26 +834,101 @@ def entrees_list():
         flash('Erreur lors du chargement des entrées')
         return redirect('/vente')
 
+# ══════════════════════════════════════════════════════════════
+# TRAITEMENT PARTAGÉ VENTE / ENTRÉE / PERTE
+# Utilisé à la fois par les routes normales (en ligne) et par
+# /api/sync (actions mises en file d'attente pendant une coupure réseau)
+# ══════════════════════════════════════════════════════════════
+
+def _traiter_vente_cart(cart, client, employe_id):
+    """cart: liste de {produit_id, quantite}. Retourne (groupe_vente, lignes_ok, erreurs)."""
+    groupe_vente = uuid.uuid4().hex[:12]
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    lignes_ok = []
+    erreurs = []
+    for item in cart:
+        try:
+            pid = int(item.get('produit_id', 0))
+            qty = int(item.get('quantite', 0))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if pid <= 0 or qty <= 0:
+            continue
+        p = q1("SELECT nom, prix, stock FROM produits WHERE id=?", (pid,))
+        if not p:
+            erreurs.append(f'Produit #{pid} introuvable')
+            continue
+        if qty > p[2]:
+            erreurs.append(f'Stock insuffisant pour "{p[0]}" ({p[2]} restant(s))')
+            continue
+        total = p[1] * qty
+        exe("""INSERT INTO sorties
+            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente)
+            VALUES (?,?,?,?,?,?,?,?)""",
+            (pid, qty, p[1], total, now, client, employe_id, groupe_vente))
+        exe("UPDATE produits SET stock = stock - ? WHERE id = ?", (qty, pid))
+        lignes_ok.append(f'{qty} x {p[0]}')
+    if lignes_ok:
+        verifier_alertes_stock()
+    return groupe_vente, lignes_ok, erreurs
+
+
+def _traiter_entree(pid, qty, pu, fournisseur, employe_id):
+    """Retourne (ok: bool, message: str)."""
+    try:
+        pid, qty, pu = int(pid), int(qty), int(pu)
+    except (TypeError, ValueError):
+        return False, 'Données invalides'
+    if pid <= 0 or qty <= 0 or pu <= 0:
+        return False, 'Données invalides'
+    p = q1("SELECT nom FROM produits WHERE id=?", (pid,))
+    if not p:
+        return False, f'Produit #{pid} introuvable'
+    total = qty * pu
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    exe("INSERT INTO entrees (produit_id,quantite,prix_unitaire,total,date_entree,fournisseur,employe_id) VALUES (?,?,?,?,?,?,?)",
+        (pid, qty, pu, total, now, fournisseur or '', employe_id))
+    exe("UPDATE produits SET stock=stock+? WHERE id=?", (qty, pid))
+    verifier_alertes_stock()
+    return True, f'✅ Entrée : +{qty} {p[0]}'
+
+
+def _traiter_perte(pid, qty, motif, employe_id):
+    """Retourne (ok: bool, message: str)."""
+    try:
+        pid, qty = int(pid), int(qty)
+    except (TypeError, ValueError):
+        return False, 'Données invalides'
+    if pid <= 0 or qty <= 0:
+        return False, 'Données invalides'
+    p = q1("SELECT nom,prix,stock FROM produits WHERE id=?", (pid,))
+    if not p:
+        return False, f'Produit #{pid} introuvable'
+    if qty > p[2]:
+        return False, f'Stock insuffisant ! {p[2]} unités de {p[0]}'
+    total = qty * p[1]
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    exe("INSERT INTO pertes (produit_id,quantite,prix_unitaire,total,motif,date_perte,employe_id) VALUES (?,?,?,?,?,?,?)",
+        (pid, qty, p[1], total, motif or 'Non précisé', now, employe_id))
+    exe("UPDATE produits SET stock=GREATEST(0,stock-?) WHERE id=?", (qty, pid))
+    envoyer_notification_a_tous('perte', '⚠️ Perte signalée',
+        f'{qty} unités de "{p[0]}" perdues ({total} FCFA)', '/admin/pertes')
+    return True, f'⚠️ Perte : {qty}×{p[0]} = {total} FCFA'
+
+
 @app.route('/admin/entrees/ajouter', methods=['POST'])
 def ajouter_entree():
     try:
         if not check_perm('entrees'):
             flash('❌ Permission refusée')
             return redirect('/vente')
-        pid = int(request.form.get('produit_id', 0))
-        qty = int(request.form.get('quantite', 0))
-        pu = int(request.form.get('prix_unitaire', 0))
-        f = request.form.get('fournisseur', '')
-        if pid <= 0 or qty <= 0 or pu <= 0:
-            flash('❌ Données invalides')
-            return redirect('/admin/entrees')
-        total = qty * pu
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        exe("INSERT INTO entrees (produit_id,quantite,prix_unitaire,total,date_entree,fournisseur,employe_id) VALUES (?,?,?,?,?,?,?)",
-            (pid,qty,pu,total,now,f,session.get('user_id', 1)))
-        exe("UPDATE produits SET stock=stock+? WHERE id=?",(qty,pid))
-        flash(f'✅ Entrée : +{qty} unités')
-        verifier_alertes_stock()
+        ok, message = _traiter_entree(
+            request.form.get('produit_id', 0),
+            request.form.get('quantite', 0),
+            request.form.get('prix_unitaire', 0),
+            request.form.get('fournisseur', ''),
+            session.get('user_id', 1))
+        flash(message)
     except Exception as e:
         print(f"❌ Erreur ajouter_entree: {e}")
         flash('❌ Erreur lors de l\'ajout de l\'entrée')
@@ -806,31 +993,28 @@ def vente():
             return redirect('/dashboard' if session.get('role') == 'admin' else '/login')
         if request.method == 'POST':
             try:
-                pid = int(request.form.get('produit_id', 0))
-                qty = int(request.form.get('quantite', 0))
+                cart_json = request.form.get('cart_json', '')
                 client = request.form.get('client', '').strip()
-                if pid <= 0:
-                    flash('❌ Veuillez sélectionner un produit')
+                try:
+                    cart = json.loads(cart_json) if cart_json else []
+                except (ValueError, TypeError):
+                    cart = []
+
+                if not cart:
+                    flash('❌ Le panier est vide')
                     return redirect('/vente')
-                if qty <= 0:
-                    flash('❌ La quantité doit être supérieure à 0')
+
+                groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1))
+
+                for e in erreurs:
+                    flash(f'⚠️ {e}')
+
+                if lignes_ok:
+                    flash(f'✅ Vente enregistrée : {", ".join(lignes_ok)}')
+                    return redirect(f'/vente/recu/{groupe_vente}')
+                else:
+                    flash('❌ Aucun produit n\'a pu être vendu')
                     return redirect('/vente')
-                p = q1("SELECT nom, prix, stock FROM produits WHERE id=?", (pid,))
-                if not p:
-                    flash('❌ Produit introuvable')
-                    return redirect('/vente')
-                if qty > p[2]:
-                    flash(f'❌ Stock insuffisant ! {p[2]} unités restantes')
-                    return redirect('/vente')
-                total = p[1] * qty
-                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                exe("""INSERT INTO sorties 
-                    (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id) 
-                    VALUES (?,?,?,?,?,?,?)""",
-                    (pid, qty, p[1], total, now, client, session.get('user_id', 1)))
-                exe("UPDATE produits SET stock = stock - ? WHERE id = ?", (qty, pid))
-                flash(f'✅ Vente : {qty} {p[0]} → {total} FCFA')
-                verifier_alertes_stock()
             except ValueError as e:
                 flash(f'❌ Erreur de saisie: {str(e)}')
             except Exception as e:
@@ -841,8 +1025,13 @@ def vente():
         if cached_data:
             produits, historique, stats_vendeurs, total_general = cached_data
         else:
-            produits = qall("SELECT id,nom,prix,stock FROM produits WHERE stock>0 ORDER BY nom LIMIT 30")
-            historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role
+            produits = qall('''SELECT p.id, p.nom, p.prix, p.stock,
+                                       COALESCE(u.symbole,'') as unite_symbole,
+                                       COALESCE(u.nom,'') as unite_nom
+                                FROM produits p
+                                LEFT JOIN unites_mesure u ON p.unite_id = u.id
+                                WHERE p.stock>0 ORDER BY p.nom LIMIT 60''')
+            historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente
                 FROM sorties s 
                 JOIN produits p ON s.produit_id = p.id 
                 JOIN users u ON s.employe_id = u.id
@@ -867,6 +1056,35 @@ def vente():
         traceback.print_exc()
         flash(f'❌ Erreur: {str(e)}')
         return redirect('/login')
+
+@app.route('/vente/recu/<groupe_vente>')
+def recu_vente(groupe_vente):
+    """Affiche un reçu imprimable pour un panier de vente donné."""
+    try:
+        if 'user_id' not in session:
+            return redirect('/login')
+        lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
+                                 s.date_sortie, s.client, u.nom
+                          FROM sorties s
+                          JOIN produits p ON s.produit_id = p.id
+                          JOIN users u ON s.employe_id = u.id
+                          WHERE s.groupe_vente = ?
+                          ORDER BY s.id''', (groupe_vente,))
+        if not lignes:
+            flash('❌ Reçu introuvable (vente trop ancienne ou identifiant invalide)')
+            return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
+        total_recu = sum(l[4] for l in lignes)
+        return render_template('recu.html',
+            lignes=lignes,
+            total_recu=total_recu,
+            groupe_vente=groupe_vente,
+            client=lignes[0][6],
+            vendeur=lignes[0][7],
+            date_vente=lignes[0][5])
+    except Exception as e:
+        print(f"❌ Erreur recu_vente: {e}")
+        flash('❌ Erreur lors du chargement du reçu')
+        return redirect('/vente')
 
 # ─── DASHBOARD ──────────────────────────────────────────────────
 @app.route('/dashboard')
@@ -949,27 +1167,12 @@ def ajouter_perte():
         if not check_perm('pertes'):
             flash('❌ Permission refusée')
             return redirect('/vente')
-        pid = int(request.form.get('produit_id', 0))
-        qty = int(request.form.get('quantite', 0))
-        motif = request.form.get('motif', '')
-        if pid <= 0 or qty <= 0:
-            flash('❌ Données invalides')
-            return redirect('/admin/pertes')
-        p = q1("SELECT nom,prix,stock FROM produits WHERE id=?",(pid,))
-        if not p:
-            flash('❌ Produit introuvable')
-            return redirect('/admin/pertes')
-        if qty > p[2]:
-            flash(f'❌ Stock insuffisant ! {p[2]} unités de {p[0]}')
-            return redirect('/admin/pertes')
-        total = qty * p[1]
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        exe("INSERT INTO pertes (produit_id,quantite,prix_unitaire,total,motif,date_perte,employe_id) VALUES (?,?,?,?,?,?,?)",
-            (pid,qty,p[1],total,motif,now,session.get('user_id', 1)))
-        exe("UPDATE produits SET stock=GREATEST(0,stock-?) WHERE id=?",(qty,pid))
-        flash(f'⚠️ Perte : {qty}×{p[0]} = {total} FCFA')
-        envoyer_notification_a_tous('perte','⚠️ Perte signalée',
-            f'{qty} unités de "{p[0]}" perdues ({total} FCFA)','/admin/pertes')
+        ok, message = _traiter_perte(
+            request.form.get('produit_id', 0),
+            request.form.get('quantite', 0),
+            request.form.get('motif', ''),
+            session.get('user_id', 1))
+        flash(message)
     except Exception as e:
         print(f"❌ Erreur ajouter_perte: {e}")
         flash('❌ Erreur lors de l\'ajout de la perte')
@@ -1442,6 +1645,62 @@ def admin_archives():
             produit_filtre=produit_filtre,
             tri=tri,
             type_data=type_arch)
+
+@app.route('/admin/archives/jour/<jour>')
+def admin_archive_jour(jour):
+    """Détail des ventes/entrées archivées pour une journée donnée (YYYY-MM-DD)."""
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    try:
+        ventes_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,date_vente,
+                               employe_id,client,archive_date,semaine,annee,produit_nom,employe_nom
+                               FROM archive_ventes
+                               WHERE date_vente LIKE ?
+                               ORDER BY date_vente ASC''', (jour + '%',))
+        entrees_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,date_entree,
+                                fournisseur,employe_id,archive_date,semaine,annee,produit_nom,employe_nom
+                                FROM archive_entrees
+                                WHERE date_entree LIKE ?
+                                ORDER BY date_entree ASC''', (jour + '%',))
+
+        stats_ventes = q1('''SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0)
+                              FROM archive_ventes WHERE date_vente LIKE ?''', (jour + '%',)) or (0, 0, 0)
+        stats_entrees = q1('''SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0)
+                               FROM archive_entrees WHERE date_entree LIKE ?''', (jour + '%',)) or (0, 0, 0)
+
+        if not ventes_jour and not entrees_jour:
+            flash("ℹ️ Aucune donnée archivée pour ce jour (seules les semaines déjà archivées sont consultables ici).")
+
+        return render_template('archive_jour.html',
+            jour=jour,
+            ventes_jour=ventes_jour,
+            entrees_jour=entrees_jour,
+            stats_ventes=stats_ventes,
+            stats_entrees=stats_entrees)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash(f'❌ Erreur lors du chargement du détail du jour : {str(e)}')
+        return redirect('/admin/archives')
+
+
+@app.route('/admin/archives/semaines')
+def admin_archive_semaines():
+    """Liste des récapitulatifs hebdomadaires archivés."""
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    try:
+        semaines = qall('''SELECT semaine, annee, date_debut, date_fin, nb_ventes, total_ventes,
+                            nb_entrees, total_achats, archive_date
+                            FROM archive_recap
+                            ORDER BY annee DESC, semaine DESC''')
+        return render_template('archive_semaines.html', semaines=semaines)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash(f'❌ Erreur lors du chargement des semaines archivées : {str(e)}')
+        return redirect('/admin/archives')
+
 
 # ══════════════════════════════════════════════════════════════
 # EXPORT PDF - AVEC LOGO CORRIGÉ
@@ -2140,6 +2399,59 @@ def api_produits():
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sync', methods=['POST'])
+def api_sync():
+    """Traite un lot d'actions enregistrées hors ligne (vente/entrée/perte)."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Non autorisé'}), 401
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        actions = data.get('actions', [])
+        employe_id = session.get('user_id', 1)
+        results = []
+
+        for action in actions:
+            client_id = action.get('client_id', '')
+            atype = action.get('type', '')
+            payload = action.get('payload', {}) or {}
+            try:
+                if atype == 'vente':
+                    cart = payload.get('cart', [])
+                    client = (payload.get('client') or '').strip()
+                    if not cart:
+                        results.append({'client_id': client_id, 'status': 'error_definitif', 'message': 'Panier vide'})
+                        continue
+                    groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, employe_id)
+                    if lignes_ok:
+                        results.append({'client_id': client_id, 'status': 'ok', 'message': ', '.join(lignes_ok), 'groupe_vente': groupe_vente})
+                    else:
+                        results.append({'client_id': client_id, 'status': 'error_definitif', 'message': '; '.join(erreurs) or 'Vente impossible'})
+
+                elif atype == 'entree':
+                    ok, message = _traiter_entree(
+                        payload.get('produit_id'), payload.get('quantite'),
+                        payload.get('prix_unitaire'), payload.get('fournisseur', ''), employe_id)
+                    results.append({'client_id': client_id, 'status': 'ok' if ok else 'error_definitif', 'message': message})
+
+                elif atype == 'perte':
+                    ok, message = _traiter_perte(
+                        payload.get('produit_id'), payload.get('quantite'),
+                        payload.get('motif', ''), employe_id)
+                    results.append({'client_id': client_id, 'status': 'ok' if ok else 'error_definitif', 'message': message})
+
+                else:
+                    results.append({'client_id': client_id, 'status': 'error_definitif', 'message': f'Type d\'action inconnu: {atype}'})
+            except Exception as item_error:
+                print(f"❌ Erreur sync action {client_id}: {item_error}")
+                results.append({'client_id': client_id, 'status': 'retry', 'message': str(item_error)})
+
+        clear_cache()
+        return jsonify({'results': results})
+    except Exception as e:
+        print(f"❌ Erreur api_sync: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/offline')
 def offline():
