@@ -306,12 +306,16 @@
             </div>
             <div class="form-group">
                 <label>📏 Unité de mesure</label>
-                <select name="unite_id">
-                    <option value="">-- Aucune unité --</option>
-                    {% for unite in unites %}
-                    <option value="{{ unite[0] }}">{{ unite[1] }} ({{ unite[2] }})</option>
-                    {% endfor %}
-                </select>
+                <div style="display:flex; gap:8px;">
+                    <input type="number" name="valeur_unite" step="0.01" min="0" placeholder="Ex: 7" style="flex:1;">
+                    <select name="unite_id" style="flex:1.4;">
+                        <option value="">-- Aucune unité --</option>
+                        {% for unite in unites %}
+                        <option value="{{ unite[0] }}">{{ unite[2] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="font-size:11px; color:#888; margin-top:4px;">Ex: 7 + g = "7 g" — 1.5 + L = "1.5 L"</div>
             </div>
             <div class="form-group">
                 <label>🗂️ Catégorie</label>
@@ -397,7 +401,7 @@
                         </td>
                         <td>
                             {% if p[5] %}
-                                <span class="unite-badge">{{ p[5] }}</span>
+                                <span class="unite-badge">{% if p[11] %}{{ p[11]|round(2) }} {% endif %}{{ p[5] }}</span>
                             {% else %}
                                 <span style="color:#999; font-size:11px;">—</span>
                             {% endif %}
@@ -405,7 +409,7 @@
                         <td>{{ p[4] }}</td>
                         <td>
                             <!-- Modifier -->
-                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }}, {{ p[6]|default('') }}, {{ p[10]|default('') }})"
+                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }}, {{ p[6]|default('') }}, {{ p[10]|default('') }}, {{ p[11]|default('') }})"
                                     style="background:#1e3c72;color:white;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;">
                                 ✏️ Modifier
                             </button>
@@ -450,7 +454,7 @@
             </div>
             <div class="card-row">
                 <label>Unité</label>
-                <span>{% if p[5] %}{{ p[5] }}{% else %}—{% endif %}</span>
+                <span>{% if p[5] %}{% if p[11] %}{{ p[11]|round(2) }} {% endif %}{{ p[5] }}{% else %}—{% endif %}</span>
             </div>
             <div class="card-row">
                 <label>Stock min</label>
@@ -458,7 +462,7 @@
             </div>
             <div class="card-actions">
                 <button class="card-btn-save"
-                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }}, {{ p[6]|default('') }}, {{ p[10]|default('') }})">
+                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[4] }}, {{ p[6]|default('') }}, {{ p[10]|default('') }}, {{ p[11]|default('') }})">
                     ✏️ Modifier
                 </button>
                 <a href="/admin/produits/supprimer/{{ p[0] }}"
@@ -491,12 +495,15 @@
             </div>
             <div class="form-group" style="margin-bottom:12px;">
                 <label>📏 Unité de mesure</label>
-                <select name="unite_id" id="modal-unite" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
-                    <option value="">-- Aucune unité --</option>
-                    {% for unite in unites %}
-                    <option value="{{ unite[0] }}">{{ unite[1] }} ({{ unite[2] }})</option>
-                    {% endfor %}
-                </select>
+                <div style="display:flex; gap:8px;">
+                    <input type="number" name="valeur_unite" id="modal-valeur-unite" step="0.01" min="0" placeholder="Ex: 7" style="flex:1;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
+                    <select name="unite_id" id="modal-unite" style="flex:1.4;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
+                        <option value="">-- Aucune unité --</option>
+                        {% for unite in unites %}
+                        <option value="{{ unite[0] }}">{{ unite[2] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
             <div class="form-group" style="margin-bottom:12px;">
                 <label>🗂️ Catégorie</label>
@@ -606,13 +613,14 @@ function confirmSuppressionMultiple() {
 }
 
 // ── Modal modification ─────────────────────────
-function ouvrirModal(id, nom, prix, stockMin, uniteId, categorieId) {
+function ouvrirModal(id, nom, prix, stockMin, uniteId, categorieId, valeurUnite) {
     document.getElementById('form-modifier').action = '/admin/produits/modifier/' + id;
     document.getElementById('modal-nom').value      = nom;
     document.getElementById('modal-prix').value     = prix;
     document.getElementById('modal-stock-min').value = stockMin;
     document.getElementById('modal-unite').value    = uniteId || '';
     document.getElementById('modal-categorie').value = categorieId || '';
+    document.getElementById('modal-valeur-unite').value = valeurUnite || '';
     document.getElementById('modal-modifier').style.display = 'flex';
 }
 

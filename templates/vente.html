@@ -610,7 +610,7 @@
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
         <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unite="{{ p[4] }}">
-            {% if p[4] %}<div class="unite-badge-vente">📏 {{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
+            {% if p[4] %}<div class="unite-badge-vente">📏 {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
             <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
             <div class="product-stock">📦 Stock: {{ p[3] }} unités</div>

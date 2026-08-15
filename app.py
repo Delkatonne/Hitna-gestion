@@ -279,6 +279,14 @@ def init_db():
             print(f"⚠️ Erreur ajout colonne unite_id: {e}")
 
         try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='valeur_unite'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE produits ADD COLUMN valeur_unite NUMERIC")
+                print("✅ Colonne 'valeur_unite' ajoutée à produits (ex: 7 pour '7 g')")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne valeur_unite: {e}")
+
+        try:
             c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sorties' AND column_name='groupe_vente'")
             if not c.fetchone():
                 c.execute("ALTER TABLE sorties ADD COLUMN groupe_vente TEXT")
@@ -723,7 +731,8 @@ def produits_list():
                                       p.unite_id,
                                       COALESCE(c.nom, '') as categorie_nom,
                                       COALESCE(c.icone, '') as categorie_icone,
-                                      p.categorie_id
+                                      p.categorie_id,
+                                      p.valeur_unite
                                FROM produits p 
                                LEFT JOIN unites_mesure u ON p.unite_id = u.id 
                                LEFT JOIN categories_produits c ON p.categorie_id = c.id
@@ -756,8 +765,10 @@ def ajouter_produit():
             categorie_id = None
         else:
             categorie_id = int(categorie_id)
-        ok = exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id) VALUES (?,?,?,?,?,?)",
-            (nom, prix, stock, smin, unite_id, categorie_id))
+        valeur_unite = request.form.get('valeur_unite', '').strip()
+        valeur_unite = float(valeur_unite) if valeur_unite else None
+        ok = exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite) VALUES (?,?,?,?,?,?,?)",
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite))
         if ok:
             flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
             envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
@@ -786,8 +797,10 @@ def modifier_produit(id):
             categorie_id = None
         else:
             categorie_id = int(categorie_id)
-        ok = exe("UPDATE produits SET nom=?, prix=?, stock_min=?, unite_id=?, categorie_id=? WHERE id=?", 
-            (nom, prix, smin, unite_id, categorie_id, id))
+        valeur_unite = request.form.get('valeur_unite', '').strip()
+        valeur_unite = float(valeur_unite) if valeur_unite else None
+        ok = exe("UPDATE produits SET nom=?, prix=?, stock_min=?, unite_id=?, categorie_id=?, valeur_unite=? WHERE id=?", 
+            (nom, prix, smin, unite_id, categorie_id, valeur_unite, id))
         if ok:
             flash(f'✅ Produit "{nom}" modifié')
         else:
@@ -1039,7 +1052,8 @@ def vente():
         else:
             produits = qall('''SELECT p.id, p.nom, p.prix, p.stock,
                                        COALESCE(u.symbole,'') as unite_symbole,
-                                       COALESCE(u.nom,'') as unite_nom
+                                       COALESCE(u.nom,'') as unite_nom,
+                                       p.valeur_unite
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom LIMIT 60''')
