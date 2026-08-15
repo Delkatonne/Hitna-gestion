@@ -130,7 +130,8 @@ def qall(sql, params=()):
             release_db(conn)
 
 def exe(sql, params=(), returning=False):
-    """INSERT / UPDATE / DELETE avec commit. returning=True retourne le nouvel id."""
+    """INSERT / UPDATE / DELETE avec commit. returning=True retourne le nouvel id.
+    Retourne False en cas d'échec (permet aux routes de détecter un vrai échec)."""
     conn = None
     try:
         sql2 = sql.replace('?', '%s')
@@ -139,7 +140,7 @@ def exe(sql, params=(), returning=False):
         conn = get_db()
         cur = conn.cursor()
         cur.execute(sql2, params)
-        result = cur.fetchone()[0] if returning else None
+        result = cur.fetchone()[0] if returning else True
         conn.commit()
         cur.close()
         clear_cache()
@@ -148,7 +149,7 @@ def exe(sql, params=(), returning=False):
         print(f"❌ Erreur exe: {e}")
         if conn:
             conn.rollback()
-        return None
+        return False
     finally:
         if conn:
             release_db(conn)
@@ -164,16 +165,11 @@ def init_db():
         
         c.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='users'")
         tables_existent = c.fetchone()[0] > 0
-        
-        if tables_existent:
-            print("✅ Tables existantes - AUCUNE MODIFICATION")
-            conn.commit()
-            c.close()
-            release_db(conn)
-            conn = None
-            return
 
-        print("⚠️ Tables non trouvées - Création des tables...")
+        if tables_existent:
+            print("✅ Tables existantes - vérification des migrations uniquement")
+        else:
+            print("⚠️ Tables non trouvées - Création des tables...")
         
         c.execute('''CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY, role TEXT, role_personnalise TEXT,
@@ -601,8 +597,11 @@ def ajouter_categorie():
         if not nom:
             flash('❌ Le nom de la catégorie est obligatoire')
             return redirect('/admin/categories')
-        exe("INSERT INTO categories_produits (nom, icone, actif) VALUES (?,?,1)", (nom, icone))
-        flash(f'✅ Catégorie "{nom}" ajoutée')
+        ok = exe("INSERT INTO categories_produits (nom, icone, actif) VALUES (?,?,1)", (nom, icone))
+        if ok:
+            flash(f'✅ Catégorie "{nom}" ajoutée')
+        else:
+            flash(f'❌ Échec de l\'ajout — ce nom existe peut-être déjà')
     except Exception as e:
         print(f"❌ Erreur ajouter_categorie: {e}")
         flash('❌ Erreur lors de l\'ajout (nom peut-être déjà utilisé)')
@@ -757,10 +756,13 @@ def ajouter_produit():
             categorie_id = None
         else:
             categorie_id = int(categorie_id)
-        exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id) VALUES (?,?,?,?,?,?)",
+        ok = exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id) VALUES (?,?,?,?,?,?)",
             (nom, prix, stock, smin, unite_id, categorie_id))
-        flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
-        envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
+        if ok:
+            flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
+            envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
+        else:
+            flash(f'❌ Échec de l\'ajout de "{nom}" — vérifiez les logs serveur')
     except Exception as e:
         print(f"❌ Erreur ajouter_produit: {e}")
         flash('❌ Erreur lors de l\'ajout du produit')
@@ -784,9 +786,12 @@ def modifier_produit(id):
             categorie_id = None
         else:
             categorie_id = int(categorie_id)
-        exe("UPDATE produits SET nom=?, prix=?, stock_min=?, unite_id=?, categorie_id=? WHERE id=?", 
+        ok = exe("UPDATE produits SET nom=?, prix=?, stock_min=?, unite_id=?, categorie_id=? WHERE id=?", 
             (nom, prix, smin, unite_id, categorie_id, id))
-        flash(f'✅ Produit "{nom}" modifié')
+        if ok:
+            flash(f'✅ Produit "{nom}" modifié')
+        else:
+            flash(f'❌ Échec de la modification de "{nom}"')
     except Exception as e:
         print(f"❌ Erreur modifier_produit: {e}")
         flash('❌ Erreur lors de la modification')
@@ -862,10 +867,13 @@ def _traiter_vente_cart(cart, client, employe_id):
             erreurs.append(f'Stock insuffisant pour "{p[0]}" ({p[2]} restant(s))')
             continue
         total = p[1] * qty
-        exe("""INSERT INTO sorties
+        insert_ok = exe("""INSERT INTO sorties
             (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente)
             VALUES (?,?,?,?,?,?,?,?)""",
             (pid, qty, p[1], total, now, client, employe_id, groupe_vente))
+        if not insert_ok:
+            erreurs.append(f'Échec d\'enregistrement pour "{p[0]}" (erreur serveur)')
+            continue
         exe("UPDATE produits SET stock = stock - ? WHERE id = ?", (qty, pid))
         lignes_ok.append(f'{qty} x {p[0]}')
     if lignes_ok:
@@ -886,8 +894,10 @@ def _traiter_entree(pid, qty, pu, fournisseur, employe_id):
         return False, f'Produit #{pid} introuvable'
     total = qty * pu
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    exe("INSERT INTO entrees (produit_id,quantite,prix_unitaire,total,date_entree,fournisseur,employe_id) VALUES (?,?,?,?,?,?,?)",
+    insert_ok = exe("INSERT INTO entrees (produit_id,quantite,prix_unitaire,total,date_entree,fournisseur,employe_id) VALUES (?,?,?,?,?,?,?)",
         (pid, qty, pu, total, now, fournisseur or '', employe_id))
+    if not insert_ok:
+        return False, f'❌ Échec d\'enregistrement de l\'entrée pour "{p[0]}" (erreur serveur)'
     exe("UPDATE produits SET stock=stock+? WHERE id=?", (qty, pid))
     verifier_alertes_stock()
     return True, f'✅ Entrée : +{qty} {p[0]}'
@@ -908,8 +918,10 @@ def _traiter_perte(pid, qty, motif, employe_id):
         return False, f'Stock insuffisant ! {p[2]} unités de {p[0]}'
     total = qty * p[1]
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    exe("INSERT INTO pertes (produit_id,quantite,prix_unitaire,total,motif,date_perte,employe_id) VALUES (?,?,?,?,?,?,?)",
+    insert_ok = exe("INSERT INTO pertes (produit_id,quantite,prix_unitaire,total,motif,date_perte,employe_id) VALUES (?,?,?,?,?,?,?)",
         (pid, qty, p[1], total, motif or 'Non précisé', now, employe_id))
+    if not insert_ok:
+        return False, f'❌ Échec d\'enregistrement de la perte pour "{p[0]}" (erreur serveur)'
     exe("UPDATE produits SET stock=GREATEST(0,stock-?) WHERE id=?", (qty, pid))
     envoyer_notification_a_tous('perte', '⚠️ Perte signalée',
         f'{qty} unités de "{p[0]}" perdues ({total} FCFA)', '/admin/pertes')
