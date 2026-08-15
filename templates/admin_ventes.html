@@ -70,6 +70,114 @@
         color: #666;
         margin-top: 5px;
     }
+
+    .unite-badge-vente {
+        display: inline-block;
+        background: #e9ecef;
+        color: #495057;
+        padding: 2px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: bold;
+        margin-bottom: 8px;
+    }
+
+    .product-card .btn-add-cart {
+        margin-top: 10px;
+        width: 100%;
+        padding: 8px;
+        background: #1e3c72;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .product-card .btn-add-cart:hover {
+        background: #2a5298;
+    }
+
+    .product-card.in-cart {
+        border-color: #28a745;
+        background: #f0fff4;
+    }
+
+    .cart-list {
+        background: rgba(255,255,255,0.15);
+        border-radius: 12px;
+        padding: 12px;
+        margin-bottom: 15px;
+    }
+
+    .cart-empty {
+        text-align: center;
+        opacity: 0.8;
+        padding: 15px;
+    }
+
+    .cart-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.2);
+        flex-wrap: wrap;
+    }
+
+    .cart-item:last-child {
+        border-bottom: none;
+    }
+
+    .cart-item-name {
+        flex: 1;
+        min-width: 120px;
+        font-weight: bold;
+        font-size: 14px;
+    }
+
+    .cart-item-qty {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .cart-item-qty button {
+        width: 28px;
+        height: 28px;
+        border: none;
+        border-radius: 6px;
+        background: white;
+        color: #1e3c72;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 16px;
+    }
+
+    .cart-item-qty span {
+        min-width: 24px;
+        text-align: center;
+        font-weight: bold;
+    }
+
+    .cart-item-subtotal {
+        font-weight: bold;
+        min-width: 90px;
+        text-align: right;
+    }
+
+    .cart-item-remove {
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        width: 28px;
+        height: 28px;
+        cursor: pointer;
+        font-size: 14px;
+    }
     
     .sale-form-container {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -438,10 +546,12 @@
     <h2 class="card-title">📦 Produits disponibles</h2>
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
-        <div class="product-card" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}">
+        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}">
+            {% if p[4] %}<div class="unite-badge-vente">📏 {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
             <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
             <div class="product-stock">📦 Stock: {{ p[3] }} unités</div>
+            <button type="button" class="btn-add-cart" onclick="adminAjouterAuPanier({{ p[0] }})">➕ Ajouter au panier</button>
         </div>
         {% endfor %}
     </div>
@@ -450,29 +560,23 @@
     </div>
 </div>
 
-<!-- Formulaire de vente -->
+<!-- Panier de vente -->
 <div class="sale-form-container">
-    <h3>🛒 Vente en cours</h3>
-    <div id="selectedProductDisplay" class="selected-product-info">
-        <div style="opacity: 0.7;">👆 Cliquez sur un produit ci-dessus pour le sélectionner</div>
+    <h3>🛒 Panier de vente</h3>
+    <div class="cart-list" id="adminCartList">
+        <div class="cart-empty" id="adminCartEmpty">👆 Ajoutez des produits depuis la liste ci-dessus</div>
     </div>
-    
+
     <form method="post" id="adminSaleForm" action="/admin/ventes">
-        <input type="hidden" name="produit_id" id="adminSelectedProductId" required>
+        <input type="hidden" name="cart_json" id="adminCartJsonInput">
         <input type="hidden" name="client" id="adminClientName" value="">
-        
-        <div class="quantity-control" style="display: none;" id="adminQuantityControls">
-            <button type="button" onclick="adminDecrementQuantity()">-</button>
-            <input type="number" name="quantite" id="adminQuantite" value="1" min="1" onchange="adminUpdateTotal()">
-            <button type="button" onclick="adminIncrementQuantity()">+</button>
-        </div>
-        
+
         <div id="adminTotalDisplay" style="display: none;">
             <div class="total-amount">
                 Total: <span id="adminTotalAmount">0</span> FCFA
             </div>
         </div>
-        
+
         <button type="button" id="adminValidateSaleBtn" class="btn-sale" style="display: none;" onclick="adminValidateSale()">
             💵 Valider la vente
         </button>
@@ -538,26 +642,22 @@
     // ============================================================
     // ADMIN - VARIABLES GLOBALES
     // ============================================================
-    let adminSelectedProduct = null;
-    let adminMaxStock = 0;
+    let adminCart = {}; // { produit_id: { id, name, price, stock, qty } }
 
     // ============================================================
-    // ADMIN - RECHERCHE DE PRODUITS (CORRIGÉE)
+    // ADMIN - RECHERCHE DE PRODUITS
     // ============================================================
     const adminSearchInput = document.getElementById('searchInput');
     const adminProductCards = document.querySelectorAll('.product-card');
     const adminNoResults = document.getElementById('noResults');
     
     function adminFilterProducts() {
-        // Normaliser le terme de recherche (supprimer les accents)
         const searchTerm = adminSearchInput.value.toLowerCase().trim()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         let hasResults = false;
         
         adminProductCards.forEach(card => {
-            // Récupérer le nom du produit
             const productName = card.getAttribute('data-name') || '';
-            // Normaliser aussi le nom du produit
             const normalizedName = productName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             
             if (searchTerm === '' || normalizedName.includes(searchTerm)) {
@@ -571,95 +671,111 @@
         adminNoResults.style.display = hasResults ? 'none' : 'block';
     }
     
-    // Écouteurs d'événements pour la recherche
     adminSearchInput.addEventListener('input', adminFilterProducts);
     adminSearchInput.addEventListener('keyup', adminFilterProducts);
     
     // ============================================================
-    // ADMIN - SÉLECTION PRODUIT
+    // ADMIN - GESTION DU PANIER
     // ============================================================
-    adminProductCards.forEach(card => {
-        card.addEventListener('click', function() {
-            adminProductCards.forEach(c => c.classList.remove('selected'));
-            this.classList.add('selected');
-            
-            adminSelectedProduct = {
-                id: this.getAttribute('data-id'),
-                name: this.getAttribute('data-name'),
-                price: parseInt(this.getAttribute('data-price')),
-                stock: parseInt(this.getAttribute('data-stock'))
+    function adminAjouterAuPanier(id) {
+        const card = document.getElementById('card-' + id);
+        if (!card) return;
+        const stock = parseInt(card.getAttribute('data-stock'));
+
+        if (adminCart[id]) {
+            if (adminCart[id].qty < stock) {
+                adminCart[id].qty += 1;
+            } else {
+                alert(`Stock insuffisant ! Il reste ${stock} unités`);
+            }
+        } else {
+            if (stock < 1) {
+                alert('Ce produit n\'a plus de stock');
+                return;
+            }
+            adminCart[id] = {
+                id: id,
+                name: card.getAttribute('data-nom'),
+                price: parseInt(card.getAttribute('data-price')),
+                stock: stock,
+                qty: 1
             };
-            adminMaxStock = adminSelectedProduct.stock;
-            adminUpdateSelectedDisplay();
-        });
-    });
-    
-    function adminUpdateSelectedDisplay() {
-        if (adminSelectedProduct) {
-            document.getElementById('selectedProductDisplay').innerHTML = `
-                <div>
-                    <div class="selected-product-name">${adminSelectedProduct.name}</div>
-                    <div class="selected-product-price">${adminSelectedProduct.price} FCFA</div>
-                    <div>📦 Stock: ${adminSelectedProduct.stock} unités</div>
+        }
+        card.classList.add('in-cart');
+        adminRenderCart();
+    }
+
+    function adminChangerQuantitePanier(id, delta) {
+        if (!adminCart[id]) return;
+        const nouvelleQty = adminCart[id].qty + delta;
+        if (nouvelleQty > adminCart[id].stock) {
+            alert(`Stock insuffisant ! Il reste ${adminCart[id].stock} unités`);
+            return;
+        }
+        if (nouvelleQty < 1) {
+            adminRetirerDuPanier(id);
+            return;
+        }
+        adminCart[id].qty = nouvelleQty;
+        adminRenderCart();
+    }
+
+    function adminRetirerDuPanier(id) {
+        delete adminCart[id];
+        const card = document.getElementById('card-' + id);
+        if (card) card.classList.remove('in-cart');
+        adminRenderCart();
+    }
+
+    function adminRenderCart() {
+        const cartList = document.getElementById('adminCartList');
+        const ids = Object.keys(adminCart);
+
+        if (ids.length === 0) {
+            cartList.innerHTML = '<div class="cart-empty" id="adminCartEmpty">👆 Ajoutez des produits depuis la liste ci-dessus</div>';
+            document.getElementById('adminTotalDisplay').style.display = 'none';
+            document.getElementById('adminValidateSaleBtn').style.display = 'none';
+            return;
+        }
+
+        let html = '';
+        let total = 0;
+        ids.forEach(id => {
+            const item = adminCart[id];
+            const subtotal = item.qty * item.price;
+            total += subtotal;
+            html += `
+                <div class="cart-item">
+                    <div class="cart-item-name">${item.name}</div>
+                    <div class="cart-item-qty">
+                        <button type="button" onclick="adminChangerQuantitePanier(${id}, -1)">-</button>
+                        <span>${item.qty}</span>
+                        <button type="button" onclick="adminChangerQuantitePanier(${id}, 1)">+</button>
+                    </div>
+                    <div class="cart-item-subtotal">${subtotal.toLocaleString()} FCFA</div>
+                    <button type="button" class="cart-item-remove" onclick="adminRetirerDuPanier(${id})">🗑️</button>
                 </div>
             `;
-            document.getElementById('adminSelectedProductId').value = adminSelectedProduct.id;
-            document.getElementById('adminQuantityControls').style.display = 'flex';
-            document.getElementById('adminTotalDisplay').style.display = 'block';
-            document.getElementById('adminValidateSaleBtn').style.display = 'block';
-            document.getElementById('adminQuantite').value = 1;
-            adminUpdateTotal();
-        }
+        });
+        cartList.innerHTML = html;
+
+        document.getElementById('adminTotalAmount').innerText = total.toLocaleString();
+        document.getElementById('adminTotalDisplay').style.display = 'block';
+        document.getElementById('adminValidateSaleBtn').style.display = 'block';
     }
-    
-    function adminUpdateTotal() {
-        let quantite = parseInt(document.getElementById('adminQuantite').value);
-        if (isNaN(quantite)) quantite = 1;
-        if (quantite > adminMaxStock) quantite = adminMaxStock;
-        if (quantite < 1) quantite = 1;
-        document.getElementById('adminQuantite').value = quantite;
-        document.getElementById('adminTotalAmount').innerText = quantite * adminSelectedProduct.price;
-    }
-    
-    function adminIncrementQuantity() {
-        let q = parseInt(document.getElementById('adminQuantite').value);
-        if (q < adminMaxStock) document.getElementById('adminQuantite').value = q + 1;
-        adminUpdateTotal();
-    }
-    
-    function adminDecrementQuantity() {
-        let q = parseInt(document.getElementById('adminQuantite').value);
-        if (q > 1) document.getElementById('adminQuantite').value = q - 1;
-        adminUpdateTotal();
-    }
-    
+
     // ============================================================
     // ADMIN - VALIDATION VENTE
     // ============================================================
     function adminValidateSale() {
         try {
-            console.log('🔍 adminValidateSale() appelée');
-            
-            if (!adminSelectedProduct) {
-                alert('Veuillez sélectionner un produit');
+            const ids = Object.keys(adminCart);
+            if (ids.length === 0) {
+                alert('Veuillez ajouter au moins un produit au panier');
                 return;
             }
-            
-            const quantite = parseInt(document.getElementById('adminQuantite').value);
-            
-            if (isNaN(quantite) || quantite < 1) {
-                alert('La quantité doit être supérieure à 0');
-                return;
-            }
-            
-            if (quantite > adminMaxStock) {
-                alert(`Stock insuffisant ! Il reste ${adminMaxStock} unités`);
-                return;
-            }
-            
             document.getElementById('adminClientModal').style.display = 'flex';
             document.getElementById('adminClientNameInput').focus();
-            
         } catch (error) {
             console.error('❌ Erreur validation vente admin:', error);
             alert('Erreur: ' + error.message);
@@ -667,33 +783,23 @@
     }
     
     // ============================================================
-    // ADMIN - ÉCOUTEURS D'ÉVÉNEMENTS
-    // ============================================================
-    document.addEventListener('DOMContentLoaded', function() {
-        const btn = document.getElementById('adminValidateSaleBtn');
-        if (btn) {
-            btn.addEventListener('click', adminValidateSale);
-            console.log('✅ Écouteur adminValidateSaleBtn ajouté');
-        } else {
-            console.error('❌ Bouton adminValidateSaleBtn non trouvé');
-        }
-    });
-    
-    // ============================================================
     // ADMIN - CONFIRMATION CLIENT
     // ============================================================
+    function adminBuildCartPayload() {
+        return Object.values(adminCart).map(item => ({ produit_id: item.id, quantite: item.qty }));
+    }
+
     function adminConfirmClientName() {
         try {
             const clientName = document.getElementById('adminClientNameInput').value;
             document.getElementById('adminClientName').value = clientName;
+            document.getElementById('adminCartJsonInput').value = JSON.stringify(adminBuildCartPayload());
             document.getElementById('adminClientModal').style.display = 'none';
             
             const form = document.getElementById('adminSaleForm');
             if (form) {
-                console.log('📤 Soumission du formulaire admin...');
                 form.submit();
             } else {
-                console.error('❌ Formulaire admin non trouvé');
                 alert('Erreur: formulaire non trouvé');
             }
         } catch (error) {
@@ -705,14 +811,13 @@
     function adminSkipClientName() {
         try {
             document.getElementById('adminClientName').value = '';
+            document.getElementById('adminCartJsonInput').value = JSON.stringify(adminBuildCartPayload());
             document.getElementById('adminClientModal').style.display = 'none';
             
             const form = document.getElementById('adminSaleForm');
             if (form) {
-                console.log('📤 Soumission du formulaire admin (sans client)...');
                 form.submit();
             } else {
-                console.error('❌ Formulaire admin non trouvé');
                 alert('Erreur: formulaire non trouvé');
             }
         } catch (error) {
@@ -741,13 +846,5 @@
             }
         });
     }
-
-    // ============================================================
-    // ADMIN - DÉBOGAGE
-    // ============================================================
-    console.log('📱 Page admin_ventes.html chargée');
-    console.log('🔍 Formulaire adminSaleForm:', document.getElementById('adminSaleForm'));
-    console.log('🔍 Bouton adminValidateSaleBtn:', document.getElementById('adminValidateSaleBtn'));
-    console.log('📦 Produits disponibles:', document.querySelectorAll('.product-card').length);
 </script>
 {% endblock %}
