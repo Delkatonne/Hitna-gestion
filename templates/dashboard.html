@@ -134,6 +134,14 @@
         height: 200px;
     }
 }
+
+/* Sécurité : empêche nav-links d'hériter d'un position sticky/absolute
+   venant d'une règle globale (base.html) qui ferait flotter ce menu
+   par-dessus le tableau d'historique pendant le défilement. */
+.nav-links {
+    position: static !important;
+    z-index: auto !important;
+}
 </style>
 {% endblock %}
 
@@ -320,7 +328,6 @@
     <a href="/admin/ventes">🛒 Ventes</a>
     <a href="/admin/archives">📚 Archives</a>
     <a href="#" onclick="exportToday()" style="background: #dc3545; color: white;">📄 Exporter le point du jour</a>
-    <a href="/admin/archives">📚 Archives</a>
     <a href="/changer_mdp">🔑 Changer mot de passe</a>
     <a href="/logout">🚪 Déconnexion</a>
 </div>
