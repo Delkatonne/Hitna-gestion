@@ -966,33 +966,40 @@ def admin_ventes():
         if session.get('role') != 'admin':
             return redirect('/login')
         if request.method == 'POST':
-            pid = int(request.form.get('produit_id', 0))
-            qty = int(request.form.get('quantite', 0))
-            client = request.form.get('client', '')
-            if pid <= 0 or qty <= 0:
-                flash('❌ Données invalides')
+            cart_json = request.form.get('cart_json', '')
+            client = request.form.get('client', '').strip()
+            try:
+                cart = json.loads(cart_json) if cart_json else []
+            except (ValueError, TypeError):
+                cart = []
+
+            if not cart:
+                flash('❌ Le panier est vide')
                 return redirect('/admin/ventes')
-            p = q1("SELECT nom,prix,stock FROM produits WHERE id=?",(pid,))
-            if not p:
-                flash('❌ Produit introuvable')
-                return redirect('/admin/ventes')
-            if qty > p[2]:
-                flash(f'❌ Stock insuffisant ! {p[2]} unités restantes')
+
+            groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1))
+
+            for e in erreurs:
+                flash(f'⚠️ {e}')
+
+            if lignes_ok:
+                flash(f'✅ Vente enregistrée : {", ".join(lignes_ok)}')
+                return redirect(f'/vente/recu/{groupe_vente}')
             else:
-                total = p[1] * qty
-                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                exe("INSERT INTO sorties (produit_id,quantite,prix_unitaire,total,date_sortie,client,employe_id) VALUES (?,?,?,?,?,?,?)",
-                    (pid,qty,p[1],total,now,client,session.get('user_id', 1)))
-                exe("UPDATE produits SET stock=stock-? WHERE id=?",(qty,pid))
-                flash(f'✅ Vente : {qty} {p[0]} → {total} FCFA')
-                verifier_alertes_stock()
+                flash('❌ Aucun produit n\'a pu être vendu')
             return redirect('/admin/ventes')
         cache_key = 'admin_ventes_data'
         cached_data = get_cached(cache_key, 30)
         if cached_data:
             produits, historique, stats_vendeurs = cached_data
         else:
-            produits = qall("SELECT id,nom,prix,stock FROM produits WHERE stock>0 ORDER BY nom LIMIT 50")
+            produits = qall('''SELECT p.id, p.nom, p.prix, p.stock,
+                                       COALESCE(u.symbole,'') as unite_symbole,
+                                       COALESCE(u.nom,'') as unite_nom,
+                                       p.valeur_unite
+                                FROM produits p
+                                LEFT JOIN unites_mesure u ON p.unite_id = u.id
+                                WHERE p.stock>0 ORDER BY p.nom LIMIT 50''')
             historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
                 ORDER BY s.date_sortie DESC LIMIT 20''')
