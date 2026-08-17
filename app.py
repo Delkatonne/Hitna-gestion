@@ -2411,6 +2411,52 @@ def reset_password(token):
         flash('Erreur lors de la réinitialisation')
         return redirect('/login')
 
+# ──────────────────────────────────────────────────────────────
+# ALERTES PRODUITS (seuils de stock personnalisés)
+# ──────────────────────────────────────────────────────────────
+@app.route('/admin/alertes/produits')
+def admin_alertes_produits():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        produits = qall('''SELECT p.id, p.nom, p.stock, p.stock_min,
+                                   COALESCE(a.seuil, p.stock_min, 5) as seuil,
+                                   COALESCE(a.actif, 1) as actif
+                            FROM produits p
+                            LEFT JOIN alertes_produits a ON p.id = a.produit_id
+                            ORDER BY p.nom''')
+        return render_template('admin_alertes_produits.html', produits=produits)
+    except Exception as e:
+        print(f"❌ Erreur admin_alertes_produits: {e}")
+        flash('Erreur lors du chargement des alertes')
+        return redirect('/dashboard')
+
+@app.route('/admin/alertes/produits/modifier/<int:produit_id>', methods=['POST'])
+def modifier_alerte_produit(produit_id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        seuil = request.form.get('seuil', 5)
+        try:
+            seuil = int(seuil)
+        except (ValueError, TypeError):
+            seuil = 5
+        actif = 1 if request.form.get('actif') else 0
+
+        existant = q1("SELECT id FROM alertes_produits WHERE produit_id=?", (produit_id,))
+        if existant:
+            exe("UPDATE alertes_produits SET seuil=?, actif=? WHERE produit_id=?",
+                (seuil, actif, produit_id))
+        else:
+            exe("INSERT INTO alertes_produits (produit_id, seuil, actif) VALUES (?,?,?)",
+                (produit_id, seuil, actif))
+        flash('✅ Seuil d\'alerte enregistré')
+        return redirect('/admin/alertes/produits')
+    except Exception as e:
+        print(f"❌ Erreur modifier_alerte_produit: {e}")
+        flash('Erreur lors de l\'enregistrement du seuil')
+        return redirect('/admin/alertes/produits')
+
 # ══════════════════════════════════════════════════════════════
 # API JSON
 # ══════════════════════════════════════════════════════════════
