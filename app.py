@@ -999,7 +999,7 @@ def admin_ventes():
                                        p.valeur_unite
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
-                                WHERE p.stock>0 ORDER BY p.nom LIMIT 50''')
+                                WHERE p.stock>0 ORDER BY p.nom''')
             historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
                 ORDER BY s.date_sortie DESC LIMIT 20''')
@@ -1063,7 +1063,7 @@ def vente():
                                        p.valeur_unite
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
-                                WHERE p.stock>0 ORDER BY p.nom LIMIT 60''')
+                                WHERE p.stock>0 ORDER BY p.nom''')
             historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente
                 FROM sorties s 
                 JOIN produits p ON s.produit_id = p.id 
