@@ -135,12 +135,28 @@
     }
 }
 
-/* Sécurité : empêche nav-links d'hériter d'un position sticky/absolute
-   venant d'une règle globale (base.html) qui ferait flotter ce menu
-   par-dessus le tableau d'historique pendant le défilement. */
-.nav-links {
-    position: static !important;
-    z-index: auto !important;
+/* Bouton flottant "Exporter le point du jour" façon WhatsApp */
+.btn-export-float {
+    position: fixed !important;
+    bottom: 25px !important;
+    right: 20px !important;
+    z-index: 1000 !important;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: #dc3545;
+    color: white;
+    border: none;
+    box-shadow: 0 4px 14px rgba(220,53,69,0.45);
+    font-size: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.btn-export-float:active {
+    transform: scale(0.95);
 }
 </style>
 {% endblock %}
@@ -327,10 +343,12 @@
     <a href="/admin/entrees">📥 Entrées de stock</a>
     <a href="/admin/ventes">🛒 Ventes</a>
     <a href="/admin/archives">📚 Archives</a>
-    <a href="#" onclick="exportToday()" style="background: #dc3545; color: white;">📄 Exporter le point du jour</a>
     <a href="/changer_mdp">🔑 Changer mot de passe</a>
     <a href="/logout">🚪 Déconnexion</a>
 </div>
+
+<!-- Bouton flottant : Exporter le point du jour -->
+<button type="button" class="btn-export-float" onclick="exportToday()" title="Exporter le point du jour">📄</button>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
