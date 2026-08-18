@@ -1,12 +1,12 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify, url_for, send_file
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
-import hashlib, os, random, string, io, json, uuid, time
+import hashlib, os, random, string, io, json, uuid
 import psycopg2
 import psycopg2.extras
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from time import time
+from time import time, sleep
 from functools import wraps
 
 app = Flask(__name__)
@@ -476,19 +476,44 @@ def envoyer_notification_a_tous(type_n, titre, message, lien=None):
     except Exception as e:
         print(f"❌ Erreur envoyer_notification_a_tous: {e}")
 
+_last_alertes_check = 0
+
 def verifier_alertes_stock():
+    """Vérifie les stocks bas et notifie les admins.
+    Throttlée à un contrôle max toutes les 5 minutes (indépendamment du cache
+    général, qui est vidé à chaque écriture) car cette fonction est appelée
+    à chaque chargement du dashboard ET après chaque vente."""
+    global _last_alertes_check
     try:
+        now_ts = time()
+        if now_ts - _last_alertes_check < 300:
+            return
+        _last_alertes_check = now_ts
+
         produits = qall('''SELECT p.id,p.nom,p.stock,COALESCE(a.seuil,p.stock_min,5)
             FROM produits p LEFT JOIN alertes_produits a ON p.id=a.produit_id AND a.actif=1
             WHERE p.stock<=COALESCE(a.seuil,p.stock_min,5)''')
+        if not produits:
+            return
         admins = qall("SELECT id FROM users WHERE role='admin' AND actif=1")
+        if not admins:
+            return
+
+        # Une seule requête pour récupérer les notifications déjà envoyées dans
+        # les dernières 24h, au lieu d'une requête par (produit, admin) — c'était
+        # jusqu'à N x M requêtes séquentielles à chaque appel.
+        deja_notifies = qall('''SELECT user_id, message FROM notifications
+            WHERE type='stock_bas' AND date_creation::timestamp > NOW() - INTERVAL '1 day' ''')
+        deja_set = set()
+        for n in deja_notifies:
+            msg = n[1] or ''
+            for p in produits:
+                if p[1] in msg:
+                    deja_set.add((n[0], p[0]))
+
         for p in produits:
             for a in admins:
-                existant = q1('''SELECT COUNT(*) FROM notifications
-                    WHERE user_id=%s AND type='stock_bas' AND message LIKE %s
-                    AND date_creation::timestamp > NOW() - INTERVAL '1 day' ''',
-                    (a[0], f'%{p[1]}%'))
-                if existant and existant[0]==0:
+                if (a[0], p[0]) not in deja_set:
                     creer_notification(a[0],'stock_bas','⚠️ Stock bas',
                         f'Le produit "{p[1]}" n\'a plus que {p[2]} unités (seuil: {p[3]})','/admin/produits')
     except Exception as e:
@@ -1168,7 +1193,7 @@ def recu_vente(groupe_vente):
         if not lignes:
             # Filet de sécurité : en cas de raté transitoire de connexion DB
             # juste après l'enregistrement de la vente, on retente une fois.
-            time.sleep(0.4)
+            sleep(0.4)
             lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
                                      s.date_sortie, s.client, u.nom
                               FROM sorties s
