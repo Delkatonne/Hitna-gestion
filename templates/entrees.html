@@ -508,10 +508,14 @@
     const selectedId = document.getElementById('selectedProductId');
     const submitBtn = document.getElementById('submitBtn');
     
+    function normalizeAccents(str) {
+        return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
     function filterProducts(searchTerm) {
-        const term = searchTerm.toLowerCase().trim();
+        const term = normalizeAccents(searchTerm.toLowerCase().trim());
         if (term === '') return produits;
-        return produits.filter(p => p.nom.toLowerCase().includes(term));
+        return produits.filter(p => normalizeAccents(p.nom.toLowerCase()).includes(term));
     }
     
     function showDropdown(products) {
