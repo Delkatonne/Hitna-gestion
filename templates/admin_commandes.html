@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Commandes - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .commande-card {
+        background: white;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 12px;
+        border: 1px solid #e0e0e0;
+        border-left: 4px solid #6c757d;
+    }
+    .commande-card.statut-nouvelle { border-left-color: #dc3545; background: #fff8f8; }
+    .commande-card.statut-en_cours { border-left-color: #ffc107; }
+    .commande-card.statut-traitee { border-left-color: #28a745; }
+    .commande-card.statut-annulee { border-left-color: #6c757d; opacity: 0.7; }
+
+    .commande-card .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .commande-card h3 {
+        font-size: 16px;
+        color: #1e3c72;
+    }
+    .commande-card .date {
+        font-size: 12px;
+        color: #999;
+    }
+    .commande-card .details {
+        background: #f8f9fa;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #333;
+        white-space: pre-wrap;
+        margin-bottom: 12px;
+    }
+    .commande-card .contact-info {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        font-size: 13px;
+        color: #555;
+        margin-bottom: 12px;
+    }
+    .statut-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: bold;
+    }
+    .statut-badge.nouvelle { background: #f8d7da; color: #721c24; }
+    .statut-badge.en_cours { background: #fff3cd; color: #856404; }
+    .statut-badge.traitee { background: #d4edda; color: #155724; }
+    .statut-badge.annulee { background: #e2e3e5; color: #383d41; }
+
+    .commande-card .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .commande-card select {
+        padding: 6px 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 13px;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}🛍️ Commandes{% endblock %}
+{% block page_subtitle %}Commandes reçues via le site web HITNA{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title">
+        📋 Liste des commandes
+        {% if nb_nouvelles %}<span class="statut-badge nouvelle">{{ nb_nouvelles }} nouvelle(s)</span>{% endif %}
+    </h2>
+
+    {% if commandes %}
+        {% for c in commandes %}
+        <div class="commande-card statut-{{ c[6] }}">
+            <div class="header">
+                <h3>🙋 {{ c[1] }}</h3>
+                <span class="date">{{ c[7] }}</span>
+            </div>
+            <div class="contact-info">
+                <span>📞 {{ c[2] }}</span>
+                {% if c[3] %}<span>📧 {{ c[3] }}</span>{% endif %}
+                {% if c[4] %}<span>📍 {{ c[4] }}</span>{% endif %}
+            </div>
+            <div class="details">{{ c[5] }}</div>
+            <div class="actions">
+                <span class="statut-badge {{ c[6] }}">
+                    {% if c[6] == 'nouvelle' %}🆕 Nouvelle
+                    {% elif c[6] == 'en_cours' %}⏳ En cours
+                    {% elif c[6] == 'traitee' %}✅ Traitée
+                    {% else %}❌ Annulée{% endif %}
+                </span>
+                <form method="post" action="/admin/commandes/statut/{{ c[0] }}" style="display:inline-flex; gap:6px;">
+                    <select name="statut" onchange="this.form.submit()">
+                        <option value="nouvelle" {% if c[6]=='nouvelle' %}selected{% endif %}>Nouvelle</option>
+                        <option value="en_cours" {% if c[6]=='en_cours' %}selected{% endif %}>En cours</option>
+                        <option value="traitee" {% if c[6]=='traitee' %}selected{% endif %}>Traitée</option>
+                        <option value="annulee" {% if c[6]=='annulee' %}selected{% endif %}>Annulée</option>
+                    </select>
+                </form>
+                <a href="/admin/commandes/supprimer/{{ c[0] }}"
+                   onclick="return confirm('Supprimer cette commande ?')"
+                   class="btn-small" style="background:#dc3545; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;">🗑️</a>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div style="text-align:center; color:#999; padding:40px;">
+            <div style="font-size:48px; margin-bottom:15px;">📭</div>
+            <h3>Aucune commande pour le moment</h3>
+            <p style="font-size:13px; margin-top:8px;">Les commandes passées depuis le site web HITNA apparaîtront ici.</p>
+        </div>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard">← Retour au Dashboard</a>
+</div>
+{% endblock %}

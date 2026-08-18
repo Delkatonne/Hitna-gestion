@@ -107,6 +107,18 @@
             width: 25px;
             text-align: center;
         }
+
+        .nav-badge {
+            margin-left: auto;
+            background: #dc3545;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 12px;
+            min-width: 18px;
+            text-align: center;
+        }
         
         .nav-divider {
             height: 1px;
@@ -782,6 +794,11 @@
                     </a>
                 </div>
                 <div class="nav-item">
+                    <a href="/admin/recus" class="nav-link">
+                        <span class="icon">🧾</span><span>Recherche de reçus</span>
+                    </a>
+                </div>
+                <div class="nav-item">
                     <a href="/admin/stats" class="nav-link">
                         <span class="icon">📊</span><span>Statistiques</span>
                     </a>
@@ -809,6 +826,19 @@
                 <div class="nav-item">
                     <a href="/admin/categories" class="nav-link">
                         <span class="icon">🗂️</span><span>Catégories</span>
+                    </a>
+                </div>
+                <div class="nav-divider"></div>
+                <div class="nav-item">
+                    <a href="/admin/commandes" class="nav-link">
+                        <span class="icon">🛍️</span><span>Commandes</span>
+                        {% if nb_commandes_nouvelles %}<span class="nav-badge">{{ nb_commandes_nouvelles }}</span>{% endif %}
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/messages" class="nav-link">
+                        <span class="icon">✉️</span><span>Messages</span>
+                        {% if nb_messages_non_lus %}<span class="nav-badge">{{ nb_messages_non_lus }}</span>{% endif %}
                     </a>
                 </div>
                 <div class="nav-divider"></div>

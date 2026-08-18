@@ -353,9 +353,14 @@
     <!-- Barre d'actions groupées -->
     <div class="bulk-actions-bar" id="bulk-actions-bar">
         <span class="bulk-count" id="bulk-count">0 produit(s) sélectionné(s)</span>
+        <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#721c24; background:#f8d7da; padding:6px 10px; border-radius:8px;">
+            <input type="checkbox" id="force-delete-cb">
+            Forcer (supprime aussi l'historique des ventes/entrées/pertes)
+        </label>
         <form method="post" action="/admin/produits/supprimer_multiple" id="form-bulk-delete"
               onsubmit="return confirmSuppressionMultiple()">
             <div id="hidden-ids-container"></div>
+            <input type="hidden" name="force" id="force-hidden-input" value="">
             <button type="submit" class="btn-bulk-delete">🗑️ Supprimer la sélection</button>
         </form>
         <button class="btn-bulk-cancel" onclick="deselectionnerTout()">✕ Annuler</button>
@@ -613,6 +618,11 @@ function deselectionnerTout() {
 
 function confirmSuppressionMultiple() {
     const n = selectedIds.size;
+    const force = document.getElementById('force-delete-cb').checked;
+    document.getElementById('force-hidden-input').value = force ? '1' : '';
+    if (force) {
+        return confirm(`⚠️⚠️ SUPPRESSION FORCÉE de ${n} produit(s) !\nToutes leurs ventes, entrées et pertes associées seront aussi définitivement supprimées.\nCette action est IRRÉVERSIBLE. Continuer ?`);
+    }
     return confirm(`⚠️ Voulez-vous vraiment supprimer ${n} produit(s) ?\nCette action est irréversible.`);
 }
 

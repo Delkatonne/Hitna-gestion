@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Messages - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .message-card {
+        background: white;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 12px;
+        border: 1px solid #e0e0e0;
+        border-left: 4px solid #6c757d;
+    }
+    .message-card.statut-non_lu { border-left-color: #dc3545; background: #f0f7ff; }
+    .message-card.statut-lu { border-left-color: #17a2b8; }
+    .message-card.statut-repondu { border-left-color: #28a745; }
+
+    .message-card .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .message-card h3 {
+        font-size: 16px;
+        color: #1e3c72;
+    }
+    .message-card .sujet {
+        font-size: 13px;
+        color: #666;
+        font-style: italic;
+        margin-bottom: 8px;
+    }
+    .message-card .date {
+        font-size: 12px;
+        color: #999;
+    }
+    .message-card .contenu {
+        background: #f8f9fa;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #333;
+        white-space: pre-wrap;
+        margin-bottom: 12px;
+    }
+    .message-card .contact-info {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        font-size: 13px;
+        color: #555;
+        margin-bottom: 12px;
+    }
+    .statut-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: bold;
+    }
+    .statut-badge.non_lu { background: #f8d7da; color: #721c24; }
+    .statut-badge.lu { background: #d1ecf1; color: #0c5460; }
+    .statut-badge.repondu { background: #d4edda; color: #155724; }
+
+    .message-card .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .message-card select {
+        padding: 6px 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 13px;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}✉️ Messages{% endblock %}
+{% block page_subtitle %}Messages reçus via le formulaire de contact du site web HITNA{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title">
+        📋 Boîte de réception
+        {% if nb_non_lus %}<span class="statut-badge non_lu">{{ nb_non_lus }} non lu(s)</span>{% endif %}
+    </h2>
+
+    {% if messages %}
+        {% for m in messages %}
+        <div class="message-card statut-{{ m[6] }}">
+            <div class="header">
+                <h3>🙋 {{ m[1] }}</h3>
+                <span class="date">{{ m[7] }}</span>
+            </div>
+            {% if m[4] %}<div class="sujet">Sujet : {{ m[4] }}</div>{% endif %}
+            <div class="contact-info">
+                {% if m[2] %}<span>📧 {{ m[2] }}</span>{% endif %}
+                {% if m[3] %}<span>📞 {{ m[3] }}</span>{% endif %}
+            </div>
+            <div class="contenu">{{ m[5] }}</div>
+            <div class="actions">
+                <span class="statut-badge {{ m[6] }}">
+                    {% if m[6] == 'non_lu' %}🆕 Non lu
+                    {% elif m[6] == 'lu' %}👁️ Lu
+                    {% else %}✅ Répondu{% endif %}
+                </span>
+                <form method="post" action="/admin/messages/statut/{{ m[0] }}" style="display:inline-flex; gap:6px;">
+                    <select name="statut" onchange="this.form.submit()">
+                        <option value="non_lu" {% if m[6]=='non_lu' %}selected{% endif %}>Non lu</option>
+                        <option value="lu" {% if m[6]=='lu' %}selected{% endif %}>Lu</option>
+                        <option value="repondu" {% if m[6]=='repondu' %}selected{% endif %}>Répondu</option>
+                    </select>
+                </form>
+                {% if m[2] %}
+                <a href="mailto:{{ m[2] }}" class="btn-small" style="background:#17a2b8; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;">✉️ Répondre</a>
+                {% endif %}
+                <a href="/admin/messages/supprimer/{{ m[0] }}"
+                   onclick="return confirm('Supprimer ce message ?')"
+                   class="btn-small" style="background:#dc3545; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;">🗑️</a>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div style="text-align:center; color:#999; padding:40px;">
+            <div style="font-size:48px; margin-bottom:15px;">📭</div>
+            <h3>Aucun message pour le moment</h3>
+            <p style="font-size:13px; margin-top:8px;">Les messages envoyés depuis le formulaire de contact du site web apparaîtront ici.</p>
+        </div>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard">← Retour au Dashboard</a>
+</div>
+{% endblock %}

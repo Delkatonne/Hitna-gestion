@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Recherche de reçus - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-recherche {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 25px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    .form-recherche .form-group {
+        flex: 1;
+        min-width: 160px;
+    }
+    .form-recherche input {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+    }
+    .recu-item {
+        background: white;
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 10px;
+        border: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .recu-item .infos h3 {
+        font-size: 15px;
+        color: #1e3c72;
+        margin-bottom: 4px;
+    }
+    .recu-item .infos p {
+        font-size: 12px;
+        color: #888;
+    }
+    .recu-item .badge-archive {
+        background: #fff3cd;
+        color: #856404;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 10px;
+        margin-left: 6px;
+    }
+    .recu-item .actions {
+        display: flex;
+        gap: 8px;
+    }
+    .recu-item .actions a {
+        padding: 8px 14px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}🧾 Recherche de reçus{% endblock %}
+{% block page_subtitle %}Retrouvez et réimprimez le reçu d'un client{% endblock %}
+
+{% block content %}
+<div class="card">
+    <form method="get" class="form-recherche">
+        <div class="form-group">
+            <label>📅 Date</label>
+            <input type="date" name="date" value="{{ date_filtre }}">
+        </div>
+        <div class="form-group">
+            <label>🙋 Nom du client</label>
+            <input type="text" name="client" placeholder="Ex: Denise" value="{{ client_filtre }}">
+        </div>
+        <div class="form-group" style="flex: 0 0 auto;">
+            <button type="submit" style="background:#1e3c72; color:white; padding:10px 25px;">🔍 Rechercher</button>
+        </div>
+        {% if date_filtre or client_filtre %}
+        <div class="form-group" style="flex: 0 0 auto;">
+            <a href="/admin/recus" style="display:inline-block; background:#6c757d; color:white; padding:10px 20px; border-radius:8px; text-decoration:none;">✕ Effacer</a>
+        </div>
+        {% endif %}
+    </form>
+
+    {% if recus %}
+        {% for r in recus %}
+        <div class="recu-item">
+            <div class="infos">
+                <h3>{{ r[1] or 'Client non renseigné' }}
+                    {% if r[5] %}<span class="badge-archive">archivé</span>{% endif %}
+                </h3>
+                <p>📅 {{ r[2] }} · {{ r[4] }} article(s) · 💰 {{ "{:,.0f}".format(r[3]) }} FCFA</p>
+            </div>
+            <div class="actions">
+                <a href="/vente/recu/{{ r[0] }}" target="_blank" style="background:#17a2b8; color:white;">👁️ Voir</a>
+                <a href="/export/pdf_recu/{{ r[0] }}" style="background:#28a745; color:white;">⬇️ PDF</a>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align:center; color:#999; padding:40px;">
+            {% if date_filtre or client_filtre %}
+                📭 Aucun reçu trouvé pour cette recherche
+            {% else %}
+                📭 Aucun reçu enregistré pour le moment
+            {% endif %}
+        </p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/admin/archives">📚 Archives</a>
+    <a href="/dashboard">🏠 Dashboard</a>
+</div>
+{% endblock %}

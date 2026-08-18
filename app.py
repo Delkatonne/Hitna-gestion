@@ -262,6 +262,26 @@ def init_db():
             icone TEXT DEFAULT '📦',
             actif INTEGER DEFAULT 1)''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS commandes (
+            id SERIAL PRIMARY KEY,
+            nom_client TEXT,
+            telephone TEXT,
+            email TEXT DEFAULT '',
+            adresse TEXT DEFAULT '',
+            details TEXT,
+            statut TEXT DEFAULT 'nouvelle',
+            date_creation TEXT)''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS messages_contact (
+            id SERIAL PRIMARY KEY,
+            nom TEXT,
+            email TEXT DEFAULT '',
+            telephone TEXT DEFAULT '',
+            sujet TEXT DEFAULT '',
+            message TEXT,
+            statut TEXT DEFAULT 'non_lu',
+            date_creation TEXT)''')
+
         try:
             c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='categorie_id'")
             if not c.fetchone():
@@ -444,7 +464,17 @@ def archiver_si_necessaire():
 # ──────────────────────────────────────────────────────────────
 @app.context_processor
 def inject_now():
-    return {'date_actuelle': datetime.now().strftime('%d/%m/%Y %H:%M')}
+    ctx = {'date_actuelle': datetime.now().strftime('%d/%m/%Y %H:%M')}
+    try:
+        if session.get('role') == 'admin':
+            nc = q1("SELECT COUNT(*) FROM commandes WHERE statut='nouvelle'")
+            nm = q1("SELECT COUNT(*) FROM messages_contact WHERE statut='non_lu'")
+            ctx['nb_commandes_nouvelles'] = nc[0] if nc else 0
+            ctx['nb_messages_non_lus'] = nm[0] if nm else 0
+    except Exception:
+        ctx['nb_commandes_nouvelles'] = 0
+        ctx['nb_messages_non_lus'] = 0
+    return ctx
 
 def get_all_roles():
     try:
@@ -694,6 +724,165 @@ def supprimer_categorie(id):
         flash('❌ Erreur lors de la suppression')
     return redirect('/admin/categories')
 
+# ══════════════════════════════════════════════════════════════
+# COMMANDES (issues du futur site web HITNA)
+# ══════════════════════════════════════════════════════════════
+
+@app.route('/admin/commandes')
+def admin_commandes():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        commandes = qall("SELECT * FROM commandes ORDER BY date_creation DESC")
+        nb_nouvelles = q1("SELECT COUNT(*) FROM commandes WHERE statut='nouvelle'")
+        return render_template('admin_commandes.html', commandes=commandes,
+            nb_nouvelles=nb_nouvelles[0] if nb_nouvelles else 0)
+    except Exception as e:
+        print(f"❌ Erreur admin_commandes: {e}")
+        flash('Erreur lors du chargement des commandes')
+        return redirect('/dashboard')
+
+@app.route('/admin/commandes/statut/<int:id>', methods=['POST'])
+def modifier_statut_commande(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        statut = request.form.get('statut', 'nouvelle')
+        if statut not in ('nouvelle', 'en_cours', 'traitee', 'annulee'):
+            statut = 'nouvelle'
+        exe("UPDATE commandes SET statut=? WHERE id=?", (statut, id))
+        flash('✅ Statut de la commande mis à jour')
+    except Exception as e:
+        print(f"❌ Erreur modifier_statut_commande: {e}")
+        flash('❌ Erreur lors de la mise à jour')
+    return redirect('/admin/commandes')
+
+@app.route('/admin/commandes/supprimer/<int:id>')
+def supprimer_commande(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        exe("DELETE FROM commandes WHERE id=?", (id,))
+        flash('🗑️ Commande supprimée')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_commande: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/commandes')
+
+
+# ══════════════════════════════════════════════════════════════
+# MESSAGES (formulaire de contact du futur site web HITNA)
+# ══════════════════════════════════════════════════════════════
+
+@app.route('/admin/messages')
+def admin_messages():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        messages = qall("SELECT * FROM messages_contact ORDER BY date_creation DESC")
+        nb_non_lus = q1("SELECT COUNT(*) FROM messages_contact WHERE statut='non_lu'")
+        return render_template('admin_messages.html', messages=messages,
+            nb_non_lus=nb_non_lus[0] if nb_non_lus else 0)
+    except Exception as e:
+        print(f"❌ Erreur admin_messages: {e}")
+        flash('Erreur lors du chargement des messages')
+        return redirect('/dashboard')
+
+@app.route('/admin/messages/statut/<int:id>', methods=['POST'])
+def modifier_statut_message(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        statut = request.form.get('statut', 'lu')
+        if statut not in ('non_lu', 'lu', 'repondu'):
+            statut = 'lu'
+        exe("UPDATE messages_contact SET statut=? WHERE id=?", (statut, id))
+        flash('✅ Statut du message mis à jour')
+    except Exception as e:
+        print(f"❌ Erreur modifier_statut_message: {e}")
+        flash('❌ Erreur lors de la mise à jour')
+    return redirect('/admin/messages')
+
+@app.route('/admin/messages/supprimer/<int:id>')
+def supprimer_message(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        exe("DELETE FROM messages_contact WHERE id=?", (id,))
+        flash('🗑️ Message supprimé')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_message: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/messages')
+
+
+# ══════════════════════════════════════════════════════════════
+# API PUBLIQUE — à appeler depuis le futur site web HITNA
+# Pas d'authentification (endpoints publics), mais validation stricte
+# des champs. CORS à configurer plus tard selon le domaine du site.
+# ══════════════════════════════════════════════════════════════
+
+@app.route('/api/commandes', methods=['POST'])
+def api_creer_commande():
+    try:
+        data = request.get_json(force=True, silent=True) or request.form
+        nom_client = (data.get('nom_client') or data.get('nom') or '').strip()
+        telephone = (data.get('telephone') or '').strip()
+        email = (data.get('email') or '').strip()
+        adresse = (data.get('adresse') or '').strip()
+        details = (data.get('details') or data.get('produits') or '').strip()
+
+        if not nom_client or not telephone or not details:
+            return jsonify({'success': False, 'error': 'Champs obligatoires manquants (nom, téléphone, détails)'}), 400
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        cmd_id = exe('''INSERT INTO commandes (nom_client, telephone, email, adresse, details, statut, date_creation)
+                        VALUES (?,?,?,?,?,?,?)''',
+                     (nom_client, telephone, email, adresse, details, 'nouvelle', now), returning=True)
+        if not cmd_id:
+            return jsonify({'success': False, 'error': 'Erreur serveur'}), 500
+
+        admins = qall("SELECT id FROM users WHERE role='admin' AND actif=1")
+        for a in admins:
+            creer_notification(a[0], 'commande', '🛍️ Nouvelle commande',
+                f'{nom_client} a passé une commande', '/admin/commandes')
+
+        return jsonify({'success': True, 'id': cmd_id}), 201
+    except Exception as e:
+        print(f"❌ Erreur api_creer_commande: {e}")
+        return jsonify({'success': False, 'error': 'Erreur serveur'}), 500
+
+@app.route('/api/messages', methods=['POST'])
+def api_creer_message():
+    try:
+        data = request.get_json(force=True, silent=True) or request.form
+        nom = (data.get('nom') or '').strip()
+        email = (data.get('email') or '').strip()
+        telephone = (data.get('telephone') or '').strip()
+        sujet = (data.get('sujet') or '').strip()
+        message = (data.get('message') or '').strip()
+
+        if not nom or not message:
+            return jsonify({'success': False, 'error': 'Champs obligatoires manquants (nom, message)'}), 400
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        msg_id = exe('''INSERT INTO messages_contact (nom, email, telephone, sujet, message, statut, date_creation)
+                        VALUES (?,?,?,?,?,?,?)''',
+                     (nom, email, telephone, sujet, message, 'non_lu', now), returning=True)
+        if not msg_id:
+            return jsonify({'success': False, 'error': 'Erreur serveur'}), 500
+
+        admins = qall("SELECT id FROM users WHERE role='admin' AND actif=1")
+        for a in admins:
+            creer_notification(a[0], 'message', '✉️ Nouveau message',
+                f'{nom} : {sujet or message[:40]}', '/admin/messages')
+
+        return jsonify({'success': True, 'id': msg_id}), 201
+    except Exception as e:
+        print(f"❌ Erreur api_creer_message: {e}")
+        return jsonify({'success': False, 'error': 'Erreur serveur'}), 500
+
+
 @app.route('/admin/unites')
 def admin_unites():
     try:
@@ -862,16 +1051,25 @@ def supprimer_produit(id):
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
+        force = request.args.get('force') == '1'
         p = q1("SELECT nom FROM produits WHERE id=?", (id,))
         if p:
             ventes = q1("SELECT COUNT(*) FROM sorties WHERE produit_id=?", (id,))
             entrees = q1("SELECT COUNT(*) FROM entrees WHERE produit_id=?", (id,))
             pertes = q1("SELECT COUNT(*) FROM pertes WHERE produit_id=?", (id,))
-            if (ventes and ventes[0] > 0) or (entrees and entrees[0] > 0) or (pertes and pertes[0] > 0):
-                flash('❌ Ce produit a des mouvements. Impossible de le supprimer.')
+            a_des_mouvements = (ventes and ventes[0] > 0) or (entrees and entrees[0] > 0) or (pertes and pertes[0] > 0)
+            if a_des_mouvements and not force:
+                flash(f'❌ "{p[0]}" a des mouvements (ventes/entrées/pertes). Utilise la sélection multiple avec "Forcer" pour le supprimer quand même.')
                 return redirect('/admin/produits')
+            if a_des_mouvements and force:
+                exe("DELETE FROM sorties WHERE produit_id=?", (id,))
+                exe("DELETE FROM entrees WHERE produit_id=?", (id,))
+                exe("DELETE FROM pertes WHERE produit_id=?", (id,))
+            exe("DELETE FROM alertes_produits WHERE produit_id=?", (id,))
             exe("DELETE FROM produits WHERE id=?", (id,))
-            flash(f'🗑️ "{p[0]}" supprimé')
+            flash(f'🗑️ "{p[0]}" supprimé' + (' (avec son historique)' if a_des_mouvements else ''))
+        else:
+            flash('❌ Produit introuvable')
     except Exception as e:
         print(f"❌ Erreur supprimer_produit: {e}")
         flash('❌ Erreur lors de la suppression')
@@ -883,6 +1081,7 @@ def supprimer_produits_multiple():
         if session.get('role') != 'admin':
             return redirect('/login')
         ids = request.form.getlist('produit_ids')
+        force = request.form.get('force') == '1'
         if not ids:
             flash('⚠️ Aucun produit sélectionné')
             return redirect('/admin/produits')
@@ -900,16 +1099,22 @@ def supprimer_produits_multiple():
             ventes = q1("SELECT COUNT(*) FROM sorties WHERE produit_id=?", (id,))
             entrees = q1("SELECT COUNT(*) FROM entrees WHERE produit_id=?", (id,))
             pertes = q1("SELECT COUNT(*) FROM pertes WHERE produit_id=?", (id,))
-            if (ventes and ventes[0] > 0) or (entrees and entrees[0] > 0) or (pertes and pertes[0] > 0):
+            a_des_mouvements = (ventes and ventes[0] > 0) or (entrees and entrees[0] > 0) or (pertes and pertes[0] > 0)
+            if a_des_mouvements and not force:
                 bloques.append(p[0])
                 continue
+            if a_des_mouvements and force:
+                exe("DELETE FROM sorties WHERE produit_id=?", (id,))
+                exe("DELETE FROM entrees WHERE produit_id=?", (id,))
+                exe("DELETE FROM pertes WHERE produit_id=?", (id,))
+            exe("DELETE FROM alertes_produits WHERE produit_id=?", (id,))
             exe("DELETE FROM produits WHERE id=?", (id,))
             supprimes.append(p[0])
 
         if supprimes:
             flash(f'🗑️ {len(supprimes)} produit(s) supprimé(s) : {", ".join(supprimes)}')
         if bloques:
-            flash(f'❌ {len(bloques)} produit(s) non supprimé(s) (ont des mouvements) : {", ".join(bloques)}')
+            flash(f'❌ {len(bloques)} produit(s) non supprimé(s) (ont des mouvements — coche "Forcer" pour les supprimer quand même) : {", ".join(bloques)}')
         if not supprimes and not bloques:
             flash('⚠️ Aucun produit valide sélectionné')
     except Exception as e:
@@ -1177,12 +1382,20 @@ def vente():
         flash(f'❌ Erreur: {str(e)}')
         return redirect('/login')
 
-@app.route('/vente/recu/<groupe_vente>')
-def recu_vente(groupe_vente):
-    """Affiche un reçu imprimable pour un panier de vente donné."""
-    try:
-        if 'user_id' not in session:
-            return redirect('/login')
+def _recuperer_lignes_recu(groupe_vente):
+    """Retourne (lignes, archivee) pour un groupe_vente, en cherchant d'abord dans
+    sorties (ventes récentes) puis dans archive_ventes (ventes archivées)."""
+    lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
+                             s.date_sortie, s.client, u.nom
+                      FROM sorties s
+                      JOIN produits p ON s.produit_id = p.id
+                      JOIN users u ON s.employe_id = u.id
+                      WHERE s.groupe_vente = ?
+                      ORDER BY s.id''', (groupe_vente,))
+    if not lignes:
+        # Filet de sécurité : en cas de raté transitoire de connexion DB
+        # juste après l'enregistrement de la vente, on retente une fois.
+        sleep(0.4)
         lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
                                  s.date_sortie, s.client, u.nom
                           FROM sorties s
@@ -1190,29 +1403,28 @@ def recu_vente(groupe_vente):
                           JOIN users u ON s.employe_id = u.id
                           WHERE s.groupe_vente = ?
                           ORDER BY s.id''', (groupe_vente,))
-        if not lignes:
-            # Filet de sécurité : en cas de raté transitoire de connexion DB
-            # juste après l'enregistrement de la vente, on retente une fois.
-            sleep(0.4)
-            lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                                     s.date_sortie, s.client, u.nom
-                              FROM sorties s
-                              JOIN produits p ON s.produit_id = p.id
-                              JOIN users u ON s.employe_id = u.id
-                              WHERE s.groupe_vente = ?
-                              ORDER BY s.id''', (groupe_vente,))
-        archivee = False
-        if not lignes:
-            # La vente n'est plus dans "sorties" : elle a peut-être été archivée
-            # (archivage hebdomadaire). On cherche alors dans archive_ventes.
-            lignes_archive = qall('''SELECT produit_id, produit_nom, quantite, prix_unitaire, total,
-                                             date_vente, client, employe_nom
-                                      FROM archive_ventes
-                                      WHERE groupe_vente = ?
-                                      ORDER BY id''', (groupe_vente,))
-            if lignes_archive:
-                lignes = lignes_archive
-                archivee = True
+    archivee = False
+    if not lignes:
+        # La vente n'est plus dans "sorties" : elle a peut-être été archivée
+        # (archivage hebdomadaire). On cherche alors dans archive_ventes.
+        lignes_archive = qall('''SELECT produit_id, produit_nom, quantite, prix_unitaire, total,
+                                         date_vente, client, employe_nom
+                                  FROM archive_ventes
+                                  WHERE groupe_vente = ?
+                                  ORDER BY id''', (groupe_vente,))
+        if lignes_archive:
+            lignes = lignes_archive
+            archivee = True
+    return lignes, archivee
+
+
+@app.route('/vente/recu/<groupe_vente>')
+def recu_vente(groupe_vente):
+    """Affiche un reçu imprimable pour un panier de vente donné."""
+    try:
+        if 'user_id' not in session:
+            return redirect('/login')
+        lignes, archivee = _recuperer_lignes_recu(groupe_vente)
         if not lignes:
             flash('❌ Reçu introuvable (vente trop ancienne ou identifiant invalide)')
             return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
@@ -1228,6 +1440,117 @@ def recu_vente(groupe_vente):
     except Exception as e:
         print(f"❌ Erreur recu_vente: {e}")
         flash('❌ Erreur lors du chargement du reçu')
+        return redirect('/vente')
+
+
+@app.route('/export/pdf_recu/<groupe_vente>')
+def export_pdf_recu(groupe_vente):
+    """Exporte un reçu de vente individuel en PDF (format ticket), pour archivage
+    ou remise ultérieure au client."""
+    try:
+        if 'user_id' not in session:
+            return redirect('/login')
+        lignes, archivee = _recuperer_lignes_recu(groupe_vente)
+        if not lignes:
+            flash('❌ Reçu introuvable')
+            return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
+
+        total_recu = sum(l[4] for l in lignes)
+        client = lignes[0][6] or 'Non renseigné'
+        vendeur = lignes[0][7]
+        date_vente = lignes[0][5]
+
+        # Format ticket compact (largeur réduite, hauteur adaptée au contenu)
+        largeur = 226  # ~8cm
+        hauteur = 330 + len(lignes) * 16
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=(largeur, hauteur))
+
+        y = hauteur - 20
+
+        logo_path = find_logo()
+        if logo_path:
+            try:
+                from reportlab.lib.utils import ImageReader
+                img = ImageReader(logo_path)
+                logo_size = 40
+                c.drawImage(img, (largeur - logo_size) / 2, y - logo_size + 10,
+                    width=logo_size, height=logo_size, mask='auto')
+                y -= logo_size + 5
+            except Exception:
+                pass
+
+        c.setFont("Helvetica-Bold", 13)
+        c.setFillColorRGB(0.12, 0.24, 0.45)
+        c.drawCentredString(largeur / 2, y, "HITNA Superette")
+        y -= 14
+        c.setFont("Helvetica", 7)
+        c.setFillColorRGB(0.4, 0.4, 0.4)
+        c.drawCentredString(largeur / 2, y, "Hounsa, Porto-Novo - Rép. Bénin")
+        y -= 10
+        c.drawCentredString(largeur / 2, y, "Tél: 01 67 19 85 31")
+        y -= 16
+
+        c.setStrokeColorRGB(0.7, 0.7, 0.7)
+        c.setDash(2, 2)
+        c.line(10, y, largeur - 10, y)
+        c.setDash()
+        y -= 14
+
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(0.2, 0.2, 0.2)
+        c.drawString(10, y, f"Date: {date_vente}")
+        y -= 12
+        c.drawString(10, y, f"Vendeur: {vendeur}")
+        y -= 12
+        c.drawString(10, y, f"Client: {client}")
+        y -= 12
+        c.drawString(10, y, f"N° reçu: {groupe_vente}")
+        if archivee:
+            y -= 12
+            c.setFillColorRGB(0.6, 0.4, 0)
+            c.drawString(10, y, "(vente archivée)")
+            c.setFillColorRGB(0.2, 0.2, 0.2)
+        y -= 14
+
+        c.setDash(2, 2)
+        c.line(10, y, largeur - 10, y)
+        c.setDash()
+        y -= 14
+
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(10, y, "Produit")
+        c.drawRightString(largeur - 10, y, "Total")
+        y -= 12
+        c.setFont("Helvetica", 8)
+        for l in lignes:
+            nom = l[1] if len(l[1]) <= 22 else l[1][:20] + '…'
+            c.drawString(10, y, f"{l[2]} x {nom}")
+            c.drawRightString(largeur - 10, y, format_prix(l[4]))
+            y -= 14
+
+        c.setDash(2, 2)
+        c.line(10, y, largeur - 10, y)
+        c.setDash()
+        y -= 16
+
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColorRGB(0.12, 0.24, 0.45)
+        c.drawString(10, y, "TOTAL")
+        c.drawRightString(largeur - 10, y, f"{format_prix(total_recu)} FCFA")
+        y -= 20
+
+        c.setFont("Helvetica-Oblique", 7)
+        c.setFillColorRGB(0.5, 0.5, 0.5)
+        c.drawCentredString(largeur / 2, y, "Merci pour votre achat !")
+
+        c.save()
+        buffer.seek(0)
+        return send_file(buffer, as_attachment=True,
+            download_name=f"recu_{groupe_vente}.pdf", mimetype='application/pdf')
+    except Exception as e:
+        print(f"❌ Erreur export_pdf_recu: {e}")
+        flash('❌ Erreur lors de l\'export du reçu')
         return redirect('/vente')
 
 # ─── DASHBOARD ──────────────────────────────────────────────────
@@ -1702,6 +2025,57 @@ def admin_stats():
 # ══════════════════════════════════════════════════════════════
 # ARCHIVES
 # ══════════════════════════════════════════════════════════════
+@app.route('/admin/recus')
+def admin_recus():
+    """Recherche de reçus de vente par date et/ou nom de client, pour retrouver
+    et réimprimer/exporter un reçu même longtemps après la vente."""
+    try:
+        if 'user_id' not in session:
+            return redirect('/login')
+        date_filtre = request.args.get('date', '').strip()
+        client_filtre = request.args.get('client', '').strip()
+
+        conditions = ["groupe_vente IS NOT NULL"]
+        params = []
+        conditions_arch = ["groupe_vente IS NOT NULL"]
+        params_arch = []
+
+        if date_filtre:
+            conditions.append("DATE(date_sortie::date) = %s")
+            params.append(date_filtre)
+            conditions_arch.append("DATE(date_vente::date) = %s")
+            params_arch.append(date_filtre)
+        if client_filtre:
+            conditions.append("client ILIKE %s")
+            params.append(f'%{client_filtre}%')
+            conditions_arch.append("client ILIKE %s")
+            params_arch.append(f'%{client_filtre}%')
+
+        where_sql = " AND ".join(conditions)
+        where_sql_arch = " AND ".join(conditions_arch)
+
+        recus = qall(f'''SELECT groupe_vente, client, MIN(date_sortie) as date_v,
+                                 SUM(total) as total_v, COUNT(*) as nb_lignes, false as archivee
+                          FROM sorties WHERE {where_sql}
+                          GROUP BY groupe_vente, client
+                          ORDER BY date_v DESC LIMIT 100''', tuple(params))
+
+        recus_archives = qall(f'''SELECT groupe_vente, client, MIN(date_vente) as date_v,
+                                          SUM(total) as total_v, COUNT(*) as nb_lignes, true as archivee
+                                   FROM archive_ventes WHERE {where_sql_arch}
+                                   GROUP BY groupe_vente, client
+                                   ORDER BY date_v DESC LIMIT 100''', tuple(params_arch))
+
+        tous_recus = sorted(list(recus) + list(recus_archives), key=lambda r: r[2] or '', reverse=True)[:150]
+
+        return render_template('admin_recus.html', recus=tous_recus,
+            date_filtre=date_filtre, client_filtre=client_filtre)
+    except Exception as e:
+        print(f"❌ Erreur admin_recus: {e}")
+        flash('❌ Erreur lors de la recherche de reçus')
+        return redirect('/dashboard')
+
+
 @app.route('/admin/archives')
 def admin_archives():
     try:
