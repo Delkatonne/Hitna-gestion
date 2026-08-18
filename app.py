@@ -831,6 +831,46 @@ def supprimer_produit(id):
         flash('❌ Erreur lors de la suppression')
     return redirect('/admin/produits')
 
+@app.route('/admin/produits/supprimer_multiple', methods=['POST'])
+def supprimer_produits_multiple():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        ids = request.form.getlist('produit_ids')
+        if not ids:
+            flash('⚠️ Aucun produit sélectionné')
+            return redirect('/admin/produits')
+
+        supprimes = []
+        bloques = []
+        for id_str in ids:
+            try:
+                id = int(id_str)
+            except (ValueError, TypeError):
+                continue
+            p = q1("SELECT nom FROM produits WHERE id=?", (id,))
+            if not p:
+                continue
+            ventes = q1("SELECT COUNT(*) FROM sorties WHERE produit_id=?", (id,))
+            entrees = q1("SELECT COUNT(*) FROM entrees WHERE produit_id=?", (id,))
+            pertes = q1("SELECT COUNT(*) FROM pertes WHERE produit_id=?", (id,))
+            if (ventes and ventes[0] > 0) or (entrees and entrees[0] > 0) or (pertes and pertes[0] > 0):
+                bloques.append(p[0])
+                continue
+            exe("DELETE FROM produits WHERE id=?", (id,))
+            supprimes.append(p[0])
+
+        if supprimes:
+            flash(f'🗑️ {len(supprimes)} produit(s) supprimé(s) : {", ".join(supprimes)}')
+        if bloques:
+            flash(f'❌ {len(bloques)} produit(s) non supprimé(s) (ont des mouvements) : {", ".join(bloques)}')
+        if not supprimes and not bloques:
+            flash('⚠️ Aucun produit valide sélectionné')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_produits_multiple: {e}")
+        flash('❌ Erreur lors de la suppression multiple')
+    return redirect('/admin/produits')
+
 # ─── ENTRÉES ──────────────────────────────────────────────────
 @app.route('/admin/entrees')
 def entrees_list():
