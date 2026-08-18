@@ -786,6 +786,7 @@ def modifier_produit(id):
             return redirect('/login')
         nom = request.form.get('nom', '')
         prix = int(float(request.form.get('prix', 0)))
+        stock = int(request.form.get('stock', 0))
         smin = int(request.form.get('stock_min', 5))
         unite_id = request.form.get('unite_id')
         if not unite_id or unite_id == '0':
@@ -799,8 +800,8 @@ def modifier_produit(id):
             categorie_id = int(categorie_id)
         valeur_unite = request.form.get('valeur_unite', '').strip()
         valeur_unite = float(valeur_unite) if valeur_unite else None
-        ok = exe("UPDATE produits SET nom=?, prix=?, stock_min=?, unite_id=?, categorie_id=?, valeur_unite=? WHERE id=?", 
-            (nom, prix, smin, unite_id, categorie_id, valeur_unite, id))
+        ok = exe("UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?, valeur_unite=? WHERE id=?", 
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, id))
         if ok:
             flash(f'✅ Produit "{nom}" modifié')
         else:
