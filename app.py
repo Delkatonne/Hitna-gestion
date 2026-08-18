@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify, url_for, send_file
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
-import hashlib, os, random, string, io, json, uuid
+import hashlib, os, random, string, io, json, uuid, time
 import psycopg2
 import psycopg2.extras
 from reportlab.lib.pagesizes import A4
@@ -81,7 +81,7 @@ def _get_pool():
             url = url.replace('postgres://', 'postgresql://', 1)
         if not url:
             raise RuntimeError("DATABASE_URL manquante.")
-        _db_pool = pg_pool.ThreadedConnectionPool(minconn=1, maxconn=5, dsn=url)
+        _db_pool = pg_pool.ThreadedConnectionPool(minconn=1, maxconn=10, dsn=url)
         print("✅ Pool de connexions PostgreSQL initialisé")
     return _db_pool
 
@@ -104,9 +104,15 @@ def q1(sql, params=()):
         cur.execute(sql.replace('?', '%s'), params)
         row = cur.fetchone()
         cur.close()
+        conn.commit()
         return row
     except Exception as e:
         print(f"❌ Erreur q1: {e}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return None
     finally:
         if conn:
@@ -121,9 +127,15 @@ def qall(sql, params=()):
         cur.execute(sql.replace('?', '%s'), params)
         rows = cur.fetchall()
         cur.close()
+        conn.commit()
         return rows
     except Exception as e:
         print(f"❌ Erreur qall: {e}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return []
     finally:
         if conn:
@@ -295,6 +307,15 @@ def init_db():
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne groupe_vente: {e}")
 
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='archive_ventes' AND column_name='groupe_vente'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE archive_ventes ADD COLUMN groupe_vente TEXT")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_archive_ventes_groupe ON archive_ventes(groupe_vente)")
+                print("✅ Colonne 'groupe_vente' ajoutée à archive_ventes (reçus des ventes archivées)")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne groupe_vente à archive_ventes: {e}")
+
         c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_date ON sorties(date_sortie)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_entrees_date ON entrees(date_entree)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_produits_nom ON produits(nom)')
@@ -361,15 +382,15 @@ def archiver_hebdomadaire():
         now_s = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         cm.execute('''SELECT s.id,s.produit_id,s.quantite,s.prix_unitaire,s.total,
-                             s.date_sortie,s.client,s.employe_id,p.nom,u.nom
+                             s.date_sortie,s.client,s.employe_id,p.nom,u.nom,s.groupe_vente
                       FROM sorties s JOIN produits p ON s.produit_id=p.id
                       JOIN users u ON s.employe_id=u.id
                       WHERE DATE(s.date_sortie)>=%s AND DATE(s.date_sortie)<=%s''',
                    (debut.strftime('%Y-%m-%d'), fin.strftime('%Y-%m-%d')))
         ventes = cm.fetchall()
         for v in ventes:
-            cm.execute('''INSERT INTO archive_ventes VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                       (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9]))
+            cm.execute('''INSERT INTO archive_ventes VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                       (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9],v[10]))
             cm.execute("DELETE FROM sorties WHERE id=%s",(v[0],))
 
         cm.execute('''SELECT e.id,e.produit_id,e.quantite,e.prix_unitaire,e.total,
@@ -1041,7 +1062,7 @@ def admin_ventes():
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
-            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client
+            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
                 ORDER BY s.date_sortie DESC LIMIT 20''')
             stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
@@ -1145,6 +1166,29 @@ def recu_vente(groupe_vente):
                           WHERE s.groupe_vente = ?
                           ORDER BY s.id''', (groupe_vente,))
         if not lignes:
+            # Filet de sécurité : en cas de raté transitoire de connexion DB
+            # juste après l'enregistrement de la vente, on retente une fois.
+            time.sleep(0.4)
+            lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
+                                     s.date_sortie, s.client, u.nom
+                              FROM sorties s
+                              JOIN produits p ON s.produit_id = p.id
+                              JOIN users u ON s.employe_id = u.id
+                              WHERE s.groupe_vente = ?
+                              ORDER BY s.id''', (groupe_vente,))
+        archivee = False
+        if not lignes:
+            # La vente n'est plus dans "sorties" : elle a peut-être été archivée
+            # (archivage hebdomadaire). On cherche alors dans archive_ventes.
+            lignes_archive = qall('''SELECT produit_id, produit_nom, quantite, prix_unitaire, total,
+                                             date_vente, client, employe_nom
+                                      FROM archive_ventes
+                                      WHERE groupe_vente = ?
+                                      ORDER BY id''', (groupe_vente,))
+            if lignes_archive:
+                lignes = lignes_archive
+                archivee = True
+        if not lignes:
             flash('❌ Reçu introuvable (vente trop ancienne ou identifiant invalide)')
             return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
         total_recu = sum(l[4] for l in lignes)
@@ -1154,7 +1198,8 @@ def recu_vente(groupe_vente):
             groupe_vente=groupe_vente,
             client=lignes[0][6],
             vendeur=lignes[0][7],
-            date_vente=lignes[0][5])
+            date_vente=lignes[0][5],
+            archivee=archivee)
     except Exception as e:
         print(f"❌ Erreur recu_vente: {e}")
         flash('❌ Erreur lors du chargement du reçu')
@@ -1183,7 +1228,7 @@ def dashboard():
             stock_total = stock_total[0] if stock_total else 0
             nb_stock_bas = q1("SELECT COUNT(*) FROM produits WHERE stock<=stock_min")
             nb_stock_bas = nb_stock_bas[0] if nb_stock_bas else 0
-            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client
+            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
                 ORDER BY s.date_sortie DESC LIMIT 20''')
             stock_bas = qall("SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min LIMIT 20")
@@ -1727,7 +1772,7 @@ def admin_archive_jour(jour):
         return redirect('/login')
     try:
         ventes_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,date_vente,
-                               employe_id,client,archive_date,semaine,annee,produit_nom,employe_nom
+                               employe_id,client,archive_date,semaine,annee,produit_nom,employe_nom,groupe_vente
                                FROM archive_ventes
                                WHERE date_vente LIKE ?
                                ORDER BY date_vente ASC''', (jour + '%',))

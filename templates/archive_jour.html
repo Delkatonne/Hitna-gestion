@@ -41,6 +41,7 @@
                     <th>Total</th>
                     <th>Client</th>
                     <th>Vendeur</th>
+                    <th>Reçu</th>
                 </tr>
             </thead>
             <tbody>
@@ -53,13 +54,20 @@
                     <td style="color: #28a745; font-weight: bold;">{{ v[4] }} FCFA</td>
                     <td>{{ v[7] or '-' }}</td>
                     <td>{% if v[12] %}👤 {{ v[12] }}{% else %}Inconnu{% endif %}</td>
+                    <td>
+                        {% if v[13] %}
+                            <a href="/vente/recu/{{ v[13] }}" target="_blank" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;">🧾 Voir</a>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
             <tfoot>
                 <tr style="background: #f8f9fa; font-weight: bold;">
                     <td colspan="4" style="text-align: right;">Total :</td>
-                    <td colspan="3">{{ "{:,.0f}".format(stats_ventes[2] if stats_ventes[2] else 0) }} FCFA</td>
+                    <td colspan="4">{{ "{:,.0f}".format(stats_ventes[2] if stats_ventes[2] else 0) }} FCFA</td>
                 </tr>
             </tfoot>
         </table>

@@ -596,6 +596,7 @@
                     <th>Total</th>
                     <th>Vendeur</th>
                     <th>Client</th>
+                    <th>Reçu</th>
                 </tr>
             </thead>
             <tbody>
@@ -613,6 +614,13 @@
                         {% endif %}
                     </td>
                     <td>{{ v[6] or '-' }}</td>
+                    <td>
+                        {% if v[7] %}
+                            <a href="/vente/recu/{{ v[7] }}" target="_blank" class="btn-small" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;">🧾 Voir</a>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
