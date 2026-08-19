@@ -391,7 +391,6 @@ def get_derniere_archive():
         return 0
 
 def archiver_hebdomadaire():
-    conn = None
     try:
         conn = get_db()
         cm = conn.cursor()
@@ -447,16 +446,9 @@ def archiver_hebdomadaire():
                     len(ventes),tv,len(entrees),ta,now_s))
         conn.commit()
         cm.close()
+        release_db(conn)
     except Exception as e:
         print(f"❌ Erreur archiver_hebdomadaire: {e}")
-        if conn:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-    finally:
-        if conn:
-            release_db(conn)
 
 def archiver_si_necessaire():
     try:
@@ -2287,7 +2279,9 @@ def add_header_to_pdf(c, width, height):
     try:
         from reportlab.lib.utils import ImageReader
         
-        logo_path = find_logo()
+        logo_path = os.path.join('static', 'images', 'logo.jpg')
+        if not os.path.exists(logo_path):
+            logo_path = None
         
         if logo_path:
             img = ImageReader(logo_path)
@@ -2428,10 +2422,20 @@ def export_pdf_jour(date):
                           WHERE DATE(e.date_entree) = %s
                           ORDER BY e.date_entree DESC''', (date_sql,))
         
+        pertes = qall('''SELECT pe.id, p.nom, pe.quantite, pe.prix_unitaire, pe.total,
+                                 pe.date_perte, pe.motif, u.nom as enregistreur
+                          FROM pertes pe
+                          JOIN produits p ON pe.produit_id = p.id
+                          JOIN users u ON pe.employe_id = u.id
+                          WHERE DATE(pe.date_perte) = %s
+                          ORDER BY pe.date_perte DESC''', (date_sql,))
+        
         total_ventes = sum(v[4] for v in ventes) if ventes else 0
         total_entrees = sum(e[4] for e in entrees) if entrees else 0
+        total_pertes = sum(p[4] for p in pertes) if pertes else 0
         nb_ventes = len(ventes)
         nb_entrees = len(entrees)
+        nb_pertes = len(pertes)
         
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=A4)
@@ -2442,7 +2446,13 @@ def export_pdf_jour(date):
         
         y = height - 130
         
-        # ── RÉSUMÉ DU JOUR (SANS PERTES NI BÉNÉFICE) ──
+        # ── DATE DU RAPPORT ──
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColorRGB(0.3, 0.3, 0.3)
+        c.drawString(50, y, f"📅 Rapport du {date_str}")
+        y -= 25
+        
+        # ── RÉSUMÉ DU JOUR ──
         c.setFont("Helvetica-Bold", 14)
         c.setFillColorRGB(0.12, 0.24, 0.45)
         c.drawString(50, y, "📊 RÉSUMÉ DU JOUR")
@@ -2453,6 +2463,8 @@ def export_pdf_jour(date):
         c.drawString(50, y, f"💰 Ventes : {nb_ventes} vente(s) - {format_prix(total_ventes)} FCFA")
         y -= 20
         c.drawString(50, y, f"📥 Entrées : {nb_entrees} entrée(s) - {format_prix(total_entrees)} FCFA")
+        y -= 20
+        c.drawString(50, y, f"⚠️ Pertes : {nb_pertes} perte(s) - {format_prix(total_pertes)} FCFA")
         y -= 30
         
         c.setStrokeColorRGB(0.8, 0.8, 0.8)
@@ -2556,6 +2568,59 @@ def export_pdf_jour(date):
                 c.drawString(300, y, format_prix(e[4]))
                 c.drawString(380, y, e[6][:15] if e[6] else "-")
                 c.drawString(440, y, e[7][:15] if e[7] else "-")
+                y -= 15
+        
+        # ── PERTES ──
+        if pertes:
+            if y < 100:
+                c.showPage()
+                add_header_to_pdf(c, width, height)
+                add_logo_to_pdf(c, width, height)
+                y = height - 100
+            else:
+                y -= 10
+            
+            c.setFont("Helvetica-Bold", 12)
+            c.setFillColorRGB(0.72, 0.11, 0.11)
+            c.drawString(50, y, "⚠️ PERTES DU JOUR")
+            y -= 20
+            
+            c.setFont("Helvetica-Bold", 9)
+            c.setFillColorRGB(0.3, 0.3, 0.3)
+            c.drawString(50, y, "Produit")
+            c.drawString(180, y, "Qté")
+            c.drawString(220, y, "Prix unit.")
+            c.drawString(300, y, "Total")
+            c.drawString(380, y, "Motif")
+            c.drawString(440, y, "Enreg.")
+            y -= 15
+            
+            c.setFont("Helvetica", 8)
+            c.setFillColorRGB(0, 0, 0)
+            for p in pertes[:15]:
+                if y < 50:
+                    c.showPage()
+                    add_header_to_pdf(c, width, height)
+                    add_logo_to_pdf(c, width, height)
+                    y = height - 100
+                    c.setFont("Helvetica-Bold", 9)
+                    c.setFillColorRGB(0.3, 0.3, 0.3)
+                    c.drawString(50, y, "Produit")
+                    c.drawString(180, y, "Qté")
+                    c.drawString(220, y, "Prix unit.")
+                    c.drawString(300, y, "Total")
+                    c.drawString(380, y, "Motif")
+                    c.drawString(440, y, "Enreg.")
+                    y -= 15
+                    c.setFont("Helvetica", 8)
+                    c.setFillColorRGB(0, 0, 0)
+                
+                c.drawString(50, y, p[1][:30])
+                c.drawString(180, y, str(p[2]))
+                c.drawString(220, y, format_prix(p[3]))
+                c.drawString(300, y, format_prix(p[4]))
+                c.drawString(380, y, p[6][:15] if p[6] else "-")
+                c.drawString(440, y, p[7][:15] if p[7] else "-")
                 y -= 15
         
         c.showPage()
