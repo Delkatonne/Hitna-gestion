@@ -522,14 +522,14 @@
             {% if v_date != '' %}
                 <tr>
                     <td class="heure-cell">{{ v_time if v_time else '-' }}</td>
-                    <td><strong>{{ v[11] if v[11] else 'Produit #' + v[1]|string }}</strong></td>
+                    <td><strong>{{ v[1] if v[1] else 'Produit #' + v[0]|string }}</strong></td>
                     <td>{{ v[2] }}</td>
                     <td>{{ v[3] }} FCFA</td>
                     <td style="color: #28a745; font-weight: bold;">{{ v[4] }} FCFA</td>
-                    <td>{{ v[7] or '-' }}</td>
+                    <td>{{ v[6] or '-' }}</td>
                     <td>
-                        {% if v[12] %}
-                            <span class="vendeur-employe">👤 {{ v[12] }}</span>
+                        {% if v[7] %}
+                            <span class="vendeur-employe">👤 {{ v[7] }}</span>
                         {% else %}
                             <span class="vendeur-admin">👑 Inconnu</span>
                         {% endif %}
@@ -652,12 +652,12 @@
             {% if e_date != '' %}
                 <tr>
                     <td class="heure-cell">{{ e_time if e_time else '-' }}</td>
-                    <td><strong>{{ e[11] if e[11] else 'Produit #' + e[1]|string }}</strong></td>
+                    <td><strong>{{ e[1] if e[1] else 'Produit #' + e[0]|string }}</strong></td>
                     <td><span class="badge-success">+{{ e[2] }}</span></td>
                     <td>{{ e[3] }} FCFA</td>
                     <td style="font-weight: bold; color: #28a745;">{{ e[4] }} FCFA</td>
                     <td>{{ e[6] or '-' }}</td>
-                    <td>{% if e[12] %}👤 {{ e[12] }}{% else %}Inconnu{% endif %}</td>
+                    <td>{% if e[7] %}👤 {{ e[7] }}{% else %}Inconnu{% endif %}</td>
                 </tr>
                 {% set day_total = day_total + e[4] %}
                 {% set day_count = day_count + 1 %}
@@ -777,7 +777,7 @@
             {% if p_date != '' %}
                 <tr>
                     <td class="heure-cell">{{ p_time if p_time else '-' }}</td>
-                    <td><strong>{{ p[11] if p[11] else 'Produit #' + p[1]|string }}</strong></td>
+                    <td><strong>{{ p[1] if p[1] else 'Produit #' + p[0]|string }}</strong></td>
                     <td style="color: #dc3545;">-{{ p[2] }}</td>
                     <td>{{ p[3] }} FCFA</td>
                     <td style="font-weight: bold; color: #dc3545;">{{ p[4] }} FCFA</td>
@@ -790,7 +790,7 @@
                             {% else %}📝 {{ p[5] }}{% endif %}
                         </span>
                     </td>
-                    <td>{% if p[12] %}👤 {{ p[12] }}{% else %}Inconnu{% endif %}</td>
+                    <td>{% if p[7] %}👤 {{ p[7] }}{% else %}Inconnu{% endif %}</td>
                 </tr>
                 {% set day_total = day_total + p[4] %}
                 {% set day_count = day_count + 1 %}
@@ -870,7 +870,7 @@
         url.searchParams.set('type', type);
         if (dateDebut) url.searchParams.set('date_debut', dateDebut);
         if (dateFin) url.searchParams.set('date_fin', dateFin);
-        if (produitNom) url.searchParams.set('produit_nom', produitNom);
+        if (produitNom) url.searchParams.set('produit', produitNom);
         if (tri) url.searchParams.set('tri', tri);
         url.searchParams.delete('semaine');
         window.location.href = url.toString();
@@ -880,7 +880,7 @@
         const url = new URL(window.location.href);
         url.searchParams.delete('date_debut');
         url.searchParams.delete('date_fin');
-        url.searchParams.delete('produit_nom');
+        url.searchParams.delete('produit');
         url.searchParams.delete('semaine');
         url.searchParams.delete('tri');
         url.searchParams.set('type', type);

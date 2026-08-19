@@ -391,6 +391,7 @@ def get_derniere_archive():
         return 0
 
 def archiver_hebdomadaire():
+    conn = None
     try:
         conn = get_db()
         cm = conn.cursor()
@@ -446,9 +447,16 @@ def archiver_hebdomadaire():
                     len(ventes),tv,len(entrees),ta,now_s))
         conn.commit()
         cm.close()
-        release_db(conn)
     except Exception as e:
         print(f"❌ Erreur archiver_hebdomadaire: {e}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            release_db(conn)
 
 def archiver_si_necessaire():
     try:
