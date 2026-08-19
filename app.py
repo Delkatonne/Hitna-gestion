@@ -2090,26 +2090,53 @@ def admin_archives():
 
         rows = []
         if type_arch == 'entrees':
+            conditions = []
+            params = []
+            if date_debut:
+                conditions.append("date_entree >= %s")
+                params.append(date_debut)
+            if date_fin:
+                conditions.append("date_entree <= %s")
+                params.append(date_fin + " 23:59:59")
+            if produit_filtre:
+                conditions.append("LOWER(produit_nom) LIKE LOWER(%s)")
+                params.append(f'%{produit_filtre}%')
+            where_sql = (" AND " + " AND ".join(conditions)) if conditions else ""
             rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_entree,fournisseur,employe_nom,archive_date
-                FROM archive_entrees WHERE 1=1
-                {"AND date_entree>='"+date_debut+"'" if date_debut else ""}
-                {"AND date_entree<='"+date_fin+" 23:59:59'" if date_fin else ""}
-                {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
-                ORDER BY date_entree {order} LIMIT 200''')
+                FROM archive_entrees WHERE 1=1{where_sql}
+                ORDER BY date_entree {order} LIMIT 200''', tuple(params))
         elif type_arch == 'pertes':
+            conditions = []
+            params = []
+            if date_debut:
+                conditions.append("date_perte >= %s")
+                params.append(date_debut)
+            if date_fin:
+                conditions.append("date_perte <= %s")
+                params.append(date_fin + " 23:59:59")
+            if produit_filtre:
+                conditions.append("LOWER(produit_nom) LIKE LOWER(%s)")
+                params.append(f'%{produit_filtre}%')
+            where_sql = (" AND " + " AND ".join(conditions)) if conditions else ""
             rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,motif,date_perte,employe_nom,archive_date
-                FROM archive_pertes WHERE 1=1
-                {"AND date_perte>='"+date_debut+"'" if date_debut else ""}
-                {"AND date_perte<='"+date_fin+" 23:59:59'" if date_fin else ""}
-                {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
-                ORDER BY date_perte {order} LIMIT 200''')
+                FROM archive_pertes WHERE 1=1{where_sql}
+                ORDER BY date_perte {order} LIMIT 200''', tuple(params))
         else:
+            conditions = []
+            params = []
+            if date_debut:
+                conditions.append("date_vente >= %s")
+                params.append(date_debut)
+            if date_fin:
+                conditions.append("date_vente <= %s")
+                params.append(date_fin + " 23:59:59")
+            if produit_filtre:
+                conditions.append("LOWER(produit_nom) LIKE LOWER(%s)")
+                params.append(f'%{produit_filtre}%')
+            where_sql = (" AND " + " AND ".join(conditions)) if conditions else ""
             rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_vente,client,employe_nom,archive_date
-                FROM archive_ventes WHERE 1=1
-                {"AND date_vente>='"+date_debut+"'" if date_debut else ""}
-                {"AND date_vente<='"+date_fin+" 23:59:59'" if date_fin else ""}
-                {"AND LOWER(produit_nom) LIKE LOWER('%"+produit_filtre+"%')" if produit_filtre else ""}
-                ORDER BY date_vente {order} LIMIT 200''')
+                FROM archive_ventes WHERE 1=1{where_sql}
+                ORDER BY date_vente {order} LIMIT 200''', tuple(params))
 
         nb_ventes_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_ventes") or (0,0)
         nb_entrees_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_entrees") or (0,0)
