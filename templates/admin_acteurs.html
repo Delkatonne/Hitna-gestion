@@ -567,6 +567,10 @@
                     <input type="checkbox" name="permissions" value="pertes" id="permPertes">
                     🗑 Pertes
                 </label>
+                <label>
+                    <input type="checkbox" name="permissions" value="commandes" id="permCommandes">
+                    🛍️ Commandes (site web)
+                </label>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button type="submit" style="background: #28a745;">✅ Enregistrer</button>
@@ -678,6 +682,8 @@
                 const currentPerms = document.getElementById('currentPermsTemp').value;
                 const perms = currentPerms ? currentPerms.split(',') : ['vente'];
                 document.getElementById('permEntrees').checked = perms.includes('entrees');
+                document.getElementById('permPertes').checked = perms.includes('pertes');
+                document.getElementById('permCommandes').checked = perms.includes('commandes');
                 
                 document.getElementById('permModal').style.display = 'flex';
                 pendingPermActeurId = null;

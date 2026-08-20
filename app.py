@@ -13,6 +13,22 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'hitna_secret')
 
 # ──────────────────────────────────────────────────────────────
+# CORS — uniquement pour les endpoints publics /api/*, utilisés par
+# le site web HITNA (hébergé séparément) pour envoyer commandes/messages.
+# ──────────────────────────────────────────────────────────────
+@app.after_request
+def add_cors_headers(response):
+    if request.path.startswith('/api/'):
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    return response
+
+@app.route('/api/<path:_p>', methods=['OPTIONS'])
+def api_cors_preflight(_p):
+    return ('', 204)
+
+# ──────────────────────────────────────────────────────────────
 # CONFIGURATION EMAIL (Gmail)
 # ──────────────────────────────────────────────────────────────
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
@@ -466,10 +482,13 @@ def archiver_si_necessaire():
 def inject_now():
     ctx = {'date_actuelle': datetime.now().strftime('%d/%m/%Y %H:%M')}
     try:
-        if session.get('role') == 'admin':
+        is_admin = session.get('role') == 'admin'
+        perms = (session.get('permissions') or '').split(',')
+        if is_admin or 'commandes' in perms:
             nc = q1("SELECT COUNT(*) FROM commandes WHERE statut='nouvelle'")
-            nm = q1("SELECT COUNT(*) FROM messages_contact WHERE statut='non_lu'")
             ctx['nb_commandes_nouvelles'] = nc[0] if nc else 0
+        if is_admin:
+            nm = q1("SELECT COUNT(*) FROM messages_contact WHERE statut='non_lu'")
             ctx['nb_messages_non_lus'] = nm[0] if nm else 0
     except Exception:
         ctx['nb_commandes_nouvelles'] = 0
@@ -731,8 +750,9 @@ def supprimer_categorie(id):
 @app.route('/admin/commandes')
 def admin_commandes():
     try:
-        if session.get('role') != 'admin':
-            return redirect('/login')
+        if not check_perm('commandes'):
+            flash('❌ Permission refusée')
+            return redirect('/vente' if session.get('role') != 'admin' else '/dashboard')
         commandes = qall("SELECT * FROM commandes ORDER BY date_creation DESC")
         nb_nouvelles = q1("SELECT COUNT(*) FROM commandes WHERE statut='nouvelle'")
         return render_template('admin_commandes.html', commandes=commandes,
@@ -745,8 +765,9 @@ def admin_commandes():
 @app.route('/admin/commandes/statut/<int:id>', methods=['POST'])
 def modifier_statut_commande(id):
     try:
-        if session.get('role') != 'admin':
-            return redirect('/login')
+        if not check_perm('commandes'):
+            flash('❌ Permission refusée')
+            return redirect('/vente' if session.get('role') != 'admin' else '/dashboard')
         statut = request.form.get('statut', 'nouvelle')
         if statut not in ('nouvelle', 'en_cours', 'traitee', 'annulee'):
             statut = 'nouvelle'
@@ -760,8 +781,11 @@ def modifier_statut_commande(id):
 @app.route('/admin/commandes/supprimer/<int:id>')
 def supprimer_commande(id):
     try:
+        # Suppression réservée à l'admin (les employés peuvent voir/traiter,
+        # mais pas supprimer définitivement une commande).
         if session.get('role') != 'admin':
-            return redirect('/login')
+            flash('❌ Permission refusée')
+            return redirect('/admin/commandes')
         exe("DELETE FROM commandes WHERE id=?", (id,))
         flash('🗑️ Commande supprimée')
     except Exception as e:

@@ -855,6 +855,14 @@
                     </a>
                 </div>
                 {% endif %}
+                {% if session.permissions and 'commandes' in session.permissions.split(',') %}
+                <div class="nav-item">
+                    <a href="/admin/commandes" class="nav-link">
+                        <span class="icon">🛍️</span><span>Commandes</span>
+                        {% if nb_commandes_nouvelles %}<span class="nav-badge">{{ nb_commandes_nouvelles }}</span>{% endif %}
+                    </a>
+                </div>
+                {% endif %}
                 <div class="nav-divider"></div>
                 {% endif %}
                 
