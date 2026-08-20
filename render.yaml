@@ -12,3 +12,7 @@ services:
         value: "postgresql://postgres:hitna-gestion_db@db.rckfkvfrayhojemkvgjf.supabase.co:5432/postgres?sslmode=require"
       - key: SECRET_KEY
         generateValue: true
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
