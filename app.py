@@ -1,7 +1,8 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify, url_for, send_file
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
-import hashlib, os, random, string, io, json, uuid, socket
+import hashlib, os, random, string, io, json, uuid, socket, zipfile
+import bcrypt
 import psycopg2
 import psycopg2.extras
 from reportlab.lib.pagesizes import A4
@@ -40,6 +41,39 @@ app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
 app.config['MAIL_DEFAULT_SENDER'] = ('HITNA Gestion', 'hitnasuperette@gmail.com')
 
 mail = Mail(app)
+
+# ══════════════════════════════════════════════════════════════
+# LIMITEUR DE TENTATIVES DE CONNEXION (anti brute-force)
+# En mémoire (par processus) : suffisant pour dissuader un enchaînement
+# rapide de tentatives ; se réinitialise si le service redémarre.
+# ══════════════════════════════════════════════════════════════
+_login_attempts = {}   # { ip: [timestamps des échecs récents] }
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 600     # fenêtre glissante : 10 minutes
+LOGIN_LOCKOUT_SECONDS = 300    # verrouillage : 5 minutes
+
+def _get_client_ip():
+    fwd = request.headers.get('X-Forwarded-For', '')
+    if fwd:
+        return fwd.split(',')[0].strip()
+    return request.remote_addr or 'inconnu'
+
+def login_is_locked(ip):
+    now_ts = time()
+    attempts = [t for t in _login_attempts.get(ip, []) if now_ts - t < LOGIN_WINDOW_SECONDS]
+    _login_attempts[ip] = attempts
+    if len(attempts) < LOGIN_MAX_ATTEMPTS:
+        return False, 0
+    dernier = attempts[-1]
+    if now_ts - dernier < LOGIN_LOCKOUT_SECONDS:
+        return True, int(LOGIN_LOCKOUT_SECONDS - (now_ts - dernier))
+    return False, 0
+
+def login_record_failure(ip):
+    _login_attempts.setdefault(ip, []).append(time())
+
+def login_reset(ip):
+    _login_attempts.pop(ip, None)
 
 # ══════════════════════════════════════════════════════════════
 # SYSTÈME DE CACHE AVANCÉ
@@ -110,6 +144,46 @@ def release_db(conn):
         _get_pool().putconn(conn)
     except Exception:
         pass
+
+# ──────────────────────────────────────────────────────────────
+# SAUVEGARDE DE LA BASE DE DONNÉES
+# Le plan gratuit de Supabase n'inclut aucune sauvegarde automatique.
+# On génère donc ici un export JSON complet des tables métier, utilisable
+# côté Flask sans dépendre du binaire pg_dump (absent de l'environnement
+# Render standard). Voir /admin/backup/export.
+# ──────────────────────────────────────────────────────────────
+BACKUP_TABLES = [
+    'users', 'produits', 'categories_produits', 'unites_mesure', 'fournisseurs',
+    'sorties', 'entrees', 'pertes', 'alertes_produits', 'notifications',
+    'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_recap',
+    'commandes', 'messages_contact',
+]
+
+def generer_backup_json():
+    """Dump complet des tables métier -> dict {table: {colonnes, lignes}}."""
+    data = {}
+    for table in BACKUP_TABLES:
+        conn = None
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute(f"SELECT * FROM {table}")
+            colonnes = [d[0] for d in cur.description]
+            lignes = cur.fetchall()
+            data[table] = {'colonnes': colonnes, 'lignes': [list(r) for r in lignes]}
+            cur.close()
+            conn.commit()
+        except Exception as e:
+            data[table] = {'erreur': str(e)}
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        finally:
+            if conn:
+                release_db(conn)
+    return data
 
 def q1(sql, params=()):
     """fetchone — retourne un tuple ou None."""
@@ -377,10 +451,10 @@ def init_db():
         c.execute('SELECT COUNT(*) FROM users')
         row = c.fetchone()
         if row and row[0] == 0:
-            admin_hash = hashlib.sha256('admin123'.encode()).hexdigest()
+            admin_hash = hash_password('admin123')
             c.execute("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions) VALUES (%s,%s,%s,%s,%s,%s)",
                       ('admin','Administrateur', admin_hash, 'Administrateur', 1, 'admin'))
-            emp_hash = hashlib.sha256('emp123'.encode()).hexdigest()
+            emp_hash = hash_password('emp123')
             c.execute("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions) VALUES (%s,%s,%s,%s,%s,%s)",
                       ('employe','Employé', emp_hash, 'Employé', 1, 'vente'))
             print("✅ Utilisateurs par défaut créés")
@@ -587,6 +661,35 @@ def check_perm(perm):
         return False
 
 # ──────────────────────────────────────────────────────────────
+# MOTS DE PASSE — bcrypt (salé, résistant au brute-force).
+# Les comptes créés avant cette mise à jour ont un hash SHA-256 non salé
+# (toujours 64 caractères hexadécimaux) ; verify_password() les reconnaît
+# et les migre automatiquement vers bcrypt dès la prochaine connexion
+# réussie, sans que personne n'ait à réinitialiser son mot de passe.
+# ──────────────────────────────────────────────────────────────
+def hash_password(password):
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def _is_legacy_sha256(stored_hash):
+    return bool(stored_hash) and len(stored_hash) == 64 and all(c in '0123456789abcdef' for c in stored_hash.lower())
+
+def verify_password(password, stored_hash, user_id=None):
+    if not stored_hash:
+        return False
+    if _is_legacy_sha256(stored_hash):
+        ok = hashlib.sha256(password.encode('utf-8')).hexdigest() == stored_hash
+        if ok and user_id:
+            try:
+                exe("UPDATE users SET password_hash=? WHERE id=?", (hash_password(password), user_id))
+            except Exception as e:
+                print(f"⚠️ Migration bcrypt échouée pour user {user_id}: {e}")
+        return ok
+    try:
+        return bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
+    except Exception:
+        return False
+
+# ──────────────────────────────────────────────────────────────
 # ROUTES AUTH
 # ──────────────────────────────────────────────────────────────
 @app.route('/')
@@ -597,34 +700,47 @@ def accueil():
 def login():
     try:
         if request.method == 'POST':
+            ip = _get_client_ip()
+            locked, attente_s = login_is_locked(ip)
+            if locked:
+                minutes = max(1, attente_s // 60)
+                flash(f'❌ Trop de tentatives échouées. Réessayez dans environ {minutes} minute(s).')
+                return redirect('/login')
+
             sel = request.form.get('role', '')
             password = request.form.get('password', '')
-            ph = hashlib.sha256(password.encode()).hexdigest()
-            
-            user = q1("""
-                SELECT id, nom, actif, role_personnalise, role, permissions 
-                FROM users 
-                WHERE (role_personnalise = %s OR role = %s) AND password_hash = %s
-            """, (sel, sel, ph))
-            
-            if not user:
+
+            candidats = qall("""
+                SELECT id, nom, actif, role_personnalise, role, permissions, password_hash
+                FROM users
+                WHERE role_personnalise = %s OR role = %s
+            """, (sel, sel))
+
+            if not candidats:
                 rb = None
                 if sel == 'Administrateur':
                     rb = 'admin'
                 elif sel == 'Employé':
                     rb = 'employe'
                 if rb:
-                    user = q1("""
-                        SELECT id, nom, actif, role_personnalise, role, permissions 
-                        FROM users 
-                        WHERE role = %s AND password_hash = %s
-                    """, (rb, ph))
+                    candidats = qall("""
+                        SELECT id, nom, actif, role_personnalise, role, permissions, password_hash
+                        FROM users
+                        WHERE role = %s
+                    """, (rb,))
+
+            user = None
+            for c in candidats:
+                if verify_password(password, c[6], user_id=c[0]):
+                    user = c
+                    break
             
             if user:
                 if user[2] == 0:
                     flash('❌ Compte désactivé.')
                     return redirect('/login')
                 
+                login_reset(ip)
                 session.update({
                     'user_id': user[0],
                     'role': user[4],
@@ -636,6 +752,7 @@ def login():
                 flash(f'✅ Bonjour {user[1]} !')
                 return redirect('/dashboard' if user[4] == 'admin' else '/vente')
             
+            login_record_failure(ip)
             flash('❌ Identifiants incorrects')
         
         roles = get_all_roles()
@@ -664,7 +781,7 @@ def changer_mdp():
                 return redirect('/changer_mdp')
             
             exe("UPDATE users SET password_hash=? WHERE id=?", 
-                (hashlib.sha256(pwd.encode()).hexdigest(), session['user_id']))
+                (hash_password(pwd), session['user_id']))
             flash('✅ Mot de passe changé !')
             return redirect('/dashboard' if session['role'] == 'admin' else '/vente')
         
@@ -792,6 +909,63 @@ def supprimer_commande(id):
         print(f"❌ Erreur supprimer_commande: {e}")
         flash('❌ Erreur lors de la suppression')
     return redirect('/admin/commandes')
+
+
+# ══════════════════════════════════════════════════════════════
+# SAUVEGARDE
+# ══════════════════════════════════════════════════════════════
+BACKUP_SECRET = os.environ.get('BACKUP_SECRET', '')
+
+@app.route('/admin/backup/export')
+def backup_export():
+    """
+    Deux usages :
+    - Admin connecté, visite directe dans le navigateur -> téléchargement du zip.
+    - Appel automatisé (cron externe) avec ?token=BACKUP_SECRET -> le zip est
+      envoyé par email à l'adresse HITNA configurée, sans session requise.
+    """
+    try:
+        token = request.args.get('token', '')
+        session_admin = session.get('role') == 'admin'
+        token_valide = bool(BACKUP_SECRET) and token == BACKUP_SECRET
+
+        if not (session_admin or token_valide):
+            return jsonify({'error': 'Non autorisé'}), 403
+
+        data = generer_backup_json()
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr('backup.json', json.dumps(data, ensure_ascii=False, default=str, indent=2))
+        buf.seek(0)
+
+        date_str = datetime.now().strftime('%Y-%m-%d_%H%M')
+        filename = f'hitna_backup_{date_str}.zip'
+
+        if token_valide and not session_admin:
+            # Déclenché automatiquement : personne n'est devant l'écran,
+            # on envoie donc le fichier par email plutôt que de le "télécharger".
+            try:
+                msg = Message(
+                    subject=f"📦 Sauvegarde HITNA — {date_str}",
+                    recipients=[app.config['MAIL_USERNAME']],
+                    body="Sauvegarde automatique de la base de données HITNA en pièce jointe (fichier .zip contenant un export JSON complet)."
+                )
+                msg.attach(filename, 'application/zip', buf.read())
+                ancien_timeout = socket.getdefaulttimeout()
+                socket.setdefaulttimeout(20)
+                try:
+                    mail.send(msg)
+                finally:
+                    socket.setdefaulttimeout(ancien_timeout)
+                return jsonify({'success': True, 'message': 'Sauvegarde envoyée par email'})
+            except Exception as e:
+                print(f"❌ Erreur envoi backup par email: {e}")
+                return jsonify({'error': f'Sauvegarde générée mais email échoué: {e}'}), 500
+
+        return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=filename)
+    except Exception as e:
+        print(f"❌ Erreur backup_export: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1782,7 +1956,7 @@ def ajouter_acteur():
         if not nom or not mdp:
             flash('❌ Nom et mot de passe obligatoires')
             return redirect('/admin/acteurs')
-        ph = hashlib.sha256(mdp.encode()).hexdigest()
+        ph = hash_password(mdp)
         perms = 'admin' if rb == 'admin' else 'vente'
         exe("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions,email) VALUES (?,?,?,?,1,?,?)",
             (rb,rp,ph,nom,perms,email))
@@ -1807,7 +1981,7 @@ def modifier_acteur(id):
             (nom,rp,email,perms,actif,motif,id))
         if request.form.get('new_password'):
             exe("UPDATE users SET password_hash=? WHERE id=?",
-                (hashlib.sha256(request.form['new_password'].encode()).hexdigest(),id))
+                (hash_password(request.form['new_password']),id))
         flash(f'✅ Acteur "{nom}" modifié')
     except Exception as e:
         print(f"❌ Erreur modifier_acteur: {e}")
@@ -1865,7 +2039,7 @@ def reset_mdp_acteur(id):
         if len(nouveau_mdp) < 4:
             flash('❌ Le mot de passe doit contenir au moins 4 caractères')
             return redirect('/admin/acteurs')
-        password_hash = hashlib.sha256(nouveau_mdp.encode()).hexdigest()
+        password_hash = hash_password(nouveau_mdp)
         exe("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, id))
         flash('✅ Mot de passe réinitialisé avec succès')
     except Exception as e:
@@ -1932,7 +2106,7 @@ def verifier_mdp_admin():
         data = request.get_json()
         mdp = data.get('mot_de_passe','')
         r = q1("SELECT password_hash FROM users WHERE id=? AND role='admin'",(session.get('user_id'),))
-        if r and r[0] == hashlib.sha256(mdp.encode()).hexdigest():
+        if r and verify_password(mdp, r[0], user_id=session.get('user_id')):
             session['mdp_verifie'] = True
             return jsonify({'success':True})
         return jsonify({'success':False,'message':'Mot de passe incorrect'})
@@ -3019,7 +3193,7 @@ def reset_password(token):
             if len(pwd) < 4:
                 flash('❌ Minimum 4 caractères')
                 return redirect(f'/reset_password/{token}')
-            exe("UPDATE users SET password_hash=? WHERE id=?",(hashlib.sha256(pwd.encode()).hexdigest(), user_id))
+            exe("UPDATE users SET password_hash=? WHERE id=?",(hash_password(pwd), user_id))
             exe("UPDATE reset_tokens SET used=1 WHERE token=?",(token,))
             flash('✅ Mot de passe réinitialisé !')
             return redirect('/login')
