@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify, url_for, send_file
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
-import hashlib, os, random, string, io, json, uuid
+import hashlib, os, random, string, io, json, uuid, socket
 import psycopg2
 import psycopg2.extras
 from reportlab.lib.pagesizes import A4
@@ -2972,8 +2972,17 @@ L'équipe HITNA
 <p>Cordialement,<br><strong>L'équipe HITNA</strong></p>
 """
                     )
-                    mail.send(msg)
-                    flash('✅ Un email de réinitialisation a été envoyé à hitnasuperette@gmail.com', 'success')
+                    # Borne stricte : un problème réseau/SMTP (ex: identifiants Gmail
+                    # invalides, connexion filtrée) peut sinon bloquer la requête
+                    # jusqu'à faire dépasser le timeout du worker gunicorn -> 502
+                    # pour TOUTE la page, au lieu d'une simple erreur gérée ici.
+                    ancien_timeout = socket.getdefaulttimeout()
+                    socket.setdefaulttimeout(10)
+                    try:
+                        mail.send(msg)
+                        flash('✅ Un email de réinitialisation a été envoyé à hitnasuperette@gmail.com', 'success')
+                    finally:
+                        socket.setdefaulttimeout(ancien_timeout)
                 except Exception as e:
                     print(f"Erreur envoi email: {e}")
                     flash(f'🔗 Lien de réinitialisation : {reset_url}', 'info')
