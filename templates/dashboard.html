@@ -240,110 +240,15 @@
     {% endif %}
 </div>
 
-<!-- Historique complet avec séparation par jour -->
+<!-- Historique déplacé vers Rapport journalier -->
 <div class="card">
-    <h2 class="card-title">📊 Historique complet des ventes</h2>
-    
-    {% if historique %}
-        {% set current_day = "" %}
-        {% set day_total = 0 %}
-        {% set day_count = 0 %}
-        
-        {% for v in historique %}
-            {% set date_complete = v[4] if v[4] else '' %}
-            {% set v_date = date_complete.split(' ')[0] if date_complete else '' %}
-            {% set v_time = date_complete.split(' ')[1] if date_complete and ' ' in date_complete else '' %}
-            
-            {% if current_day != v_date and v_date != '' %}
-                {% if current_day != "" %}
-                        </tbody>
-                    </table>
-                    <div class="day-total-footer">
-                        Total du {{ current_day }} : <span style="color: #28a745;">{{ "{:,.0f}".format(day_total) }} FCFA</span> ({{ day_count }} ventes)
-                    </div>
-                </div>
-                {% endif %}
-                
-                <div class="day-separator">
-                    <div class="day-date">
-                        📅 {{ v_date }}
-                        <span class="day-name">
-                            {% if v_date == date_actuelle.split(' ')[0] %}
-                                📍 AUJOURD'HUI
-                            {% else %}
-                                {% set v_year, v_month, v_day = v_date.split('-') %}
-                                {% set a_year, a_month, a_day = date_actuelle.split('-') if '-' in date_actuelle else ['','',''] %}
-                                {% if v_year == a_year and v_month == a_month and v_day|int == a_day|int - 1 %}
-                                    HIER
-                                {% else %}
-                                    {{ v_date }}
-                                {% endif %}
-                            {% endif %}
-                        </span>
-                    </div>
-                    <div class="day-total">
-                        Total du jour: à calculer
-                    </div>
-                </div>
-                
-                <div class="ventes-group">
-                    <div class="table-container">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Heure</th>
-                                    <th>Produit</th>
-                                    <th>Quantité</th>
-                                    <th>Total (FCFA)</th>
-                                    <th>Vendeur</th>
-                                    <th>Client</th>
-                                    <th>Reçu</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                {% set current_day = v_date %}
-                {% set day_total = 0 %}
-                {% set day_count = 0 %}
-            {% endif %}
-            
-            {% if v_date != '' %}
-                <tr class="vente-row">
-                    <td>{{ v_time if v_time else '-' }}</td>
-                    <td><strong>{{ v[1] }}</strong></td>
-                    <td>{{ v[2] }}</td>
-                    <td style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(v[3]) }} FCFA</td>
-                    <td>
-                        {% if '👑' in v[5] %}
-                            <span class="vendeur-admin">{{ v[5] }}</span>
-                        {% else %}
-                            <span class="vendeur-employe">{{ v[5] }}</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ v[6] or '-' }}</td>
-                    <td>
-                        {% if v[7] %}
-                            <a href="/vente/recu/{{ v[7] }}" target="_blank" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;">🧾 Voir</a>
-                        {% else %}
-                            —
-                        {% endif %}
-                    </td>
-                </tr>
-                {% set day_total = day_total + v[3] %}
-                {% set day_count = day_count + 1 %}
-            {% endif %}
-        {% endfor %}
-        
-        {% if current_day != "" %}
-                        </tbody>
-                    </table>
-                    <div class="day-total-footer">
-                        Total du {{ current_day }} : <span style="color: #28a745;">{{ "{:,.0f}".format(day_total) }} FCFA</span> ({{ day_count }} ventes)
-                    </div>
-                </div>
-        {% endif %}
-    {% else %}
-        <p style="text-align: center; color: #999; padding: 40px;">Aucune vente enregistrée</p>
-    {% endif %}
+    <h2 class="card-title">📅 Historique des opérations</h2>
+    <p style="color:#666; margin-bottom:16px;">
+        Consultez le détail jour par jour des ventes, entrées et pertes de la semaine dans le Rapport journalier.
+    </p>
+    <a href="/rapport-journalier" class="btn-small" style="display:inline-block; background:#1e3c72; color:white; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold;">
+        📅 Voir le rapport journalier →
+    </a>
 </div>
 
 <div class="nav-links">
@@ -359,24 +264,6 @@
 <button type="button" class="btn-export-float" onclick="exportToday()" title="Exporter le point du jour">📄</button>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const daySeparators = document.querySelectorAll('.day-separator');
-        const ventesGroups = document.querySelectorAll('.ventes-group');
-        
-        ventesGroups.forEach((group, index) => {
-            if (daySeparators[index]) {
-                const totalFooter = group.querySelector('.day-total-footer');
-                if (totalFooter) {
-                    const totalSpan = totalFooter.querySelector('span');
-                    const dayTotalSpan = daySeparators[index].querySelector('.day-total');
-                    if (totalSpan && dayTotalSpan) {
-                        const totalText = totalSpan.innerText;
-                        dayTotalSpan.innerHTML = 'Total: ' + totalText + ' FCFA';
-                    }
-                }
-            }
-        });
-    });
     // Graphique des ventes sur 7 jours
 {% if ventes_7_jours %}
 const joursLabels = [{% for v in ventes_7_jours %}'{{ v[0] }}',{% endfor %}];

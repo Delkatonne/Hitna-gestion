@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Rapport journalier - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .jour-card {
+        background: white;
+        border-radius: 14px;
+        padding: 20px 22px;
+        margin-bottom: 14px;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 14px;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .jour-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    }
+    .jour-card .jour-titre {
+        font-size: 16px;
+        font-weight: bold;
+        color: #1e3c72;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .jour-card .jour-badge-today {
+        background: #1e3c72;
+        color: white;
+        font-size: 11px;
+        padding: 3px 10px;
+        border-radius: 20px;
+    }
+    .jour-stats {
+        display: flex;
+        gap: 22px;
+        flex-wrap: wrap;
+    }
+    .jour-stat {
+        text-align: right;
+        font-size: 13px;
+    }
+    .jour-stat .label { color: #888; }
+    .jour-stat .valeur { font-weight: bold; }
+    .jour-stat.ventes .valeur { color: #28a745; }
+    .jour-stat.entrees .valeur { color: #dc3545; }
+    .jour-stat.pertes .valeur { color: #e0a800; }
+
+    .info-banner {
+        background: #eef4ff;
+        border: 1px solid #cfe0ff;
+        border-radius: 12px;
+        padding: 14px 18px;
+        font-size: 13px;
+        color: #1e3c72;
+        margin-bottom: 22px;
+    }
+
+    @media (max-width: 600px) {
+        .jour-card { flex-direction: column; align-items: flex-start; }
+        .jour-stats { width: 100%; justify-content: space-between; gap: 10px; }
+        .jour-stat { text-align: left; }
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}📅 Rapport journalier{% endblock %}
+{% block page_subtitle %}Ventes, entrées et pertes des 7 derniers jours{% endblock %}
+
+{% block content %}
+
+<div class="info-banner">
+    ℹ️ Ce rapport couvre les 7 derniers jours. Chaque jour disparaît automatiquement d'ici une semaine
+    après son passage, mais reste consultable dans <a href="/admin/archives" style="color:#1e3c72; font-weight:bold;">Archives</a> une fois la semaine archivée.
+</div>
+
+<div class="card">
+    {% if rapport %}
+        {% for jour, d in rapport %}
+        <a href="/rapport-journalier/{{ jour }}" class="jour-card">
+            <div class="jour-titre">
+                📅 {{ jour }}
+                {% if jour == aujourdhui %}
+                <span class="jour-badge-today">Aujourd'hui</span>
+                {% endif %}
+            </div>
+            <div class="jour-stats">
+                <div class="jour-stat ventes">
+                    <div class="label">🛒 Ventes</div>
+                    <div class="valeur">{{ d.nb_ventes }} · {{ "{:,.0f}".format(d.total_ventes) }} FCFA</div>
+                </div>
+                <div class="jour-stat entrees">
+                    <div class="label">📥 Entrées</div>
+                    <div class="valeur">{{ d.nb_entrees }} · {{ "{:,.0f}".format(d.total_entrees) }} FCFA</div>
+                </div>
+                <div class="jour-stat pertes">
+                    <div class="label">⚠️ Pertes</div>
+                    <div class="valeur">{{ d.nb_pertes }} · {{ "{:,.0f}".format(d.total_pertes) }} FCFA</div>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    {% else %}
+        <p style="text-align: center; color: #999; padding: 40px;">📭 Aucune activité enregistrée sur les 7 derniers jours</p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="{{ '/dashboard' if session.role == 'admin' else '/vente' }}">← Retour</a>
+    <a href="/admin/archives">📚 Archives</a>
+</div>
+
+{% endblock %}

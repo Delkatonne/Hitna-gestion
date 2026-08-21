@@ -769,6 +769,11 @@
                     </a>
                 </div>
                 <div class="nav-item">
+                    <a href="/rapport-journalier" class="nav-link {% if request.endpoint in ['rapport_journalier','rapport_journalier_jour'] %}active{% endif %}">
+                        <span class="icon">📅</span><span>Rapport journalier</span>
+                    </a>
+                </div>
+                <div class="nav-item">
                     <a href="/admin/produits" class="nav-link {% if request.endpoint == 'produits_list' %}active{% endif %}">
                         <span class="icon">📦</span><span>Gérer les produits</span>
                     </a>
@@ -851,6 +856,11 @@
                 <div class="nav-item">
                     <a href="/vente" class="nav-link {% if request.endpoint == 'vente' %}active{% endif %}">
                         <span class="icon">🛒</span><span>Vente</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/rapport-journalier" class="nav-link {% if request.endpoint in ['rapport_journalier','rapport_journalier_jour'] %}active{% endif %}">
+                        <span class="icon">📅</span><span>Rapport journalier</span>
                     </a>
                 </div>
                 {% if session.permissions and 'entrees' in session.permissions.split(',') %}

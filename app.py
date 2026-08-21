@@ -1763,7 +1763,7 @@ def dashboard():
         cached_data = get_cached(cache_key, 60)
         if cached_data:
             (total_jour, nb_produits, stock_total, nb_stock_bas, 
-             historique, stock_bas, top_produits, stats_vendeurs,
+             stock_bas, top_produits, stats_vendeurs,
              ventes_7_jours, ventes_par_heure) = cached_data
         else:
             total_jour = q1("SELECT COALESCE(SUM(total),0) FROM sorties WHERE DATE(date_sortie)=CURRENT_DATE")
@@ -1774,9 +1774,6 @@ def dashboard():
             stock_total = stock_total[0] if stock_total else 0
             nb_stock_bas = q1("SELECT COUNT(*) FROM produits WHERE stock<=stock_min")
             nb_stock_bas = nb_stock_bas[0] if nb_stock_bas else 0
-            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente
-                FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
-                ORDER BY s.date_sortie DESC LIMIT 20''')
             stock_bas = qall("SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min LIMIT 20")
             top_produits = qall('''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
                 FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
@@ -1791,12 +1788,12 @@ def dashboard():
                 FROM sorties WHERE DATE(date_sortie::timestamp) = CURRENT_DATE
                 GROUP BY 1 ORDER BY 1''')
             set_cached(cache_key, (total_jour, nb_produits, stock_total, nb_stock_bas, 
-                                   historique, stock_bas, top_produits, stats_vendeurs,
+                                   stock_bas, top_produits, stats_vendeurs,
                                    ventes_7_jours, ventes_par_heure))
         return render_template('dashboard.html',
             total_jour=total_jour, nb_produits=nb_produits,
             stock_total=stock_total, nb_stock_bas=nb_stock_bas,
-            historique=historique, stock_bas=stock_bas,
+            stock_bas=stock_bas,
             top_produits=top_produits, stats_vendeurs=stats_vendeurs,
             ventes_7_jours=ventes_7_jours, ventes_par_heure=ventes_par_heure)
     except Exception as e:
@@ -2274,6 +2271,97 @@ def admin_recus():
         return redirect('/dashboard')
 
 
+@app.route('/rapport-journalier')
+def rapport_journalier():
+    """
+    Liste des jours (7 derniers jours glissants) ayant une activité en cours
+    (ventes/entrées/pertes), tirée directement des tables actives — donc bornée
+    naturellement à ce qui n'a pas encore été archivé. Accessible à l'admin
+    et à tout employé connecté (lecture seule, pas de permission spécifique).
+    """
+    try:
+        if 'user_id' not in session:
+            return redirect('/login')
+
+        ventes_j = qall('''SELECT DATE(date_sortie::timestamp) as jour, COUNT(*), COALESCE(SUM(total),0)
+            FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
+            GROUP BY jour''')
+        entrees_j = qall('''SELECT DATE(date_entree::timestamp) as jour, COUNT(*), COALESCE(SUM(total),0)
+            FROM entrees WHERE date_entree::timestamp >= NOW() - INTERVAL '7 days'
+            GROUP BY jour''')
+        pertes_j = qall('''SELECT DATE(date_perte::timestamp) as jour, COUNT(*), COALESCE(SUM(total),0)
+            FROM pertes WHERE date_perte::timestamp >= NOW() - INTERVAL '7 days'
+            GROUP BY jour''')
+
+        jours_data = {}
+        def _ensure(js):
+            return jours_data.setdefault(js, {'nb_ventes':0,'total_ventes':0,
+                                                'nb_entrees':0,'total_entrees':0,
+                                                'nb_pertes':0,'total_pertes':0})
+        for jour, nb, total in ventes_j:
+            d = _ensure(str(jour)); d['nb_ventes'] = nb; d['total_ventes'] = total
+        for jour, nb, total in entrees_j:
+            d = _ensure(str(jour)); d['nb_entrees'] = nb; d['total_entrees'] = total
+        for jour, nb, total in pertes_j:
+            d = _ensure(str(jour)); d['nb_pertes'] = nb; d['total_pertes'] = total
+
+        rapport = [(j, jours_data[j]) for j in sorted(jours_data.keys(), reverse=True)]
+
+        return render_template('rapport_journalier.html', rapport=rapport,
+            aujourdhui=datetime.now().strftime('%Y-%m-%d'))
+    except Exception as e:
+        print(f"❌ Erreur rapport_journalier: {e}")
+        flash('Erreur lors du chargement du rapport journalier')
+        return redirect('/dashboard' if session.get('role') == 'admin' else '/vente')
+
+
+@app.route('/rapport-journalier/<jour>')
+def rapport_journalier_jour(jour):
+    """Détail d'un jour (ventes/entrées/pertes) tiré des tables actives.
+    Une fois la semaine archivée, ce même jour redevient consultable via
+    /admin/archives à la place."""
+    try:
+        if 'user_id' not in session:
+            return redirect('/login')
+
+        ventes_jour = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total,
+                                      s.date_sortie, s.client, u.nom, s.groupe_vente
+                               FROM sorties s
+                               JOIN produits p ON s.produit_id = p.id
+                               JOIN users u ON s.employe_id = u.id
+                               WHERE DATE(s.date_sortie) = ?
+                               ORDER BY s.date_sortie ASC''', (jour,))
+        entrees_jour = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total,
+                                       e.date_entree, e.fournisseur, u.nom
+                                FROM entrees e
+                                JOIN produits p ON e.produit_id = p.id
+                                JOIN users u ON e.employe_id = u.id
+                                WHERE DATE(e.date_entree) = ?
+                                ORDER BY e.date_entree ASC''', (jour,))
+        pertes_jour = qall('''SELECT pe.id, p.nom, pe.quantite, pe.prix_unitaire, pe.total,
+                                      pe.motif, pe.date_perte, u.nom
+                               FROM pertes pe
+                               JOIN produits p ON pe.produit_id = p.id
+                               JOIN users u ON pe.employe_id = u.id
+                               WHERE DATE(pe.date_perte) = ?
+                               ORDER BY pe.date_perte ASC''', (jour,))
+
+        stats_ventes = (len(ventes_jour), sum(v[2] for v in ventes_jour), sum(v[4] for v in ventes_jour))
+        stats_entrees = (len(entrees_jour), sum(e[2] for e in entrees_jour), sum(e[4] for e in entrees_jour))
+        stats_pertes = (len(pertes_jour), sum(p[2] for p in pertes_jour), sum(p[4] for p in pertes_jour))
+
+        if not ventes_jour and not entrees_jour and not pertes_jour:
+            flash("ℹ️ Aucune donnée pour ce jour ici — si la semaine a déjà été archivée, consultez Archives.")
+
+        return render_template('rapport_journalier_jour.html',
+            jour=jour, ventes_jour=ventes_jour, entrees_jour=entrees_jour, pertes_jour=pertes_jour,
+            stats_ventes=stats_ventes, stats_entrees=stats_entrees, stats_pertes=stats_pertes)
+    except Exception as e:
+        print(f"❌ Erreur rapport_journalier_jour: {e}")
+        flash('❌ Erreur lors du chargement du détail du jour')
+        return redirect('/rapport-journalier')
+
+
 @app.route('/admin/archives')
 def admin_archives():
     try:
@@ -2406,20 +2494,30 @@ def admin_archive_jour(jour):
                                 WHERE date_entree LIKE ?
                                 ORDER BY date_entree ASC''', (jour + '%',))
 
+        pertes_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,motif,date_perte,
+                               employe_id,archive_date,semaine,annee,produit_nom,employe_nom
+                               FROM archive_pertes
+                               WHERE date_perte LIKE ?
+                               ORDER BY date_perte ASC''', (jour + '%',))
+
         stats_ventes = q1('''SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0)
                               FROM archive_ventes WHERE date_vente LIKE ?''', (jour + '%',)) or (0, 0, 0)
         stats_entrees = q1('''SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0)
                                FROM archive_entrees WHERE date_entree LIKE ?''', (jour + '%',)) or (0, 0, 0)
+        stats_pertes = q1('''SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0)
+                              FROM archive_pertes WHERE date_perte LIKE ?''', (jour + '%',)) or (0, 0, 0)
 
-        if not ventes_jour and not entrees_jour:
+        if not ventes_jour and not entrees_jour and not pertes_jour:
             flash("ℹ️ Aucune donnée archivée pour ce jour (seules les semaines déjà archivées sont consultables ici).")
 
         return render_template('archive_jour.html',
             jour=jour,
             ventes_jour=ventes_jour,
             entrees_jour=entrees_jour,
+            pertes_jour=pertes_jour,
             stats_ventes=stats_ventes,
-            stats_entrees=stats_entrees)
+            stats_entrees=stats_entrees,
+            stats_pertes=stats_pertes)
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -2535,6 +2633,55 @@ def add_logo_to_pdf(c, width, height):
     except Exception as e:
         print(f"⚠️ Erreur ajout filigrane: {e}")
     return False
+
+# ─── HELPERS : sections de tableau paginées pour les exports "point du jour" ───
+def _pdf_table_headers(c, colonnes, x_positions, y, font_size=9):
+    c.setFont("Helvetica-Bold", font_size)
+    c.setFillColorRGB(0.3, 0.3, 0.3)
+    for label, x in zip(colonnes, x_positions):
+        c.drawString(x, y, label)
+    return y - 15
+
+def _pdf_draw_section(c, width, height, y, titre, titre_rgb, colonnes, x_positions,
+                       rows, row_to_cells, message_vide, font_header=9, font_row=8, row_h=15):
+    """
+    Dessine un titre de section puis son tableau à partir de la position y courante,
+    SANS limite sur le nombre de lignes : si le contenu dépasse la page, une nouvelle
+    page est ajoutée automatiquement (avec en-tête/logo HITNA et répétition des
+    colonnes) plutôt que de tronquer les données.
+    Si `rows` est vide, affiche `message_vide` à la place du tableau (la section
+    reste visible, elle ne disparaît pas).
+    Retourne la position y après le contenu dessiné.
+    """
+    c.setFont("Helvetica-Bold", 13)
+    c.setFillColorRGB(*titre_rgb)
+    c.drawString(50, y, titre)
+    y -= 25
+
+    if not rows:
+        c.setFont("Helvetica-Oblique", 10)
+        c.setFillColorRGB(0.55, 0.55, 0.55)
+        c.drawString(50, y, message_vide)
+        return y - 20
+
+    y = _pdf_table_headers(c, colonnes, x_positions, y, font_header)
+    c.setFont("Helvetica", font_row)
+    c.setFillColorRGB(0, 0, 0)
+
+    for row in rows:
+        if y < 50:
+            c.showPage()
+            add_header_to_pdf(c, width, height)
+            add_logo_to_pdf(c, width, height)
+            y = height - 100
+            y = _pdf_table_headers(c, colonnes, x_positions, y, font_header)
+            c.setFont("Helvetica", font_row)
+            c.setFillColorRGB(0, 0, 0)
+        for val, x in zip(row_to_cells(row), x_positions):
+            c.drawString(x, y, str(val))
+        y -= row_h
+
+    return y
 
 # ─── EXPORT PDF POUR ADMIN ────────────────────────────────────
 @app.route('/export/pdf')
@@ -2669,161 +2816,53 @@ def export_pdf_jour(date):
         c.setLineWidth(0.5)
         c.line(50, y, width - 50, y)
         y -= 20
-        
-        # ── VENTES ──
-        if ventes:
-            c.setFont("Helvetica-Bold", 12)
-            c.setFillColorRGB(0.12, 0.24, 0.45)
-            c.drawString(50, y, "🛒 VENTES DU JOUR")
-            y -= 20
-            
-            c.setFont("Helvetica-Bold", 9)
-            c.setFillColorRGB(0.3, 0.3, 0.3)
-            c.drawString(50, y, "Produit")
-            c.drawString(180, y, "Qté")
-            c.drawString(220, y, "Prix unit.")
-            c.drawString(300, y, "Total")
-            c.drawString(380, y, "Client")
-            c.drawString(440, y, "Vendeur")
-            y -= 15
-            
-            c.setFont("Helvetica", 8)
-            c.setFillColorRGB(0, 0, 0)
-            for v in ventes[:20]:
-                if y < 50:
-                    c.showPage()
-                    add_header_to_pdf(c, width, height)
-                    add_logo_to_pdf(c, width, height)
-                    y = height - 100
-                    c.setFont("Helvetica-Bold", 9)
-                    c.setFillColorRGB(0.3, 0.3, 0.3)
-                    c.drawString(50, y, "Produit")
-                    c.drawString(180, y, "Qté")
-                    c.drawString(220, y, "Prix unit.")
-                    c.drawString(300, y, "Total")
-                    c.drawString(380, y, "Client")
-                    c.drawString(440, y, "Vendeur")
-                    y -= 15
-                    c.setFont("Helvetica", 8)
-                    c.setFillColorRGB(0, 0, 0)
-                
-                c.drawString(50, y, v[1][:30])
-                c.drawString(180, y, str(v[2]))
-                c.drawString(220, y, format_prix(v[3]))
-                c.drawString(300, y, format_prix(v[4]))
-                c.drawString(380, y, v[6][:15] if v[6] else "-")
-                c.drawString(440, y, v[7][:15] if v[7] else "-")
-                y -= 15
-            
-            y -= 10
-        
-        # ── ENTRÉES ──
-        if entrees:
-            if y < 100:
-                c.showPage()
-                add_header_to_pdf(c, width, height)
-                add_logo_to_pdf(c, width, height)
-                y = height - 100
-            
-            c.setFont("Helvetica-Bold", 12)
-            c.setFillColorRGB(0.12, 0.24, 0.45)
-            c.drawString(50, y, "📥 ENTRÉES DE STOCK")
-            y -= 20
-            
-            c.setFont("Helvetica-Bold", 9)
-            c.setFillColorRGB(0.3, 0.3, 0.3)
-            c.drawString(50, y, "Produit")
-            c.drawString(180, y, "Qté")
-            c.drawString(220, y, "Prix unit.")
-            c.drawString(300, y, "Total")
-            c.drawString(380, y, "Fournisseur")
-            c.drawString(440, y, "Enreg.")
-            y -= 15
-            
-            c.setFont("Helvetica", 8)
-            c.setFillColorRGB(0, 0, 0)
-            for e in entrees[:15]:
-                if y < 50:
-                    c.showPage()
-                    add_header_to_pdf(c, width, height)
-                    add_logo_to_pdf(c, width, height)
-                    y = height - 100
-                    c.setFont("Helvetica-Bold", 9)
-                    c.setFillColorRGB(0.3, 0.3, 0.3)
-                    c.drawString(50, y, "Produit")
-                    c.drawString(180, y, "Qté")
-                    c.drawString(220, y, "Prix unit.")
-                    c.drawString(300, y, "Total")
-                    c.drawString(380, y, "Fournisseur")
-                    c.drawString(440, y, "Enreg.")
-                    y -= 15
-                    c.setFont("Helvetica", 8)
-                    c.setFillColorRGB(0, 0, 0)
-                
-                c.drawString(50, y, e[1][:30])
-                c.drawString(180, y, str(e[2]))
-                c.drawString(220, y, format_prix(e[3]))
-                c.drawString(300, y, format_prix(e[4]))
-                c.drawString(380, y, e[6][:15] if e[6] else "-")
-                c.drawString(440, y, e[7][:15] if e[7] else "-")
-                y -= 15
-        
-        # ── PERTES ──
-        if pertes:
-            if y < 100:
-                c.showPage()
-                add_header_to_pdf(c, width, height)
-                add_logo_to_pdf(c, width, height)
-                y = height - 100
-            else:
-                y -= 10
-            
-            c.setFont("Helvetica-Bold", 12)
-            c.setFillColorRGB(0.72, 0.11, 0.11)
-            c.drawString(50, y, "⚠️ PERTES DU JOUR")
-            y -= 20
-            
-            c.setFont("Helvetica-Bold", 9)
-            c.setFillColorRGB(0.3, 0.3, 0.3)
-            c.drawString(50, y, "Produit")
-            c.drawString(180, y, "Qté")
-            c.drawString(220, y, "Prix unit.")
-            c.drawString(300, y, "Total")
-            c.drawString(380, y, "Motif")
-            c.drawString(440, y, "Enreg.")
-            y -= 15
-            
-            c.setFont("Helvetica", 8)
-            c.setFillColorRGB(0, 0, 0)
-            for p in pertes[:15]:
-                if y < 50:
-                    c.showPage()
-                    add_header_to_pdf(c, width, height)
-                    add_logo_to_pdf(c, width, height)
-                    y = height - 100
-                    c.setFont("Helvetica-Bold", 9)
-                    c.setFillColorRGB(0.3, 0.3, 0.3)
-                    c.drawString(50, y, "Produit")
-                    c.drawString(180, y, "Qté")
-                    c.drawString(220, y, "Prix unit.")
-                    c.drawString(300, y, "Total")
-                    c.drawString(380, y, "Motif")
-                    c.drawString(440, y, "Enreg.")
-                    y -= 15
-                    c.setFont("Helvetica", 8)
-                    c.setFillColorRGB(0, 0, 0)
-                
-                c.drawString(50, y, p[1][:30])
-                c.drawString(180, y, str(p[2]))
-                c.drawString(220, y, format_prix(p[3]))
-                c.drawString(300, y, format_prix(p[4]))
-                c.drawString(380, y, p[6][:15] if p[6] else "-")
-                c.drawString(440, y, p[7][:15] if p[7] else "-")
-                y -= 15
-        
+
+        X = [50, 180, 220, 300, 380, 440]
+
+        # ── PAGE : VENTES (toujours affichée, même vide) ──
+        cols_ventes = ["Produit", "Qté", "Prix unit.", "Total", "Client", "Vendeur"]
+        y = _pdf_draw_section(
+            c, width, height, y, "🛒 VENTES DU JOUR", (0.12, 0.24, 0.45),
+            cols_ventes, X, ventes,
+            lambda v: [v[1][:30] if v[1] else "-", str(v[2]), format_prix(v[3]),
+                       format_prix(v[4]), v[6][:15] if v[6] else "-", v[7][:15] if v[7] else "-"],
+            "Aucune vente ce jour."
+        )
+
+        # ── PAGE DÉDIÉE : ENTRÉES ──
         c.showPage()
         add_header_to_pdf(c, width, height)
         add_logo_to_pdf(c, width, height)
+        y = height - 100
+        cols_entrees = ["Produit", "Qté", "Prix unit.", "Total", "Fournisseur", "Enreg."]
+        y = _pdf_draw_section(
+            c, width, height, y, "📥 ENTRÉES DE STOCK", (0.12, 0.24, 0.45),
+            cols_entrees, X, entrees,
+            lambda e: [e[1][:30] if e[1] else "-", str(e[2]), format_prix(e[3]),
+                       format_prix(e[4]), e[6][:15] if e[6] else "-", e[7][:15] if e[7] else "-"],
+            "Aucune entrée de stock ce jour."
+        )
+
+        # ── PAGE DÉDIÉE : PERTES ──
+        c.showPage()
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        y = height - 100
+        cols_pertes = ["Produit", "Qté", "Prix unit.", "Total", "Motif", "Enreg."]
+        y = _pdf_draw_section(
+            c, width, height, y, "⚠️ PERTES DU JOUR", (0.72, 0.11, 0.11),
+            cols_pertes, X, pertes,
+            lambda p: [p[1][:30] if p[1] else "-", str(p[2]), format_prix(p[3]),
+                       format_prix(p[4]), p[6][:15] if p[6] else "-", p[7][:15] if p[7] else "-"],
+            "Aucune perte ce jour."
+        )
+
+        # ── SIGNATURE : sur la page des pertes si la place le permet,
+        #    sinon sur une nouvelle page (pour ne pas chevaucher le tableau) ──
+        if y < 60:
+            c.showPage()
+            add_header_to_pdf(c, width, height)
+            add_logo_to_pdf(c, width, height)
         c.setFont("Helvetica", 8)
         c.setFillColorRGB(0.5, 0.5, 0.5)
         c.drawString(50, 30, "HITNA - Système de gestion - Rapport généré automatiquement")
@@ -2907,108 +2946,42 @@ def export_pdf_employe():
         c.setLineWidth(0.5)
         c.line(50, y, width - 50, y)
         y -= 18
-        
-        # Ventes
-        if ventes:
-            c.setFont("Helvetica-Bold", 11)
-            c.setFillColorRGB(0.12, 0.24, 0.45)
-            c.drawString(50, y, "🛒 VENTES")
-            y -= 18
-            
-            c.setFont("Helvetica-Bold", 8)
-            c.setFillColorRGB(0.3, 0.3, 0.3)
-            c.drawString(50, y, "Produit")
-            c.drawString(170, y, "Qté")
-            c.drawString(210, y, "Prix unit.")
-            c.drawString(290, y, "Total")
-            c.drawString(370, y, "Client")
-            c.drawString(440, y, "Vendeur")
-            y -= 14
-            
-            c.setFont("Helvetica", 7.5)
-            c.setFillColorRGB(0, 0, 0)
-            for v in ventes[:25]:
-                if y < 50:
-                    c.showPage()
-                    add_header_to_pdf(c, width, height)
-                    add_logo_to_pdf(c, width, height)
-                    y = height - 100
-                    c.setFont("Helvetica-Bold", 8)
-                    c.setFillColorRGB(0.3, 0.3, 0.3)
-                    c.drawString(50, y, "Produit")
-                    c.drawString(170, y, "Qté")
-                    c.drawString(210, y, "Prix unit.")
-                    c.drawString(290, y, "Total")
-                    c.drawString(370, y, "Client")
-                    c.drawString(440, y, "Vendeur")
-                    y -= 14
-                    c.setFont("Helvetica", 7.5)
-                    c.setFillColorRGB(0, 0, 0)
-                
-                c.drawString(50, y, v[1][:28] if v[1] else "-")
-                c.drawString(170, y, str(v[2]) if v[2] else "-")
-                c.drawString(210, y, format_prix(v[3]) if v[3] else "-")
-                c.drawString(290, y, format_prix(v[4]) if v[4] else "-")
-                c.drawString(370, y, v[6][:12] if v[6] else "-")
-                c.drawString(440, y, v[7][:12] if v[7] else "-")
-                y -= 14
-            
-            y -= 8
-        
-        # Entrées
-        if entrees:
-            if y < 100:
-                c.showPage()
-                add_header_to_pdf(c, width, height)
-                add_logo_to_pdf(c, width, height)
-                y = height - 100
-            
-            c.setFont("Helvetica-Bold", 11)
-            c.setFillColorRGB(0.12, 0.24, 0.45)
-            c.drawString(50, y, "📥 ENTRÉES")
-            y -= 18
-            
-            c.setFont("Helvetica-Bold", 8)
-            c.setFillColorRGB(0.3, 0.3, 0.3)
-            c.drawString(50, y, "Produit")
-            c.drawString(170, y, "Qté")
-            c.drawString(210, y, "Prix unit.")
-            c.drawString(290, y, "Total")
-            c.drawString(370, y, "Fournisseur")
-            c.drawString(440, y, "Enreg.")
-            y -= 14
-            
-            c.setFont("Helvetica", 7.5)
-            c.setFillColorRGB(0, 0, 0)
-            for e in entrees[:20]:
-                if y < 50:
-                    c.showPage()
-                    add_header_to_pdf(c, width, height)
-                    add_logo_to_pdf(c, width, height)
-                    y = height - 100
-                    c.setFont("Helvetica-Bold", 8)
-                    c.setFillColorRGB(0.3, 0.3, 0.3)
-                    c.drawString(50, y, "Produit")
-                    c.drawString(170, y, "Qté")
-                    c.drawString(210, y, "Prix unit.")
-                    c.drawString(290, y, "Total")
-                    c.drawString(370, y, "Fournisseur")
-                    c.drawString(440, y, "Enreg.")
-                    y -= 14
-                    c.setFont("Helvetica", 7.5)
-                    c.setFillColorRGB(0, 0, 0)
-                
-                c.drawString(50, y, e[1][:28] if e[1] else "-")
-                c.drawString(170, y, str(e[2]) if e[2] else "-")
-                c.drawString(210, y, format_prix(e[3]) if e[3] else "-")
-                c.drawString(290, y, format_prix(e[4]) if e[4] else "-")
-                c.drawString(370, y, e[6][:12] if e[6] else "-")
-                c.drawString(440, y, e[7][:12] if e[7] else "-")
-                y -= 14
-        
+
+        X = [50, 170, 210, 290, 370, 440]
+
+        # ── PAGE : VENTES (toujours affichée, même vide) ──
+        cols_ventes = ["Produit", "Qté", "Prix unit.", "Total", "Client", "Vendeur"]
+        y = _pdf_draw_section(
+            c, width, height, y, "🛒 VENTES", (0.12, 0.24, 0.45),
+            cols_ventes, X, ventes,
+            lambda v: [v[1][:28] if v[1] else "-", str(v[2]) if v[2] else "-",
+                       format_prix(v[3]) if v[3] else "-", format_prix(v[4]) if v[4] else "-",
+                       v[6][:12] if v[6] else "-", v[7][:12] if v[7] else "-"],
+            "Aucune vente ce jour.",
+            font_header=8, font_row=7.5, row_h=14
+        )
+
+        # ── PAGE DÉDIÉE : ENTRÉES ──
         c.showPage()
         add_header_to_pdf(c, width, height)
         add_logo_to_pdf(c, width, height)
+        y = height - 100
+        cols_entrees = ["Produit", "Qté", "Prix unit.", "Total", "Fournisseur", "Enreg."]
+        y = _pdf_draw_section(
+            c, width, height, y, "📥 ENTRÉES", (0.12, 0.24, 0.45),
+            cols_entrees, X, entrees,
+            lambda e: [e[1][:28] if e[1] else "-", str(e[2]) if e[2] else "-",
+                       format_prix(e[3]) if e[3] else "-", format_prix(e[4]) if e[4] else "-",
+                       e[6][:12] if e[6] else "-", e[7][:12] if e[7] else "-"],
+            "Aucune entrée ce jour.",
+            font_header=8, font_row=7.5, row_h=14
+        )
+
+        # ── SIGNATURE : sur la page des entrées si la place le permet ──
+        if y < 60:
+            c.showPage()
+            add_header_to_pdf(c, width, height)
+            add_logo_to_pdf(c, width, height)
         c.setFont("Helvetica", 8)
         c.setFillColorRGB(0.5, 0.5, 0.5)
         c.drawString(50, 30, f"HITNA - Point du jour {date_str} - Généré automatiquement")
