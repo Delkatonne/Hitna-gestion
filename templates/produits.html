@@ -326,6 +326,14 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="form-group">
+                <label>📦 Unités par carton <span style="font-weight:400; color:#999; font-size:12px;">(optionnel)</span></label>
+                <input type="number" name="unites_par_carton" min="2" placeholder="Ex: 24">
+                <div style="font-size:11px; color:#888; margin-top:4px;">
+                    Si rempli, le produit sera vendable à l'unité, au demi, tiers ou quart de carton.
+                    ⚠️ Dans ce cas, indiquez le <strong>prix et le stock ci-dessus en unités individuelles</strong>, pas en cartons.
+                </div>
+            </div>
         </div>
         <button type="submit" class="btn" style="background:#1e3c72;color:white;padding:11px 28px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
             ➕ Ajouter le produit
@@ -387,7 +395,12 @@
                                    value="{{ p[0] }}" data-nom="{{ p[1] }}"
                                    onchange="onCheckboxChange(this)">
                         </td>
-                        <td><strong>{{ p[1] }}</strong></td>
+                        <td>
+                            <strong>{{ p[1] }}</strong>
+                            {% if p[12] %}
+                                <span class="unite-badge" style="background:#e8f5e9; color:#1e7e34; margin-left:6px;">📦 {{ p[13] }}/carton</span>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if p[8] %}
                                 <span class="unite-badge">{{ p[9] }} {{ p[8] }}</span>
@@ -409,10 +422,16 @@
                         <td>{{ p[4] }}</td>
                         <td>
                             <!-- Modifier -->
-                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }})"
+                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[13] if p[13] is not none else 'null' }})"
                                     style="background:#1e3c72;color:white;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;">
                                 ✏️ Modifier
                             </button>
+                            {% if not p[12] %}
+                            <a href="/admin/produits/convertir_carton/{{ p[0] }}"
+                               style="background:#28a745;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
+                                📦 Convertir
+                            </a>
+                            {% endif %}
                             <!-- Supprimer seul -->
                             <a href="/admin/produits/supprimer/{{ p[0] }}"
                                onclick="return confirm('Supprimer {{ p[1] }} ?')"
@@ -438,6 +457,12 @@
                        style="width:20px;height:20px;accent-color:#dc3545;cursor:pointer;flex-shrink:0;">
                 <span class="card-nom">{{ p[1] }}</span>
             </div>
+            {% if p[12] %}
+            <div class="card-row">
+                <label>Vente au détail</label>
+                <span class="unite-badge" style="background:#e8f5e9; color:#1e7e34;">📦 {{ p[13] }} unités/carton</span>
+            </div>
+            {% endif %}
             <div class="card-row">
                 <label>Catégorie</label>
                 <span>{% if p[8] %}{{ p[9] }} {{ p[8] }}{% else %}—{% endif %}</span>
@@ -462,9 +487,15 @@
             </div>
             <div class="card-actions">
                 <button class="card-btn-save"
-                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }})">
+                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[13] if p[13] is not none else 'null' }})">
                     ✏️ Modifier
                 </button>
+                {% if not p[12] %}
+                <a href="/admin/produits/convertir_carton/{{ p[0] }}"
+                   style="background:#28a745;color:white;padding:8px 12px;border-radius:6px;font-size:13px;text-decoration:none;">
+                    📦 Convertir
+                </a>
+                {% endif %}
                 <a href="/admin/produits/supprimer/{{ p[0] }}"
                    onclick="return confirm('Supprimer {{ p[1] }} ?')"
                    class="card-btn-delete">🗑️</a>
@@ -521,6 +552,10 @@
             <div class="form-group" style="margin-bottom:20px;">
                 <label>Stock minimum</label>
                 <input type="number" name="stock_min" id="modal-stock-min" min="0" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
+            </div>
+            <div class="form-group" style="margin-bottom:20px;">
+                <label>📦 Unités par carton <span style="font-weight:400; color:#999; font-size:12px;">(uniquement si déjà converti en vente au détail)</span></label>
+                <input type="number" name="unites_par_carton" id="modal-unites-par-carton" min="2" placeholder="Ex: 24" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
             </div>
             <div style="display:flex;gap:10px;">
                 <button type="submit" style="flex:1;background:#28a745;color:white;border:none;padding:11px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
@@ -617,7 +652,7 @@ function confirmSuppressionMultiple() {
 }
 
 // ── Modal modification ─────────────────────────
-function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeurUnite) {
+function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeurUnite, unitesParCarton) {
     document.getElementById('form-modifier').action = '/admin/produits/modifier/' + id;
     document.getElementById('modal-nom').value      = nom;
     document.getElementById('modal-prix').value     = prix;
@@ -626,6 +661,7 @@ function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeu
     document.getElementById('modal-unite').value    = (uniteId === null || uniteId === undefined) ? '' : uniteId;
     document.getElementById('modal-categorie').value = (categorieId === null || categorieId === undefined) ? '' : categorieId;
     document.getElementById('modal-valeur-unite').value = (valeurUnite === null || valeurUnite === undefined) ? '' : valeurUnite;
+    document.getElementById('modal-unites-par-carton').value = (unitesParCarton === null || unitesParCarton === undefined) ? '' : unitesParCarton;
     document.getElementById('modal-modifier').style.display = 'flex';
 }
 

@@ -99,6 +99,42 @@
         background: #2a5298;
     }
 
+    .carton-quick-select {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px dashed #dee2e6;
+    }
+
+    .carton-quick-label {
+        display: block;
+        font-size: 10.5px;
+        color: #888;
+        margin-bottom: 6px;
+    }
+
+    .carton-quick-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .carton-quick-buttons button {
+        flex: 1 1 auto;
+        min-width: 64px;
+        padding: 6px 8px;
+        background: #e8f5e9;
+        color: #1e7e34;
+        border: 1px solid #c3e6cb;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .carton-quick-buttons button:hover {
+        background: #d4edda;
+    }
+
     .product-card.in-cart {
         border-color: #28a745;
         background: #f0fff4;
@@ -552,6 +588,27 @@
             <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
             <div class="product-stock">📦 Stock: {{ p[3] }} unités</div>
             <button type="button" class="btn-add-cart" onclick="adminAjouterAuPanier({{ p[0] }})">➕ Ajouter au panier</button>
+            {% if p[7] and p[8] and p[8] > 1 %}
+            <div class="carton-quick-select">
+                <span class="carton-quick-label">📦 Vente au détail (carton de {{ p[8] }}) :</span>
+                <div class="carton-quick-buttons">
+                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, 1)">1 unité</button>
+                    {% set quart = p[8] // 4 %}
+                    {% if quart >= 1 %}
+                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ quart }})">¼ carton ({{ quart }})</button>
+                    {% endif %}
+                    {% set tiers = p[8] // 3 %}
+                    {% if tiers >= 1 %}
+                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ tiers }})">⅓ carton ({{ tiers }})</button>
+                    {% endif %}
+                    {% set moitie = p[8] // 2 %}
+                    {% if moitie >= 1 %}
+                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ moitie }})">½ carton ({{ moitie }})</button>
+                    {% endif %}
+                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ p[8] }})">1 carton ({{ p[8] }})</button>
+                </div>
+            </div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
@@ -707,6 +764,35 @@
                 price: parseInt(card.getAttribute('data-price')),
                 stock: stock,
                 qty: 1
+            };
+        }
+        card.classList.add('in-cart');
+        adminRenderCart();
+    }
+
+    function adminAjouterQuantitePanier(id, qty) {
+        const card = document.getElementById('card-' + id);
+        if (!card) return;
+        const stock = parseInt(card.getAttribute('data-stock'));
+
+        if (adminCart[id]) {
+            const nouvelleQty = adminCart[id].qty + qty;
+            if (nouvelleQty > stock) {
+                alert(`Stock insuffisant ! Il reste ${stock} unités (déjà ${adminCart[id].qty} dans le panier)`);
+                return;
+            }
+            adminCart[id].qty = nouvelleQty;
+        } else {
+            if (qty > stock) {
+                alert(`Stock insuffisant ! Il reste ${stock} unités`);
+                return;
+            }
+            adminCart[id] = {
+                id: id,
+                name: card.getAttribute('data-nom'),
+                price: parseInt(card.getAttribute('data-price')),
+                stock: stock,
+                qty: qty
             };
         }
         card.classList.add('in-cart');

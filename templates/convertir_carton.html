@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Convertir en vente au détail - HITNA{% endblock %}
+
+{% block page_title %}📦 Convertir en vente au détail{% endblock %}
+{% block page_subtitle %}{{ produit[1] }}{% endblock %}
+
+{% block content %}
+
+<div class="card" style="max-width: 640px; margin: 0 auto;">
+
+    <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:16px; margin-bottom:24px; font-size:14px; color:#664d03;">
+        ⚠️ <strong>Action à ne faire qu'une seule fois par produit.</strong>
+        Elle transforme le sens du stock et du prix : le stock passera d'un comptage
+        en <strong>cartons</strong> à un comptage en <strong>unités individuelles</strong>,
+        et le prix passera d'un prix par carton à un prix par unité. Cela permettra
+        de vendre à l'unité, à la moitié, au tiers ou au quart du carton.
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid #eee;">
+        <span style="color:#666;">Stock actuel</span>
+        <strong>{{ produit[3] }} carton(s)</strong>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid #eee;">
+        <span style="color:#666;">Prix actuel</span>
+        <strong>{{ "{:,.0f}".format(produit[2]) }} FCFA / carton</strong>
+    </div>
+
+    <form method="post" id="conversionForm" style="margin-top:24px;">
+        <div class="field" style="margin-bottom:20px;">
+            <label style="display:block; font-weight:600; margin-bottom:8px;">
+                📦 Combien d'unités individuelles dans un carton ?
+            </label>
+            <input type="number" name="unites_par_carton" id="unitesParCarton" min="2" step="1" required
+                   placeholder="Ex : 24" oninput="mettreAJourApercu()"
+                   style="width:100%; padding:12px; border:2px solid #e0e0e0; border-radius:8px; font-size:16px;">
+        </div>
+
+        <div id="apercu" style="display:none; background:#e8f5e9; border:1px solid #28a745; border-radius:10px; padding:16px; margin-bottom:20px;">
+            <h4 style="color:#1e3c72; margin-bottom:12px;">Aperçu après conversion</h4>
+            <div style="display:flex; justify-content:space-between; padding:6px 0;">
+                <span>Nouveau stock</span>
+                <strong id="apercuStock">-</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:6px 0;">
+                <span>Nouveau prix unitaire</span>
+                <strong id="apercuPrix">-</strong>
+            </div>
+            <div id="apercuArrondi" style="font-size:12px; color:#856404; margin-top:8px; display:none;">
+                ⚠️ Le prix par carton ne se divise pas exactement — le prix unitaire a été arrondi.
+                Vérifiez que le total (prix unitaire × unités/carton) reste cohérent avec votre marge.
+            </div>
+        </div>
+
+        <div class="field" style="margin-bottom:24px;">
+            <label style="display:block; font-weight:600; margin-bottom:8px;">
+                Tapez <code>CONVERTIR</code> pour confirmer
+            </label>
+            <input type="text" name="confirmation" required placeholder="CONVERTIR"
+                   style="width:100%; padding:12px; border:2px solid #e0e0e0; border-radius:8px; font-size:16px;">
+        </div>
+
+        <div style="display:flex; gap:12px;">
+            <button type="submit" style="flex:1; background:#dc3545; color:white; padding:14px; border:none; border-radius:8px; font-weight:bold; font-size:15px; cursor:pointer;">
+                ✅ Convertir définitivement
+            </button>
+            <a href="/admin/produits" style="flex:1; text-align:center; background:#f0f2f5; color:#333; padding:14px; border-radius:8px; text-decoration:none; font-weight:bold;">
+                Annuler
+            </a>
+        </div>
+    </form>
+</div>
+
+<script>
+    const stockCartons = {{ produit[3] }};
+    const prixCarton = {{ produit[2] }};
+
+    function mettreAJourApercu() {
+        const upc = parseInt(document.getElementById('unitesParCarton').value);
+        const apercu = document.getElementById('apercu');
+        if (!upc || upc < 2) {
+            apercu.style.display = 'none';
+            return;
+        }
+        const nouveauStock = stockCartons * upc;
+        const prixExact = prixCarton / upc;
+        const nouveauPrix = Math.round(prixExact);
+
+        document.getElementById('apercuStock').textContent = nouveauStock.toLocaleString() + ' unités';
+        document.getElementById('apercuPrix').textContent = nouveauPrix.toLocaleString() + ' FCFA / unité';
+
+        const arrondi = document.getElementById('apercuArrondi');
+        arrondi.style.display = (Math.abs(prixExact - nouveauPrix) > 0.01) ? 'block' : 'none';
+
+        apercu.style.display = 'block';
+    }
+</script>
+
+{% endblock %}

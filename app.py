@@ -409,6 +409,22 @@ def init_db():
             print(f"⚠️ Erreur ajout colonne valeur_unite: {e}")
 
         try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='vendu_par_carton'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE produits ADD COLUMN vendu_par_carton INTEGER DEFAULT 0")
+                print("✅ Colonne 'vendu_par_carton' ajoutée à produits")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne vendu_par_carton: {e}")
+
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='unites_par_carton'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE produits ADD COLUMN unites_par_carton INTEGER")
+                print("✅ Colonne 'unites_par_carton' ajoutée à produits (vente au détail depuis un carton)")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne unites_par_carton: {e}")
+
+        try:
             c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sorties' AND column_name='groupe_vente'")
             if not c.fetchone():
                 c.execute("ALTER TABLE sorties ADD COLUMN groupe_vente TEXT")
@@ -1165,7 +1181,9 @@ def produits_list():
                                       COALESCE(c.nom, '') as categorie_nom,
                                       COALESCE(c.icone, '') as categorie_icone,
                                       p.categorie_id,
-                                      p.valeur_unite
+                                      p.valeur_unite,
+                                      COALESCE(p.vendu_par_carton, 0),
+                                      p.unites_par_carton
                                FROM produits p 
                                LEFT JOIN unites_mesure u ON p.unite_id = u.id 
                                LEFT JOIN categories_produits c ON p.categorie_id = c.id
@@ -1200,8 +1218,19 @@ def ajouter_produit():
             categorie_id = int(categorie_id)
         valeur_unite = request.form.get('valeur_unite', '').strip()
         valeur_unite = float(valeur_unite) if valeur_unite else None
-        ok = exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite) VALUES (?,?,?,?,?,?,?)",
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite))
+        upc = request.form.get('unites_par_carton', '').strip()
+        vendu_par_carton = 0
+        unites_par_carton = None
+        if upc:
+            try:
+                unites_par_carton = int(upc)
+                if unites_par_carton > 1:
+                    vendu_par_carton = 1
+            except ValueError:
+                unites_par_carton = None
+        ok = exe("""INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite,
+                    vendu_par_carton, unites_par_carton) VALUES (?,?,?,?,?,?,?,?,?)""",
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vendu_par_carton, unites_par_carton))
         if ok:
             flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
             envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
@@ -1233,8 +1262,16 @@ def modifier_produit(id):
             categorie_id = int(categorie_id)
         valeur_unite = request.form.get('valeur_unite', '').strip()
         valeur_unite = float(valeur_unite) if valeur_unite else None
-        ok = exe("UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?, valeur_unite=? WHERE id=?", 
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, id))
+        upc = request.form.get('unites_par_carton', '').strip()
+        unites_par_carton = None
+        if upc:
+            try:
+                unites_par_carton = int(upc)
+            except ValueError:
+                unites_par_carton = None
+        ok = exe("""UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?,
+                    valeur_unite=?, unites_par_carton=? WHERE id=?""",
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, unites_par_carton, id))
         if ok:
             flash(f'✅ Produit "{nom}" modifié')
         else:
@@ -1242,6 +1279,64 @@ def modifier_produit(id):
     except Exception as e:
         print(f"❌ Erreur modifier_produit: {e}")
         flash('❌ Erreur lors de la modification')
+    return redirect('/admin/produits')
+
+@app.route('/admin/produits/convertir_carton/<int:id>')
+def convertir_carton_form(id):
+    """Affiche un aperçu avant/après avant de convertir un produit compté en
+    cartons vers un suivi de stock en unités individuelles (vente au détail)."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        p = q1("SELECT id, nom, prix, stock, vendu_par_carton, unites_par_carton FROM produits WHERE id=?", (id,))
+        if not p:
+            flash('❌ Produit introuvable')
+            return redirect('/admin/produits')
+        if p[4] == 1:
+            flash(f'ℹ️ "{p[1]}" est déjà en vente au détail (unités individuelles)')
+            return redirect('/admin/produits')
+        return render_template('convertir_carton.html', produit=p)
+    except Exception as e:
+        print(f"❌ Erreur convertir_carton_form: {e}")
+        flash('❌ Erreur lors du chargement de la conversion')
+        return redirect('/admin/produits')
+
+@app.route('/admin/produits/convertir_carton/<int:id>', methods=['POST'])
+def convertir_carton_appliquer(id):
+    """Applique la conversion : stock (cartons) -> stock (unités), prix (carton) -> prix (unité).
+    Action irréversible d'un simple clic ; nécessite une confirmation explicite du formulaire."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        if request.form.get('confirmation') != 'CONVERTIR':
+            flash('❌ Conversion annulée : confirmation non saisie correctement')
+            return redirect(f'/admin/produits/convertir_carton/{id}')
+
+        p = q1("SELECT id, nom, prix, stock, vendu_par_carton FROM produits WHERE id=?", (id,))
+        if not p:
+            flash('❌ Produit introuvable')
+            return redirect('/admin/produits')
+        if p[4] == 1:
+            flash(f'ℹ️ "{p[1]}" est déjà en vente au détail')
+            return redirect('/admin/produits')
+
+        unites_par_carton = int(request.form.get('unites_par_carton', 0))
+        if unites_par_carton < 2:
+            flash('❌ Le nombre d\'unités par carton doit être d\'au moins 2')
+            return redirect(f'/admin/produits/convertir_carton/{id}')
+
+        nom, prix_carton, stock_cartons = p[1], p[2], p[3]
+        nouveau_stock = stock_cartons * unites_par_carton
+        nouveau_prix = round(prix_carton / unites_par_carton)
+
+        exe("""UPDATE produits SET stock=?, prix=?, vendu_par_carton=1, unites_par_carton=? WHERE id=?""",
+            (nouveau_stock, nouveau_prix, unites_par_carton, id))
+
+        flash(f'✅ "{nom}" converti : {stock_cartons} carton(s) → {nouveau_stock} unités, '
+              f'prix unitaire {nouveau_prix} FCFA (était {prix_carton} FCFA/carton)')
+    except Exception as e:
+        print(f"❌ Erreur convertir_carton_appliquer: {e}")
+        flash('❌ Erreur lors de la conversion')
     return redirect('/admin/produits')
 
 @app.route('/admin/produits/supprimer/<int:id>')
@@ -1486,7 +1581,9 @@ def admin_ventes():
             produits = qall('''SELECT p.id, p.nom, p.prix, p.stock,
                                        COALESCE(u.symbole,'') as unite_symbole,
                                        COALESCE(u.nom,'') as unite_nom,
-                                       p.valeur_unite
+                                       p.valeur_unite,
+                                       COALESCE(p.vendu_par_carton, 0),
+                                       p.unites_par_carton
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
@@ -1550,7 +1647,9 @@ def vente():
             produits = qall('''SELECT p.id, p.nom, p.prix, p.stock,
                                        COALESCE(u.symbole,'') as unite_symbole,
                                        COALESCE(u.nom,'') as unite_nom,
-                                       p.valeur_unite
+                                       p.valeur_unite,
+                                       COALESCE(p.vendu_par_carton, 0),
+                                       p.unites_par_carton
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
