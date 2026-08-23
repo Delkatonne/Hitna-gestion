@@ -12,6 +12,11 @@ from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'hitna_secret')
+# Session persistante (30 jours) : sans ça, Flask crée par défaut une session
+# "de navigateur" que Chrome peut effacer quand l'app installée (PWA) est
+# fermée/tuée en arrière-plan sur mobile — ce qui déconnecte l'employé, qui
+# ne peut alors plus jamais se reconnecter s'il est hors ligne à ce moment-là.
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 # ──────────────────────────────────────────────────────────────
 # CORS — uniquement pour les endpoints publics /api/*, utilisés par
@@ -757,6 +762,7 @@ def login():
                     return redirect('/login')
                 
                 login_reset(ip)
+                session.permanent = True
                 session.update({
                     'user_id': user[0],
                     'role': user[4],
