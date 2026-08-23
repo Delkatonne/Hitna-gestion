@@ -3282,6 +3282,74 @@ def reset_password(token):
         return redirect('/login')
 
 # ──────────────────────────────────────────────────────────────
+# RÉAPPROVISIONNEMENT (suggestions basées sur la vitesse de vente)
+# ──────────────────────────────────────────────────────────────
+JOURS_PERIODE_VITESSE = 30    # période d'observation pour calculer la vitesse de vente
+JOURS_COUVERTURE_CIBLE = 21   # nombre de jours de stock visés par la suggestion de commande
+SEUIL_ALERTE_JOURS = 7        # en dessous de ce nombre de jours restants -> "à commander bientôt"
+
+@app.route('/admin/reapprovisionnement')
+def admin_reapprovisionnement():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+
+        lignes = qall(f'''
+            SELECT p.id, p.nom, p.stock, p.stock_min,
+                   COALESCE(v.total_vendu, 0) as total_vendu_periode
+            FROM produits p
+            LEFT JOIN (
+                SELECT produit_id, SUM(quantite) as total_vendu
+                FROM sorties
+                WHERE date_sortie::timestamp >= NOW() - INTERVAL '{JOURS_PERIODE_VITESSE} days'
+                GROUP BY produit_id
+            ) v ON v.produit_id = p.id
+            ORDER BY p.nom
+        ''')
+
+        produits_urgents = []
+        produits_ok = []
+        produits_sans_vente = []
+
+        for pid, nom, stock, stock_min, total_vendu in lignes:
+            vitesse_jour = total_vendu / JOURS_PERIODE_VITESSE if total_vendu else 0
+
+            if vitesse_jour > 0:
+                jours_restants = stock / vitesse_jour
+                quantite_cible = vitesse_jour * JOURS_COUVERTURE_CIBLE
+                suggestion = max(0, round(quantite_cible - stock))
+                item = {
+                    'id': pid, 'nom': nom, 'stock': stock, 'stock_min': stock_min,
+                    'vitesse_jour': round(vitesse_jour, 2),
+                    'total_vendu_periode': total_vendu,
+                    'jours_restants': round(jours_restants, 1),
+                    'suggestion': suggestion
+                }
+                if jours_restants <= SEUIL_ALERTE_JOURS:
+                    produits_urgents.append(item)
+                else:
+                    produits_ok.append(item)
+            else:
+                produits_sans_vente.append({
+                    'id': pid, 'nom': nom, 'stock': stock, 'stock_min': stock_min
+                })
+
+        produits_urgents.sort(key=lambda x: x['jours_restants'])
+        produits_ok.sort(key=lambda x: x['jours_restants'])
+
+        return render_template('reapprovisionnement.html',
+            produits_urgents=produits_urgents,
+            produits_ok=produits_ok,
+            produits_sans_vente=produits_sans_vente,
+            jours_periode=JOURS_PERIODE_VITESSE,
+            jours_couverture=JOURS_COUVERTURE_CIBLE,
+            seuil_alerte=SEUIL_ALERTE_JOURS)
+    except Exception as e:
+        print(f"❌ Erreur admin_reapprovisionnement: {e}")
+        flash('Erreur lors du calcul des suggestions de réapprovisionnement')
+        return redirect('/dashboard')
+
+# ──────────────────────────────────────────────────────────────
 # ALERTES PRODUITS (seuils de stock personnalisés)
 # ──────────────────────────────────────────────────────────────
 @app.route('/admin/alertes/produits')

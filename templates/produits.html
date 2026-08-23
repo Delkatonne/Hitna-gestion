@@ -261,6 +261,7 @@
     /* Badge stock */
     .badge-stock-ok  { color: #28a745; font-weight: 700; }
     .badge-stock-bas { color: #dc3545; font-weight: 700; }
+    .badge-stock-rupture { color: #fff; background: #dc3545; font-weight: 700; padding: 2px 8px; border-radius: 6px; display: inline-block; }
     
     /* Unité badge */
     .unite-badge {
@@ -326,14 +327,6 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="form-group">
-                <label>📦 Unités par carton <span style="font-weight:400; color:#999; font-size:12px;">(optionnel)</span></label>
-                <input type="number" name="unites_par_carton" min="2" placeholder="Ex: 24">
-                <div style="font-size:11px; color:#888; margin-top:4px;">
-                    Si rempli, le produit sera vendable à l'unité, au demi, tiers ou quart de carton.
-                    ⚠️ Dans ce cas, indiquez le <strong>prix et le stock ci-dessus en unités individuelles</strong>, pas en cartons.
-                </div>
-            </div>
         </div>
         <button type="submit" class="btn" style="background:#1e3c72;color:white;padding:11px 28px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
             ➕ Ajouter le produit
@@ -356,6 +349,13 @@
         <input type="text" id="searchInput" placeholder="Rechercher un produit par nom..." autocomplete="off">
         <span class="result-count" id="resultCount"></span>
         <button class="clear-search" id="clearSearch" onclick="clearSearch()">✕ Effacer</button>
+    </div>
+
+    <div style="margin-bottom:16px;">
+        <button type="button" id="btnFiltreRupture" onclick="toggleFiltreRupture()"
+                style="background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; padding:8px 16px; border-radius:20px; font-size:13px; font-weight:bold; cursor:pointer;">
+            🔴 Voir uniquement les ruptures de stock
+        </button>
     </div>
 
     <!-- Barre d'actions groupées -->
@@ -389,18 +389,13 @@
                 </thead>
                 <tbody id="produits-tbody">
                     {% for p in produits %}
-                    <tr id="row-{{ p[0] }}" data-nom="{{ p[1]|lower }}">
+                    <tr id="row-{{ p[0] }}" data-nom="{{ p[1]|lower }}" data-stock="{{ p[3] }}">
                         <td class="checkbox-cell">
                             <input type="checkbox" class="product-checkbox"
                                    value="{{ p[0] }}" data-nom="{{ p[1] }}"
                                    onchange="onCheckboxChange(this)">
                         </td>
-                        <td>
-                            <strong>{{ p[1] }}</strong>
-                            {% if p[12] %}
-                                <span class="unite-badge" style="background:#e8f5e9; color:#1e7e34; margin-left:6px;">📦 {{ p[13] }}/carton</span>
-                            {% endif %}
-                        </td>
+                        <td><strong>{{ p[1] }}</strong></td>
                         <td>
                             {% if p[8] %}
                                 <span class="unite-badge">{{ p[9] }} {{ p[8] }}</span>
@@ -409,8 +404,8 @@
                             {% endif %}
                         </td>
                         <td>{{ p[2] }} FCFA</td>
-                        <td class="{% if p[3] <= p[4] %}badge-stock-bas{% else %}badge-stock-ok{% endif %}">
-                            {{ p[3] }} unités
+                        <td class="{% if p[3] <= 0 %}badge-stock-rupture{% elif p[3] <= p[4] %}badge-stock-bas{% else %}badge-stock-ok{% endif %}">
+                            {% if p[3] <= 0 %}🔴 {% endif %}{{ p[3] }} unités
                         </td>
                         <td>
                             {% if p[5] %}
@@ -422,16 +417,10 @@
                         <td>{{ p[4] }}</td>
                         <td>
                             <!-- Modifier -->
-                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[13] if p[13] is not none else 'null' }})"
+                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }})"
                                     style="background:#1e3c72;color:white;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;">
                                 ✏️ Modifier
                             </button>
-                            {% if not p[12] %}
-                            <a href="/admin/produits/convertir_carton/{{ p[0] }}"
-                               style="background:#28a745;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
-                                📦 Convertir
-                            </a>
-                            {% endif %}
                             <!-- Supprimer seul -->
                             <a href="/admin/produits/supprimer/{{ p[0] }}"
                                onclick="return confirm('Supprimer {{ p[1] }} ?')"
@@ -449,7 +438,7 @@
     <!-- ── VERSION MOBILE (cartes) ───────────── -->
     <div class="produits-cards-mobile" id="produits-cards-mobile">
         {% for p in produits %}
-        <div class="produit-card" id="card-{{ p[0] }}" data-nom="{{ p[1]|lower }}">
+        <div class="produit-card" id="card-{{ p[0] }}" data-nom="{{ p[1]|lower }}" data-stock="{{ p[3] }}">
             <div class="card-header">
                 <input type="checkbox" class="product-checkbox"
                        value="{{ p[0] }}" data-nom="{{ p[1] }}"
@@ -457,12 +446,6 @@
                        style="width:20px;height:20px;accent-color:#dc3545;cursor:pointer;flex-shrink:0;">
                 <span class="card-nom">{{ p[1] }}</span>
             </div>
-            {% if p[12] %}
-            <div class="card-row">
-                <label>Vente au détail</label>
-                <span class="unite-badge" style="background:#e8f5e9; color:#1e7e34;">📦 {{ p[13] }} unités/carton</span>
-            </div>
-            {% endif %}
             <div class="card-row">
                 <label>Catégorie</label>
                 <span>{% if p[8] %}{{ p[9] }} {{ p[8] }}{% else %}—{% endif %}</span>
@@ -473,8 +456,8 @@
             </div>
             <div class="card-row">
                 <label>Stock actuel</label>
-                <span class="{% if p[3] <= p[4] %}badge-stock-bas{% else %}badge-stock-ok{% endif %}">
-                    {{ p[3] }} unités
+                <span class="{% if p[3] <= 0 %}badge-stock-rupture{% elif p[3] <= p[4] %}badge-stock-bas{% else %}badge-stock-ok{% endif %}">
+                    {% if p[3] <= 0 %}🔴 {% endif %}{{ p[3] }} unités
                 </span>
             </div>
             <div class="card-row">
@@ -487,15 +470,9 @@
             </div>
             <div class="card-actions">
                 <button class="card-btn-save"
-                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[13] if p[13] is not none else 'null' }})">
+                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }})">
                     ✏️ Modifier
                 </button>
-                {% if not p[12] %}
-                <a href="/admin/produits/convertir_carton/{{ p[0] }}"
-                   style="background:#28a745;color:white;padding:8px 12px;border-radius:6px;font-size:13px;text-decoration:none;">
-                    📦 Convertir
-                </a>
-                {% endif %}
                 <a href="/admin/produits/supprimer/{{ p[0] }}"
                    onclick="return confirm('Supprimer {{ p[1] }} ?')"
                    class="card-btn-delete">🗑️</a>
@@ -552,10 +529,6 @@
             <div class="form-group" style="margin-bottom:20px;">
                 <label>Stock minimum</label>
                 <input type="number" name="stock_min" id="modal-stock-min" min="0" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
-            </div>
-            <div class="form-group" style="margin-bottom:20px;">
-                <label>📦 Unités par carton <span style="font-weight:400; color:#999; font-size:12px;">(uniquement si déjà converti en vente au détail)</span></label>
-                <input type="number" name="unites_par_carton" id="modal-unites-par-carton" min="2" placeholder="Ex: 24" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
             </div>
             <div style="display:flex;gap:10px;">
                 <button type="submit" style="flex:1;background:#28a745;color:white;border:none;padding:11px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
@@ -652,7 +625,7 @@ function confirmSuppressionMultiple() {
 }
 
 // ── Modal modification ─────────────────────────
-function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeurUnite, unitesParCarton) {
+function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeurUnite) {
     document.getElementById('form-modifier').action = '/admin/produits/modifier/' + id;
     document.getElementById('modal-nom').value      = nom;
     document.getElementById('modal-prix').value     = prix;
@@ -661,7 +634,6 @@ function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeu
     document.getElementById('modal-unite').value    = (uniteId === null || uniteId === undefined) ? '' : uniteId;
     document.getElementById('modal-categorie').value = (categorieId === null || categorieId === undefined) ? '' : categorieId;
     document.getElementById('modal-valeur-unite').value = (valeurUnite === null || valeurUnite === undefined) ? '' : valeurUnite;
-    document.getElementById('modal-unites-par-carton').value = (unitesParCarton === null || unitesParCarton === undefined) ? '' : unitesParCarton;
     document.getElementById('modal-modifier').style.display = 'flex';
 }
 
@@ -677,9 +649,25 @@ document.getElementById('modal-modifier').addEventListener('click', function(e) 
 const searchInput = document.getElementById('searchInput');
 const clearBtn = document.getElementById('clearSearch');
 const resultCount = document.getElementById('resultCount');
+let filtreRuptureActif = false;
 
 function normalizeAccents(str) {
     return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function toggleFiltreRupture() {
+    filtreRuptureActif = !filtreRuptureActif;
+    const btn = document.getElementById('btnFiltreRupture');
+    if (filtreRuptureActif) {
+        btn.style.background = '#dc3545';
+        btn.style.color = 'white';
+        btn.textContent = '✕ Afficher tous les produits';
+    } else {
+        btn.style.background = '#f8d7da';
+        btn.style.color = '#721c24';
+        btn.textContent = '🔴 Voir uniquement les ruptures de stock';
+    }
+    filterProducts();
 }
 
 function filterProducts() {
@@ -689,7 +677,10 @@ function filterProducts() {
     // Filtrer les lignes du tableau desktop
     document.querySelectorAll('#produits-tbody tr').forEach(row => {
         const nom = normalizeAccents(row.getAttribute('data-nom') || '');
-        if (searchTerm === '' || nom.includes(searchTerm)) {
+        const stock = parseFloat(row.getAttribute('data-stock') || '0');
+        const matchNom = searchTerm === '' || nom.includes(searchTerm);
+        const matchRupture = !filtreRuptureActif || stock <= 0;
+        if (matchNom && matchRupture) {
             row.classList.remove('produit-hidden');
             visibleCount++;
         } else {
@@ -700,7 +691,10 @@ function filterProducts() {
     // Filtrer les cartes mobile
     document.querySelectorAll('#produits-cards-mobile .produit-card').forEach(card => {
         const nom = normalizeAccents(card.getAttribute('data-nom') || '');
-        if (searchTerm === '' || nom.includes(searchTerm)) {
+        const stock = parseFloat(card.getAttribute('data-stock') || '0');
+        const matchNom = searchTerm === '' || nom.includes(searchTerm);
+        const matchRupture = !filtreRuptureActif || stock <= 0;
+        if (matchNom && matchRupture) {
             card.style.display = 'block';
         } else {
             card.style.display = 'none';
@@ -709,7 +703,7 @@ function filterProducts() {
     
     // Mettre à jour le compteur
     const total = document.querySelectorAll('#produits-tbody tr').length;
-    if (searchTerm === '') {
+    if (searchTerm === '' && !filtreRuptureActif) {
         resultCount.textContent = `${total} produits`;
         clearBtn.classList.remove('visible');
     } else {
@@ -720,7 +714,11 @@ function filterProducts() {
 
 function clearSearch() {
     searchInput.value = '';
-    filterProducts();
+    if (filtreRuptureActif) {
+        toggleFiltreRupture();
+    } else {
+        filterProducts();
+    }
     searchInput.focus();
 }
 

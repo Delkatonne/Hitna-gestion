@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Réapprovisionnement - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .info-banner {
+        background: #eef4ff;
+        border: 1px solid #cfe0ff;
+        border-radius: 12px;
+        padding: 14px 18px;
+        font-size: 13px;
+        color: #1e3c72;
+        margin-bottom: 24px;
+    }
+    .section-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .section-count {
+        background: #e9ecef;
+        color: #495057;
+        font-size: 12px;
+        font-weight: bold;
+        padding: 3px 10px;
+        border-radius: 20px;
+    }
+    .badge-urgent { background: #f8d7da; color: #721c24; }
+    .badge-ok { background: #d4edda; color: #155724; }
+    .badge-neutre { background: #e2e3e5; color: #383d41; }
+
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f8f9fa; padding: 10px 12px; text-align: left; font-size: 12px; color: #666; border-bottom: 2px solid #e0e0e0; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+
+    .jours-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .jours-critique { background: #f8d7da; color: #721c24; }
+    .jours-attention { background: #fff3cd; color: #856404; }
+    .jours-tranquille { background: #d4edda; color: #155724; }
+
+    .suggestion-qty {
+        font-weight: bold;
+        color: #1e3c72;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}📈 Réapprovisionnement{% endblock %}
+{% block page_subtitle %}Suggestions basées sur la vitesse de vente réelle{% endblock %}
+
+{% block content %}
+
+<div class="info-banner">
+    ℹ️ Calculé à partir des ventes des {{ jours_periode }} derniers jours. La quantité suggérée vise à couvrir
+    {{ jours_couverture }} jours de vente au rythme actuel. Les produits avec moins de {{ seuil_alerte }} jours
+    de stock restant sont classés "à commander bientôt".
+</div>
+
+<!-- Produits urgents -->
+<div class="card">
+    <div class="section-title">
+        <h2 class="card-title" style="margin:0;">🔴 À commander bientôt</h2>
+        <span class="section-count badge-urgent">{{ produits_urgents|length }}</span>
+    </div>
+    {% if produits_urgents %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th>Stock actuel</th>
+                    <th>Vitesse de vente</th>
+                    <th>Jours restants</th>
+                    <th>Quantité suggérée</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in produits_urgents %}
+                <tr>
+                    <td><strong>{{ p.nom }}</strong></td>
+                    <td>{{ p.stock }} unités</td>
+                    <td>{{ p.vitesse_jour }} /jour</td>
+                    <td>
+                        <span class="jours-badge jours-critique">{{ p.jours_restants }} j</span>
+                    </td>
+                    <td class="suggestion-qty">
+                        {% if p.suggestion > 0 %}+ {{ p.suggestion }} unités{% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="text-align:center; color:#999; padding:30px;">✅ Aucun produit urgent — tout va bien pour le moment</p>
+    {% endif %}
+</div>
+
+<!-- Produits avec vente mais pas urgents -->
+<div class="card">
+    <div class="section-title">
+        <h2 class="card-title" style="margin:0;">🟢 Stock confortable</h2>
+        <span class="section-count badge-ok">{{ produits_ok|length }}</span>
+    </div>
+    {% if produits_ok %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th>Stock actuel</th>
+                    <th>Vitesse de vente</th>
+                    <th>Jours restants</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in produits_ok %}
+                <tr>
+                    <td>{{ p.nom }}</td>
+                    <td>{{ p.stock }} unités</td>
+                    <td>{{ p.vitesse_jour }} /jour</td>
+                    <td>
+                        <span class="jours-badge {% if p.jours_restants <= 14 %}jours-attention{% else %}jours-tranquille{% endif %}">
+                            {{ p.jours_restants }} j
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="text-align:center; color:#999; padding:30px;">Aucun produit dans cette catégorie</p>
+    {% endif %}
+</div>
+
+<!-- Produits sans vente récente -->
+<div class="card">
+    <div class="section-title">
+        <h2 class="card-title" style="margin:0;">⚪ Pas de vente récente</h2>
+        <span class="section-count badge-neutre">{{ produits_sans_vente|length }}</span>
+    </div>
+    <p style="font-size:12px; color:#888; margin-bottom:14px;">
+        Ces produits n'ont eu aucune vente sur la période observée — impossible de calculer une vitesse fiable.
+        Vérifiez-les manuellement si besoin (produit stagnant, saisonnier, ou simplement en rupture depuis un moment).
+    </p>
+    {% if produits_sans_vente %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th>Stock actuel</th>
+                    <th>Seuil minimum</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in produits_sans_vente %}
+                <tr>
+                    <td>{{ p.nom }}</td>
+                    <td>{{ p.stock }} unités</td>
+                    <td>{{ p.stock_min }} unités</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="text-align:center; color:#999; padding:30px;">Tous les produits ont eu au moins une vente récente</p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/admin/produits">📦 Gérer les produits</a>
+</div>
+
+{% endblock %}
