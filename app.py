@@ -430,6 +430,14 @@ def init_db():
             print(f"⚠️ Erreur ajout colonne unites_par_carton: {e}")
 
         try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='prix_carton'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE produits ADD COLUMN prix_carton INTEGER")
+                print("✅ Colonne 'prix_carton' ajoutée à produits (prix du carton complet, distinct du prix unitaire)")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne prix_carton: {e}")
+
+        try:
             c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sorties' AND column_name='groupe_vente'")
             if not c.fetchone():
                 c.execute("ALTER TABLE sorties ADD COLUMN groupe_vente TEXT")
@@ -1189,7 +1197,8 @@ def produits_list():
                                       p.categorie_id,
                                       p.valeur_unite,
                                       COALESCE(p.vendu_par_carton, 0),
-                                      p.unites_par_carton
+                                      p.unites_par_carton,
+                                      p.prix_carton
                                FROM produits p 
                                LEFT JOIN unites_mesure u ON p.unite_id = u.id 
                                LEFT JOIN categories_produits c ON p.categorie_id = c.id
@@ -1234,9 +1243,16 @@ def ajouter_produit():
                     vendu_par_carton = 1
             except ValueError:
                 unites_par_carton = None
+        pc = request.form.get('prix_carton', '').strip()
+        prix_carton = None
+        if pc:
+            try:
+                prix_carton = int(float(pc))
+            except ValueError:
+                prix_carton = None
         ok = exe("""INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite,
-                    vendu_par_carton, unites_par_carton) VALUES (?,?,?,?,?,?,?,?,?)""",
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vendu_par_carton, unites_par_carton))
+                    vendu_par_carton, unites_par_carton, prix_carton) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vendu_par_carton, unites_par_carton, prix_carton))
         if ok:
             flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
             envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
@@ -1275,9 +1291,16 @@ def modifier_produit(id):
                 unites_par_carton = int(upc)
             except ValueError:
                 unites_par_carton = None
+        pc = request.form.get('prix_carton', '').strip()
+        prix_carton = None
+        if pc:
+            try:
+                prix_carton = int(float(pc))
+            except ValueError:
+                prix_carton = None
         ok = exe("""UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?,
-                    valeur_unite=?, unites_par_carton=? WHERE id=?""",
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, unites_par_carton, id))
+                    valeur_unite=?, unites_par_carton=?, prix_carton=? WHERE id=?""",
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, unites_par_carton, prix_carton, id))
         if ok:
             flash(f'✅ Produit "{nom}" modifié')
         else:
@@ -1463,23 +1486,32 @@ def _traiter_vente_cart(cart, client, employe_id):
             continue
         if pid <= 0 or qty <= 0:
             continue
-        p = q1("SELECT nom, prix, stock FROM produits WHERE id=?", (pid,))
+        p = q1("SELECT nom, prix, stock, prix_carton, unites_par_carton FROM produits WHERE id=?", (pid,))
         if not p:
             erreurs.append(f'Produit #{pid} introuvable')
             continue
-        if qty > p[2]:
-            erreurs.append(f'Stock insuffisant pour "{p[0]}" ({p[2]} restant(s))')
+        nom, prix_unitaire, stock, prix_carton, unites_par_carton = p
+        if qty > stock:
+            erreurs.append(f'Stock insuffisant pour "{nom}" ({stock} restant(s))')
             continue
-        total = p[1] * qty
+        # Prix carton appliqué uniquement si la quantité vendue correspond EXACTEMENT
+        # au nombre d'unités par carton défini pour ce produit — jamais deviné côté
+        # client, toujours vérifié ici à partir des données réelles en base.
+        if prix_carton and unites_par_carton and qty == unites_par_carton:
+            total = prix_carton
+            prix_unitaire_ligne = round(prix_carton / qty)
+        else:
+            total = prix_unitaire * qty
+            prix_unitaire_ligne = prix_unitaire
         insert_ok = exe("""INSERT INTO sorties
             (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente)
             VALUES (?,?,?,?,?,?,?,?)""",
-            (pid, qty, p[1], total, now, client, employe_id, groupe_vente))
+            (pid, qty, prix_unitaire_ligne, total, now, client, employe_id, groupe_vente))
         if not insert_ok:
-            erreurs.append(f'Échec d\'enregistrement pour "{p[0]}" (erreur serveur)')
+            erreurs.append(f'Échec d\'enregistrement pour "{nom}" (erreur serveur)')
             continue
         exe("UPDATE produits SET stock = stock - ? WHERE id = ?", (qty, pid))
-        lignes_ok.append(f'{qty} x {p[0]}')
+        lignes_ok.append(f'{qty} x {nom}')
     if lignes_ok:
         verifier_alertes_stock()
     return groupe_vente, lignes_ok, erreurs
@@ -1589,7 +1621,8 @@ def admin_ventes():
                                        COALESCE(u.nom,'') as unite_nom,
                                        p.valeur_unite,
                                        COALESCE(p.vendu_par_carton, 0),
-                                       p.unites_par_carton
+                                       p.unites_par_carton,
+                                       p.prix_carton
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
@@ -1655,7 +1688,8 @@ def vente():
                                        COALESCE(u.nom,'') as unite_nom,
                                        p.valeur_unite,
                                        COALESCE(p.vendu_par_carton, 0),
-                                       p.unites_par_carton
+                                       p.unites_par_carton,
+                                       p.prix_carton
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')

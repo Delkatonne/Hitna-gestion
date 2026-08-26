@@ -64,6 +64,17 @@
         font-weight: bold;
         color: #28a745;
     }
+
+    .product-price-carton {
+        font-size: 12px;
+        font-weight: 600;
+        color: #856404;
+        background: #fff3cd;
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 6px;
+        margin-top: 4px;
+    }
     
     .product-stock {
         font-size: 12px;
@@ -203,6 +214,23 @@
         min-width: 120px;
         font-weight: bold;
         font-size: 14px;
+    }
+
+    .cart-mode-badge {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 600;
+        background: #e8f5e9;
+        color: #1e7e34;
+        padding: 2px 7px;
+        border-radius: 10px;
+        margin-left: 4px;
+        vertical-align: middle;
+    }
+
+    .cart-mode-badge.cart-mode-carton {
+        background: #fff3cd;
+        color: #856404;
     }
 
     .cart-item-qty {
@@ -613,10 +641,13 @@
     <h2 class="card-title">📦 Produits disponibles</h2>
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
-        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}">
+        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unites-carton="{{ p[8] if p[8] else '' }}" data-prix-carton="{{ p[9] if p[9] else '' }}">
             {% if p[4] %}<div class="unite-badge-vente">📏 {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
-            <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
+            <div class="product-price">{{ p[2] }} <small>FCFA / unité</small></div>
+            {% if p[9] %}
+            <div class="product-price-carton">📦 Carton ({{ p[8] }}) : {{ p[9] }} <small>FCFA</small></div>
+            {% endif %}
             <div class="product-stock">📦 Stock: {{ p[3] }} unités</div>
             <button type="button" class="btn-add-cart" onclick="adminAjouterAuPanier({{ p[0] }})">➕ Ajouter au panier</button>
             {% if p[7] and p[8] and p[8] > 1 %}
@@ -782,6 +813,8 @@
         const card = document.getElementById('card-' + id);
         if (!card) return;
         const stock = parseInt(card.getAttribute('data-stock'));
+        const unitesParCarton = parseInt(card.getAttribute('data-unites-carton')) || null;
+        const prixCarton = parseInt(card.getAttribute('data-prix-carton')) || null;
 
         if (adminCart[id]) {
             if (adminCart[id].qty < stock) {
@@ -799,7 +832,9 @@
                 name: card.getAttribute('data-nom'),
                 price: parseInt(card.getAttribute('data-price')),
                 stock: stock,
-                qty: 1
+                qty: 1,
+                unitesParCarton: unitesParCarton,
+                prixCarton: prixCarton
             };
         }
         card.classList.add('in-cart');
@@ -810,6 +845,8 @@
         const card = document.getElementById('card-' + id);
         if (!card) return;
         const stock = parseInt(card.getAttribute('data-stock'));
+        const unitesParCarton = parseInt(card.getAttribute('data-unites-carton')) || null;
+        const prixCarton = parseInt(card.getAttribute('data-prix-carton')) || null;
 
         if (adminCart[id]) {
             const nouvelleQty = adminCart[id].qty + qty;
@@ -828,7 +865,9 @@
                 name: card.getAttribute('data-nom'),
                 price: parseInt(card.getAttribute('data-price')),
                 stock: stock,
-                qty: qty
+                qty: qty,
+                unitesParCarton: unitesParCarton,
+                prixCarton: prixCarton
             };
         }
         card.classList.add('in-cart');
@@ -868,6 +907,23 @@
         adminRenderCart();
     }
 
+    function adminLibelleModeAchat(item) {
+        const n = item.unitesParCarton;
+        if (!n) return '';
+        if (item.qty === n) return ' <span class="cart-mode-badge cart-mode-carton">📦 1 carton complet</span>';
+        if (item.qty === Math.floor(n / 2)) return ' <span class="cart-mode-badge">½ carton</span>';
+        if (item.qty === Math.floor(n / 3)) return ' <span class="cart-mode-badge">⅓ carton</span>';
+        if (item.qty === Math.floor(n / 4)) return ' <span class="cart-mode-badge">¼ carton</span>';
+        return '';
+    }
+
+    function adminCalculerSousTotal(item) {
+        if (item.prixCarton && item.unitesParCarton && item.qty === item.unitesParCarton) {
+            return item.prixCarton;
+        }
+        return item.qty * item.price;
+    }
+
     function adminRenderCart() {
         const cartList = document.getElementById('adminCartList');
         const ids = Object.keys(adminCart);
@@ -883,11 +939,11 @@
         let total = 0;
         ids.forEach(id => {
             const item = adminCart[id];
-            const subtotal = item.qty * item.price;
+            const subtotal = adminCalculerSousTotal(item);
             total += subtotal;
             html += `
                 <div class="cart-item">
-                    <div class="cart-item-name">${item.name}</div>
+                    <div class="cart-item-name">${item.name}${adminLibelleModeAchat(item)}</div>
                     <div class="cart-item-qty">
                         <button type="button" onclick="adminChangerQuantitePanier(${id}, -1)">-</button>
                         <span>${item.qty}</span>
