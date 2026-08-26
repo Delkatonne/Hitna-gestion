@@ -618,7 +618,11 @@
             return false;
         }
 
-        return confirm(`Confirmer l'entrée de ${quantite} ${selectedProduit.nom} pour ${quantite * prix} FCFA ?`);
+        const confirmee = confirm(`Confirmer l'entrée de ${quantite} ${selectedProduit.nom} pour ${quantite * prix} FCFA ?`);
+        if (confirmee && typeof hitnaShowLoading === 'function') {
+            hitnaShowLoading('Enregistrement de l\'entrée...');
+        }
+        return confirmee;
     });
     
     // Mettre à jour les totaux des jours dans l'en-tête

@@ -173,9 +173,19 @@
                 <a href="/export/pdf_recu/{{ groupe_vente }}" class="btn-print" style="background:#28a745;">⬇️ PDF</a>
             </div>
             <div class="btn-actions">
-                <a href="/vente" class="btn-back" style="flex:1;">← Retour</a>
+                <a href="{{ '/admin/ventes' if session.role == 'admin' else '/vente' }}" class="btn-back" style="flex:1;" onclick="document.getElementById('recuLoadingOverlay').classList.add('actif');">← Retour</a>
             </div>
         </div>
     </div>
+
+    <!-- Overlay de chargement (page autonome, pas de base.html) -->
+    <div id="recuLoadingOverlay" style="display:none;position:fixed;inset:0;background:rgba(255,255,255,0.88);z-index:99999;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+        <div style="width:54px;height:54px;border:5px solid #e0e0e0;border-top-color:#1e3c72;border-radius:50%;animation:recuSpin 0.8s linear infinite;"></div>
+        <div style="font-weight:600;color:#1e3c72;font-size:14px;">Chargement...</div>
+    </div>
+    <style>
+        @keyframes recuSpin { to { transform: rotate(360deg); } }
+        #recuLoadingOverlay.actif { display: flex; }
+    </style>
 </body>
 </html>

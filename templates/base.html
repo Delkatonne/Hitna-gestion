@@ -892,7 +892,7 @@
                     </a>
                 </div>
                 <div class="nav-item">
-                    <a href="/logout" class="nav-link" onclick="return confirm('Voulez-vous vraiment vous déconnecter ?')">
+                    <a href="/logout" class="nav-link" onclick="if(confirm('Voulez-vous vraiment vous déconnecter ?')){hitnaShowLoading('Déconnexion...');return true;}return false;">
                         <span class="icon">🚪</span><span>Déconnexion</span>
                     </a>
                 </div>
@@ -1228,5 +1228,48 @@
         });
     </script>
     {% block extra_js %}{% endblock %}
+
+    <!-- ══ Overlay de chargement réutilisable ══ -->
+    <div id="hitnaLoadingOverlay" class="hitna-loading-overlay">
+        <div class="hitna-spinner"></div>
+        <div class="hitna-loading-text" id="hitnaLoadingText">Chargement...</div>
+    </div>
+    <style>
+        .hitna-loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.88);
+            z-index: 99999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+        .hitna-loading-overlay.actif { display: flex; }
+        .hitna-spinner {
+            width: 54px;
+            height: 54px;
+            border: 5px solid #e0e0e0;
+            border-top-color: #1e3c72;
+            border-radius: 50%;
+            animation: hitna-spin 0.8s linear infinite;
+        }
+        @keyframes hitna-spin { to { transform: rotate(360deg); } }
+        .hitna-loading-text {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-weight: 600;
+            color: #1e3c72;
+            font-size: 14px;
+        }
+    </style>
+    <script>
+        function hitnaShowLoading(message) {
+            const overlay = document.getElementById('hitnaLoadingOverlay');
+            const texte = document.getElementById('hitnaLoadingText');
+            if (texte) texte.textContent = message || 'Chargement...';
+            if (overlay) overlay.classList.add('actif');
+        }
+    </script>
 </body>
 </html>

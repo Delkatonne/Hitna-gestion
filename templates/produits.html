@@ -287,7 +287,7 @@
 <!-- ══ SECTION AJOUT ════════════════════════════════════════ -->
 <div class="card">
     <h2 class="card-title">➕ Ajouter un produit</h2>
-    <form method="post" action="/admin/produits/ajouter">
+    <form method="post" action="/admin/produits/ajouter" onsubmit="if(typeof hitnaShowLoading==='function')hitnaShowLoading('Ajout du produit...');">
         <div class="form-grid">
             <div class="form-group">
                 <label>📦 Nom du produit</label>
@@ -328,12 +328,13 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>📦 Unités par carton <span style="font-weight:400; color:#999; font-size:12px;">(optionnel)</span></label>
-                <input type="number" name="unites_par_carton" min="2" placeholder="Ex: 24">
+                <label>📦 Unités par carton <span style="font-weight:400; color:#999; font-size:12px;">(optionnel — pack de 6, carton de 24...)</span></label>
+                <input type="number" name="unites_par_carton" id="ajout-unites-par-carton" min="2" placeholder="Ex: 24" oninput="majApercuCarton('ajout')">
                 <div style="font-size:11px; color:#888; margin-top:4px;">
-                    Si rempli, le produit sera vendable à l'unité, au demi, tiers ou quart de carton.
+                    Si rempli, le produit sera vendable à l'unité, au demi, tiers ou quart de carton (ou toute quantité intermédiaire).
                     ⚠️ Dans ce cas, indiquez le <strong>prix et le stock ci-dessus en unités individuelles</strong>, pas en cartons.
                 </div>
+                <div id="ajout-apercu-carton" style="display:none; margin-top:8px; background:#e8f5e9; border:1px solid #c3e6cb; border-radius:8px; padding:10px 12px; font-size:12px; color:#1e7e34;"></div>
             </div>
         </div>
         <button type="submit" class="btn" style="background:#1e3c72;color:white;padding:11px 28px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
@@ -523,7 +524,7 @@
 <div id="modal-modifier" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:15px;">
     <div style="background:white;border-radius:14px;padding:24px;width:100%;max-width:420px;box-sizing:border-box;">
         <h3 style="margin:0 0 18px;color:#1e3c72;">✏️ Modifier le produit</h3>
-        <form method="post" id="form-modifier">
+        <form method="post" id="form-modifier" onsubmit="if(typeof hitnaShowLoading==='function')hitnaShowLoading('Enregistrement des modifications...');">
             <div class="form-group" style="margin-bottom:12px;">
                 <label>Nom</label>
                 <input type="text" name="nom" id="modal-nom" required style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
@@ -563,7 +564,8 @@
             </div>
             <div class="form-group" style="margin-bottom:20px;">
                 <label>📦 Unités par carton <span style="font-weight:400; color:#999; font-size:12px;">(uniquement si déjà converti en vente au détail)</span></label>
-                <input type="number" name="unites_par_carton" id="modal-unites-par-carton" min="2" placeholder="Ex: 24" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
+                <input type="number" name="unites_par_carton" id="modal-unites-par-carton" min="2" placeholder="Ex: 24" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;" oninput="majApercuCarton('modal')">
+                <div id="modal-apercu-carton" style="display:none; margin-top:8px; background:#e8f5e9; border:1px solid #c3e6cb; border-radius:8px; padding:10px 12px; font-size:12px; color:#1e7e34;"></div>
             </div>
             <div style="display:flex;gap:10px;">
                 <button type="submit" style="flex:1;background:#28a745;color:white;border:none;padding:11px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
@@ -660,6 +662,31 @@ function confirmSuppressionMultiple() {
 }
 
 // ── Modal modification ─────────────────────────
+function majApercuCarton(prefixe) {
+    const input = document.getElementById(prefixe + '-unites-par-carton');
+    const apercu = document.getElementById(prefixe + '-apercu-carton');
+    const n = parseInt(input.value);
+
+    if (!n || n < 2) {
+        apercu.style.display = 'none';
+        return;
+    }
+
+    const moitie = Math.floor(n / 2);
+    const tiers = Math.floor(n / 3);
+    const quart = Math.floor(n / 4);
+
+    let lignes = [`1 unité`];
+    if (quart >= 1) lignes.push(`¼ = ${quart} unités`);
+    if (tiers >= 1) lignes.push(`⅓ = ${tiers} unités`);
+    if (moitie >= 1) lignes.push(`½ = ${moitie} unités`);
+    lignes.push(`carton complet = ${n} unités`);
+
+    apercu.innerHTML = `<strong>Aperçu de vente :</strong> ${lignes.join(' · ')}. ` +
+        `N'importe quelle autre quantité reste aussi possible en saisie libre.`;
+    apercu.style.display = 'block';
+}
+
 function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeurUnite, unitesParCarton) {
     document.getElementById('form-modifier').action = '/admin/produits/modifier/' + id;
     document.getElementById('modal-nom').value      = nom;
@@ -670,6 +697,7 @@ function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeu
     document.getElementById('modal-categorie').value = (categorieId === null || categorieId === undefined) ? '' : categorieId;
     document.getElementById('modal-valeur-unite').value = (valeurUnite === null || valeurUnite === undefined) ? '' : valeurUnite;
     document.getElementById('modal-unites-par-carton').value = (unitesParCarton === null || unitesParCarton === undefined) ? '' : unitesParCarton;
+    majApercuCarton('modal');
     document.getElementById('modal-modifier').style.display = 'flex';
 }
 

@@ -135,6 +135,37 @@
         background: #d4edda;
     }
 
+    .carton-qty-libre {
+        display: flex;
+        gap: 5px;
+        margin-top: 6px;
+    }
+
+    .carton-qty-libre input {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 8px;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        font-size: 11px;
+    }
+
+    .carton-qty-libre button {
+        flex-shrink: 0;
+        padding: 6px 12px;
+        background: #1e3c72;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .carton-qty-libre button:hover {
+        background: #2a5298;
+    }
+
     .product-card.in-cart {
         border-color: #28a745;
         background: #f0fff4;
@@ -593,6 +624,7 @@
                 <span class="carton-quick-label">📦 Vente au détail (carton de {{ p[8] }}) :</span>
                 <div class="carton-quick-buttons">
                     <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, 1)">1 unité</button>
+                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, 2)">2 unités</button>
                     {% set quart = p[8] // 4 %}
                     {% if quart >= 1 %}
                     <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ quart }})">¼ carton ({{ quart }})</button>
@@ -606,6 +638,10 @@
                     <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ moitie }})">½ carton ({{ moitie }})</button>
                     {% endif %}
                     <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ p[8] }})">1 carton ({{ p[8] }})</button>
+                </div>
+                <div class="carton-qty-libre">
+                    <input type="number" min="1" max="{{ p[3] }}" placeholder="Autre qté" id="admin-qtelibre-{{ p[0] }}">
+                    <button type="button" onclick="adminAjouterQuantiteLibre({{ p[0] }})">Ajouter</button>
                 </div>
             </div>
             {% endif %}
@@ -799,6 +835,17 @@
         adminRenderCart();
     }
 
+    function adminAjouterQuantiteLibre(id) {
+        const input = document.getElementById('admin-qtelibre-' + id);
+        const qty = parseInt(input.value);
+        if (!qty || qty < 1) {
+            alert('Entrez une quantité valide (1 ou plus)');
+            return;
+        }
+        adminAjouterQuantitePanier(id, qty);
+        input.value = '';
+    }
+
     function adminChangerQuantitePanier(id, delta) {
         if (!adminCart[id]) return;
         const nouvelleQty = adminCart[id].qty + delta;
@@ -892,6 +939,7 @@
             
             const form = document.getElementById('adminSaleForm');
             if (form) {
+                if (typeof hitnaShowLoading === 'function') hitnaShowLoading('Enregistrement de la vente...');
                 form.submit();
             } else {
                 alert('Erreur: formulaire non trouvé');
@@ -910,6 +958,7 @@
             
             const form = document.getElementById('adminSaleForm');
             if (form) {
+                if (typeof hitnaShowLoading === 'function') hitnaShowLoading('Enregistrement de la vente...');
                 form.submit();
             } else {
                 alert('Erreur: formulaire non trouvé');
