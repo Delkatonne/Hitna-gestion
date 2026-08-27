@@ -762,6 +762,7 @@
     <form method="post" id="saleForm" action="/vente">
         <input type="hidden" name="cart_json" id="cartJsonInput">
         <input type="hidden" name="client" id="clientName" value="">
+        <input type="hidden" name="mode_paiement" id="modePaiementInput" value="Espèces">
 
         <div id="totalDisplay" style="display: none;">
             <div class="total-amount">
@@ -787,6 +788,7 @@
                     <th>Produit</th>
                     <th>Quantité</th>
                     <th>Total (FCFA)</th>
+                    <th>Paiement</th>
                     <th>Client</th>
                     <th>Vendeur</th>
                     <th>Reçu</th>
@@ -799,6 +801,7 @@
                     <td><strong>{{ v[1] }}</strong>{% if v[9] %}<br><span style="font-size:11px; color:#1e7e34;">📦 {{ v[9] }}</span>{% endif %}</td>
                     <td>{{ v[2] }}</td>
                     <td style="color: #28a745; font-weight: bold;">{{ v[3] }} FCFA</td>
+                    <td><span style="font-size:12px; background:#f0f0f0; padding:3px 8px; border-radius:6px;">{{ v[10] or 'Espèces' }}</span></td>
                     <td>{{ v[5] or '-' }}</td>
                     <td>
                         {% if v[7] == 'admin' %}
@@ -847,6 +850,15 @@
         <h3>👤 Nom du client</h3>
         <p style="color: #666; font-size: 14px; margin-bottom: 10px;"></p>
         <input type="text" id="clientNameInput" placeholder="Entrez le nom du client" autocomplete="off">
+        <div style="margin-top:14px;">
+            <label style="display:block; font-weight:600; margin-bottom:6px;">💳 Mode de paiement</label>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="mode-paiement-radio" value="Espèces" checked> 💵 Espèces</label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="mode-paiement-radio" value="MTN MobileMoney"> 📱 MTN MobileMoney</label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="mode-paiement-radio" value="Moov MoovMoney"> 📱 Moov MoovMoney</label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="mode-paiement-radio" value="Celtiis CeltiisCash"> 📱 Celtiis CeltiisCash</label>
+            </div>
+        </div>
         <div class="btn-group">
             <button class="btn-confirm" onclick="confirmClientName()">✅ Confirmer</button>
             <button class="btn-skip" onclick="skipClientName()">⏭️ Passer</button>
@@ -1090,12 +1102,17 @@
         return Object.values(cart).map(item => ({ produit_id: item.id, quantite: item.qty }));
     }
 
+    function modePaiementSelectionne() {
+        const r = document.querySelector('input[name="mode-paiement-radio"]:checked');
+        return r ? r.value : 'Espèces';
+    }
+
     function confirmClientName() {
         try {
             const clientName = document.getElementById('clientNameInput').value;
             document.getElementById('clientName').value = clientName;
             document.getElementById('clientModal').style.display = 'none';
-            soumettreVente(clientName);
+            soumettreVente(clientName, modePaiementSelectionne());
         } catch (error) {
             console.error('❌ Erreur confirmClientName:', error);
             alert('Erreur: ' + error.message);
@@ -1106,19 +1123,20 @@
         try {
             document.getElementById('clientName').value = '';
             document.getElementById('clientModal').style.display = 'none';
-            soumettreVente('');
+            soumettreVente('', modePaiementSelectionne());
         } catch (error) {
             console.error('❌ Erreur skipClientName:', error);
             alert('Erreur: ' + error.message);
         }
     }
 
-    function soumettreVente(clientName) {
+    function soumettreVente(clientName, modePaiement) {
         const cartPayload = buildCartPayload();
+        modePaiement = modePaiement || 'Espèces';
 
         // Mode hors ligne : on met la vente en file d'attente au lieu de soumettre le formulaire
         if (typeof navigator !== 'undefined' && !navigator.onLine && window.hitnaQueueIfOffline) {
-            window.hitnaQueueIfOffline('vente', { client: clientName, cart: cartPayload }).then(function(queued) {
+            window.hitnaQueueIfOffline('vente', { client: clientName, cart: cartPayload, mode_paiement: modePaiement }).then(function(queued) {
                 if (queued) {
                     alert('📡 Vente enregistrée hors ligne. Elle sera synchronisée automatiquement dès le retour du réseau (le reçu ne sera disponible qu\'après synchronisation).');
                     cart = {};
@@ -1130,6 +1148,7 @@
         }
 
         document.getElementById('cartJsonInput').value = JSON.stringify(cartPayload);
+        document.getElementById('modePaiementInput').value = modePaiement;
         const form = document.getElementById('saleForm');
         if (form) {
             if (typeof hitnaShowLoading === 'function') hitnaShowLoading('Enregistrement de la vente...');

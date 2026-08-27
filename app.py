@@ -463,6 +463,22 @@ def init_db():
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne groupe_vente à archive_ventes: {e}")
 
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sorties' AND column_name='mode_paiement'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE sorties ADD COLUMN mode_paiement TEXT DEFAULT 'Espèces'")
+                print("✅ Colonne 'mode_paiement' ajoutée à sorties (Espèces / MTN MobileMoney / Moov MoovMoney / Celtiis CeltiisCash)")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne mode_paiement: {e}")
+
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='archive_ventes' AND column_name='mode_paiement'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE archive_ventes ADD COLUMN mode_paiement TEXT DEFAULT 'Espèces'")
+                print("✅ Colonne 'mode_paiement' ajoutée à archive_ventes")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne mode_paiement à archive_ventes: {e}")
+
         c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_date ON sorties(date_sortie)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_entrees_date ON entrees(date_entree)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_produits_nom ON produits(nom)')
@@ -529,15 +545,15 @@ def archiver_hebdomadaire():
         now_s = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         cm.execute('''SELECT s.id,s.produit_id,s.quantite,s.prix_unitaire,s.total,
-                             s.date_sortie,s.client,s.employe_id,p.nom,u.nom,s.groupe_vente
+                             s.date_sortie,s.client,s.employe_id,p.nom,u.nom,s.groupe_vente,s.mode_paiement
                       FROM sorties s JOIN produits p ON s.produit_id=p.id
                       JOIN users u ON s.employe_id=u.id
                       WHERE DATE(s.date_sortie)>=%s AND DATE(s.date_sortie)<=%s''',
                    (debut.strftime('%Y-%m-%d'), fin.strftime('%Y-%m-%d')))
         ventes = cm.fetchall()
         for v in ventes:
-            cm.execute('''INSERT INTO archive_ventes VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                       (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9],v[10]))
+            cm.execute('''INSERT INTO archive_ventes VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                       (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9],v[10],v[11]))
             cm.execute("DELETE FROM sorties WHERE id=%s",(v[0],))
 
         cm.execute('''SELECT e.id,e.produit_id,e.quantite,e.prix_unitaire,e.total,
@@ -1499,9 +1515,10 @@ def _generer_numero_recu():
     return f'HITNA-{uuid.uuid4().hex[:6].upper()}'
 
 
-def _traiter_vente_cart(cart, client, employe_id):
+def _traiter_vente_cart(cart, client, employe_id, mode_paiement=None):
     """cart: liste de {produit_id, quantite}. Retourne (groupe_vente, lignes_ok, erreurs)."""
     groupe_vente = _generer_numero_recu()
+    mode_paiement = mode_paiement or 'Espèces'
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     lignes_ok = []
     erreurs = []
@@ -1531,9 +1548,9 @@ def _traiter_vente_cart(cart, client, employe_id):
             total = prix_unitaire * qty
             prix_unitaire_ligne = prix_unitaire
         insert_ok = exe("""INSERT INTO sorties
-            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente)
-            VALUES (?,?,?,?,?,?,?,?)""",
-            (pid, qty, prix_unitaire_ligne, total, now, client, employe_id, groupe_vente))
+            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, mode_paiement)
+            VALUES (?,?,?,?,?,?,?,?,?)""",
+            (pid, qty, prix_unitaire_ligne, total, now, client, employe_id, groupe_vente, mode_paiement))
         if not insert_ok:
             erreurs.append(f'Échec d\'enregistrement pour "{nom}" (erreur serveur)')
             continue
@@ -1618,6 +1635,7 @@ def admin_ventes():
         if request.method == 'POST':
             cart_json = request.form.get('cart_json', '')
             client = request.form.get('client', '').strip()
+            mode_paiement = request.form.get('mode_paiement', '').strip() or 'Espèces'
             try:
                 cart = json.loads(cart_json) if cart_json else []
             except (ValueError, TypeError):
@@ -1627,7 +1645,7 @@ def admin_ventes():
                 flash('❌ Le panier est vide')
                 return redirect('/admin/ventes')
 
-            groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1))
+            groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), mode_paiement)
 
             for e in erreurs:
                 flash(f'⚠️ {e}')
@@ -1655,10 +1673,10 @@ def admin_ventes():
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
             historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente,
-                p.unites_par_carton, p.type_conditionnement
+                p.unites_par_carton, p.type_conditionnement, s.mode_paiement
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
                 ORDER BY s.date_sortie DESC LIMIT 20''')
-            historique = [list(h[:8]) + [_libelle_mode_achat(h[2], h[8], h[9])] for h in historique]
+            historique = [list(h[:8]) + [_libelle_mode_achat(h[2], h[8], h[9]), h[10] or 'Espèces'] for h in historique]
             stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
                 FROM sorties s JOIN users u ON s.employe_id=u.id
                 WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
@@ -1683,6 +1701,7 @@ def vente():
             try:
                 cart_json = request.form.get('cart_json', '')
                 client = request.form.get('client', '').strip()
+                mode_paiement = request.form.get('mode_paiement', '').strip() or 'Espèces'
                 try:
                     cart = json.loads(cart_json) if cart_json else []
                 except (ValueError, TypeError):
@@ -1692,7 +1711,7 @@ def vente():
                     flash('❌ Le panier est vide')
                     return redirect('/vente')
 
-                groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1))
+                groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), mode_paiement)
 
                 for e in erreurs:
                     flash(f'⚠️ {e}')
@@ -1725,13 +1744,13 @@ def vente():
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
             historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente,
-                p.unites_par_carton, p.type_conditionnement
+                p.unites_par_carton, p.type_conditionnement, s.mode_paiement
                 FROM sorties s 
                 JOIN produits p ON s.produit_id = p.id 
                 JOIN users u ON s.employe_id = u.id
                 WHERE DATE(s.date_sortie) = CURRENT_DATE 
                 ORDER BY s.date_sortie DESC LIMIT 20''')
-            historique = [list(h[:9]) + [_libelle_mode_achat(h[2], h[9], h[10])] for h in historique]
+            historique = [list(h[:9]) + [_libelle_mode_achat(h[2], h[9], h[10]), h[11] or 'Espèces'] for h in historique]
             stats_vendeurs = qall('''SELECT u.role, COUNT(s.id), COALESCE(SUM(s.total), 0)
                 FROM sorties s 
                 JOIN users u ON s.employe_id = u.id
@@ -1783,12 +1802,12 @@ def _libelle_mode_achat(qty, unites_par_carton, type_conditionnement):
 
 
 def _recuperer_lignes_recu(groupe_vente):
-    """Retourne (lignes, archivee) pour un groupe_vente, en cherchant d'abord dans
+    """Retourne (lignes, archivee, mode_paiement) pour un groupe_vente, en cherchant d'abord dans
     sorties (ventes récentes) puis dans archive_ventes (ventes archivées).
     Chaque ligne se termine par un libellé de mode d'achat (ex: '½ carton') ou None."""
     lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
                              s.date_sortie, s.client, u.nom,
-                             p.unites_par_carton, p.type_conditionnement
+                             p.unites_par_carton, p.type_conditionnement, s.mode_paiement
                       FROM sorties s
                       JOIN produits p ON s.produit_id = p.id
                       JOIN users u ON s.employe_id = u.id
@@ -1800,7 +1819,7 @@ def _recuperer_lignes_recu(groupe_vente):
         sleep(0.4)
         lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
                                  s.date_sortie, s.client, u.nom,
-                                 p.unites_par_carton, p.type_conditionnement
+                                 p.unites_par_carton, p.type_conditionnement, s.mode_paiement
                           FROM sorties s
                           JOIN produits p ON s.produit_id = p.id
                           JOIN users u ON s.employe_id = u.id
@@ -1812,7 +1831,7 @@ def _recuperer_lignes_recu(groupe_vente):
         # (archivage hebdomadaire). On cherche alors dans archive_ventes.
         lignes_archive = qall('''SELECT a.produit_id, a.produit_nom, a.quantite, a.prix_unitaire, a.total,
                                          a.date_vente, a.client, a.employe_nom,
-                                         p.unites_par_carton, p.type_conditionnement
+                                         p.unites_par_carton, p.type_conditionnement, a.mode_paiement
                                   FROM archive_ventes a
                                   LEFT JOIN produits p ON a.produit_id = p.id
                                   WHERE a.groupe_vente = ?
@@ -1820,15 +1839,17 @@ def _recuperer_lignes_recu(groupe_vente):
         if lignes_archive:
             lignes = lignes_archive
             archivee = True
-    # Remplace les 2 dernières colonnes brutes par un libellé unique du mode d'achat
+    # Remplace les colonnes brutes de conditionnement par un libellé unique du mode d'achat
     lignes_finales = []
+    mode_paiement = 'Espèces'
     for l in lignes:
         qty = l[2]
         unites_par_carton = l[8]
         type_conditionnement = l[9]
+        mode_paiement = l[10] or 'Espèces'
         badge = _libelle_mode_achat(qty, unites_par_carton, type_conditionnement)
         lignes_finales.append(list(l[:8]) + [badge])
-    return lignes_finales, archivee
+    return lignes_finales, archivee, mode_paiement
 
 
 @app.route('/vente/recu/<groupe_vente>')
@@ -1837,7 +1858,7 @@ def recu_vente(groupe_vente):
     try:
         if 'user_id' not in session:
             return redirect('/login')
-        lignes, archivee = _recuperer_lignes_recu(groupe_vente)
+        lignes, archivee, mode_paiement = _recuperer_lignes_recu(groupe_vente)
         if not lignes:
             flash('❌ Reçu introuvable (vente trop ancienne ou identifiant invalide)')
             return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
@@ -1849,6 +1870,7 @@ def recu_vente(groupe_vente):
             client=lignes[0][6],
             vendeur=lignes[0][7],
             date_vente=lignes[0][5],
+            mode_paiement=mode_paiement,
             archivee=archivee)
     except Exception as e:
         print(f"❌ Erreur recu_vente: {e}")
@@ -1863,7 +1885,7 @@ def export_pdf_recu(groupe_vente):
     try:
         if 'user_id' not in session:
             return redirect('/login')
-        lignes, archivee = _recuperer_lignes_recu(groupe_vente)
+        lignes, archivee, mode_paiement = _recuperer_lignes_recu(groupe_vente)
         if not lignes:
             flash('❌ Reçu introuvable')
             return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
@@ -1875,7 +1897,7 @@ def export_pdf_recu(groupe_vente):
 
         # Format ticket compact (largeur réduite, hauteur adaptée au contenu)
         largeur = 226  # ~8cm
-        hauteur = 330 + len(lignes) * 26
+        hauteur = 342 + len(lignes) * 26
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=(largeur, hauteur))
 
@@ -1919,6 +1941,8 @@ def export_pdf_recu(groupe_vente):
         c.drawString(10, y, f"Client: {client}")
         y -= 12
         c.drawString(10, y, f"N° reçu: {groupe_vente}")
+        y -= 12
+        c.drawString(10, y, f"Paiement: {mode_paiement}")
         if archivee:
             y -= 12
             c.setFillColorRGB(0.6, 0.4, 0)
@@ -2453,6 +2477,7 @@ def admin_recus():
             return redirect('/login')
         date_filtre = request.args.get('date', '').strip()
         client_filtre = request.args.get('client', '').strip()
+        paiement_filtre = request.args.get('paiement', '').strip()
 
         conditions = ["groupe_vente IS NOT NULL"]
         params = []
@@ -2469,26 +2494,33 @@ def admin_recus():
             params.append(f'%{client_filtre}%')
             conditions_arch.append("client ILIKE %s")
             params_arch.append(f'%{client_filtre}%')
+        if paiement_filtre:
+            conditions.append("mode_paiement = %s")
+            params.append(paiement_filtre)
+            conditions_arch.append("mode_paiement = %s")
+            params_arch.append(paiement_filtre)
 
         where_sql = " AND ".join(conditions)
         where_sql_arch = " AND ".join(conditions_arch)
 
         recus = qall(f'''SELECT groupe_vente, client, MIN(date_sortie) as date_v,
-                                 SUM(total) as total_v, COUNT(*) as nb_lignes, false as archivee
+                                 SUM(total) as total_v, COUNT(*) as nb_lignes, false as archivee,
+                                 mode_paiement
                           FROM sorties WHERE {where_sql}
-                          GROUP BY groupe_vente, client
+                          GROUP BY groupe_vente, client, mode_paiement
                           ORDER BY date_v DESC LIMIT 100''', tuple(params))
 
         recus_archives = qall(f'''SELECT groupe_vente, client, MIN(date_vente) as date_v,
-                                          SUM(total) as total_v, COUNT(*) as nb_lignes, true as archivee
+                                          SUM(total) as total_v, COUNT(*) as nb_lignes, true as archivee,
+                                          mode_paiement
                                    FROM archive_ventes WHERE {where_sql_arch}
-                                   GROUP BY groupe_vente, client
+                                   GROUP BY groupe_vente, client, mode_paiement
                                    ORDER BY date_v DESC LIMIT 100''', tuple(params_arch))
 
         tous_recus = sorted(list(recus) + list(recus_archives), key=lambda r: r[2] or '', reverse=True)[:150]
 
         return render_template('admin_recus.html', recus=tous_recus,
-            date_filtre=date_filtre, client_filtre=client_filtre)
+            date_filtre=date_filtre, client_filtre=client_filtre, paiement_filtre=paiement_filtre)
     except Exception as e:
         print(f"❌ Erreur admin_recus: {e}")
         flash('❌ Erreur lors de la recherche de reçus')
@@ -2550,13 +2582,13 @@ def rapport_journalier_jour(jour):
 
         ventes_jour = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total,
                                       s.date_sortie, s.client, u.nom, s.groupe_vente,
-                                      p.unites_par_carton, p.type_conditionnement
+                                      p.unites_par_carton, p.type_conditionnement, s.mode_paiement
                                FROM sorties s
                                JOIN produits p ON s.produit_id = p.id
                                JOIN users u ON s.employe_id = u.id
                                WHERE DATE(s.date_sortie) = ?
                                ORDER BY s.date_sortie ASC''', (jour,))
-        ventes_jour = [list(v[:9]) + [_libelle_mode_achat(v[2], v[9], v[10])] for v in ventes_jour]
+        ventes_jour = [list(v[:9]) + [_libelle_mode_achat(v[2], v[9], v[10]), v[11] or 'Espèces'] for v in ventes_jour]
         entrees_jour = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total,
                                        e.date_entree, e.fournisseur, u.nom
                                 FROM entrees e
@@ -2711,12 +2743,12 @@ def admin_archive_jour(jour):
     try:
         ventes_jour = qall('''SELECT a.id,a.produit_id,a.quantite,a.prix_unitaire,a.total,a.date_vente,
                                a.employe_id,a.client,a.archive_date,a.semaine,a.annee,a.produit_nom,a.employe_nom,a.groupe_vente,
-                               p.unites_par_carton, p.type_conditionnement
+                               p.unites_par_carton, p.type_conditionnement, a.mode_paiement
                                FROM archive_ventes a
                                LEFT JOIN produits p ON a.produit_id = p.id
                                WHERE a.date_vente LIKE ?
                                ORDER BY a.date_vente ASC''', (jour + '%',))
-        ventes_jour = [list(v[:14]) + [_libelle_mode_achat(v[2], v[14], v[15])] for v in ventes_jour]
+        ventes_jour = [list(v[:14]) + [_libelle_mode_achat(v[2], v[14], v[15]), v[16] or 'Espèces'] for v in ventes_jour]
         entrees_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,date_entree,
                                 fournisseur,employe_id,archive_date,semaine,annee,produit_nom,employe_nom
                                 FROM archive_entrees
@@ -3560,10 +3592,11 @@ def api_sync():
                 if atype == 'vente':
                     cart = payload.get('cart', [])
                     client = (payload.get('client') or '').strip()
+                    mode_paiement = (payload.get('mode_paiement') or '').strip() or 'Espèces'
                     if not cart:
                         results.append({'client_id': client_id, 'status': 'error_definitif', 'message': 'Panier vide'})
                         continue
-                    groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, employe_id)
+                    groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, employe_id, mode_paiement)
                     if lignes_ok:
                         results.append({'client_id': client_id, 'status': 'ok', 'message': ', '.join(lignes_ok), 'groupe_vente': groupe_vente})
                     else:

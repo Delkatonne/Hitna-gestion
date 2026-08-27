@@ -694,6 +694,7 @@
     <form method="post" id="adminSaleForm" action="/admin/ventes">
         <input type="hidden" name="cart_json" id="adminCartJsonInput">
         <input type="hidden" name="client" id="adminClientName" value="">
+        <input type="hidden" name="mode_paiement" id="adminModePaiement" value="Espèces">
 
         <div id="adminTotalDisplay" style="display: none;">
             <div class="total-amount">
@@ -718,6 +719,7 @@
                     <th>Produit</th>
                     <th>Quantité</th>
                     <th>Total</th>
+                    <th>Paiement</th>
                     <th>Vendeur</th>
                     <th>Client</th>
                     <th>Reçu</th>
@@ -730,6 +732,7 @@
                     <td><strong>{{ v[1] }}</strong>{% if v[8] %}<br><span style="font-size:11px; color:#1e7e34;">📦 {{ v[8] }}</span>{% endif %}</td>
                     <td>{{ v[2] }}</td>
                     <td style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(v[3]) }} FCFA</td>
+                    <td><span style="font-size:12px; background:#f0f0f0; padding:3px 8px; border-radius:6px;">{{ v[9] or 'Espèces' }}</span></td>
                     <td>
                         {% if '👑' in v[5] %}
                             <span class="vendeur-admin">{{ v[5] }}</span>
@@ -763,6 +766,15 @@
     <div class="modal-content">
         <h3>👤 Nom du client</h3>
         <input type="text" id="adminClientNameInput" placeholder="Entrez le nom du client" autocomplete="off">
+        <div style="margin-top:14px;">
+            <label style="display:block; font-weight:600; margin-bottom:6px;">💳 Mode de paiement</label>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="admin-mode-paiement-radio" value="Espèces" checked> 💵 Espèces</label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="admin-mode-paiement-radio" value="MTN MobileMoney"> 📱 MTN MobileMoney</label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="admin-mode-paiement-radio" value="Moov MoovMoney"> 📱 Moov MoovMoney</label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="admin-mode-paiement-radio" value="Celtiis CeltiisCash"> 📱 Celtiis CeltiisCash</label>
+            </div>
+        </div>
         <div class="btn-group">
             <button class="btn-confirm" onclick="adminConfirmClientName()">✅ Confirmer</button>
             <button class="btn-skip" onclick="adminSkipClientName()">⏭️ Passer</button>
@@ -991,10 +1003,16 @@
         return Object.values(adminCart).map(item => ({ produit_id: item.id, quantite: item.qty }));
     }
 
+    function adminModePaiementSelectionne() {
+        const r = document.querySelector('input[name="admin-mode-paiement-radio"]:checked');
+        return r ? r.value : 'Espèces';
+    }
+
     function adminConfirmClientName() {
         try {
             const clientName = document.getElementById('adminClientNameInput').value;
             document.getElementById('adminClientName').value = clientName;
+            document.getElementById('adminModePaiement').value = adminModePaiementSelectionne();
             document.getElementById('adminCartJsonInput').value = JSON.stringify(adminBuildCartPayload());
             document.getElementById('adminClientModal').style.display = 'none';
             
@@ -1014,6 +1032,7 @@
     function adminSkipClientName() {
         try {
             document.getElementById('adminClientName').value = '';
+            document.getElementById('adminModePaiement').value = adminModePaiementSelectionne();
             document.getElementById('adminCartJsonInput').value = JSON.stringify(adminBuildCartPayload());
             document.getElementById('adminClientModal').style.display = 'none';
             

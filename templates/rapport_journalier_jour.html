@@ -38,6 +38,7 @@
                     <th>Quantité</th>
                     <th>Prix unit.</th>
                     <th>Total</th>
+                    <th>Paiement</th>
                     <th>Client</th>
                     <th>Vendeur</th>
                     <th>Reçu</th>
@@ -51,6 +52,7 @@
                     <td>{{ v[2] }}</td>
                     <td>{{ v[3] }} FCFA</td>
                     <td style="color: #28a745; font-weight: bold;">{{ v[4] }} FCFA</td>
+                    <td><span style="font-size:12px; background:#f0f0f0; padding:3px 8px; border-radius:6px;">{{ v[10] or 'Espèces' }}</span></td>
                     <td>{{ v[6] or '-' }}</td>
                     <td>{% if v[7] %}👤 {{ v[7] }}{% else %}Inconnu{% endif %}</td>
                     <td>
