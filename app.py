@@ -438,6 +438,14 @@ def init_db():
             print(f"⚠️ Erreur ajout colonne prix_carton: {e}")
 
         try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='type_conditionnement'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE produits ADD COLUMN type_conditionnement TEXT DEFAULT 'carton'")
+                print("✅ Colonne 'type_conditionnement' ajoutée à produits (libellé libre : carton, pack, plateau, casier...)")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne type_conditionnement: {e}")
+
+        try:
             c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sorties' AND column_name='groupe_vente'")
             if not c.fetchone():
                 c.execute("ALTER TABLE sorties ADD COLUMN groupe_vente TEXT")
@@ -1198,7 +1206,8 @@ def produits_list():
                                       p.valeur_unite,
                                       COALESCE(p.vendu_par_carton, 0),
                                       p.unites_par_carton,
-                                      p.prix_carton
+                                      p.prix_carton,
+                                      COALESCE(p.type_conditionnement, 'carton')
                                FROM produits p 
                                LEFT JOIN unites_mesure u ON p.unite_id = u.id 
                                LEFT JOIN categories_produits c ON p.categorie_id = c.id
@@ -1250,9 +1259,10 @@ def ajouter_produit():
                 prix_carton = int(float(pc))
             except ValueError:
                 prix_carton = None
+        type_conditionnement = request.form.get('type_conditionnement', '').strip() or 'carton'
         ok = exe("""INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite,
-                    vendu_par_carton, unites_par_carton, prix_carton) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vendu_par_carton, unites_par_carton, prix_carton))
+                    vendu_par_carton, unites_par_carton, prix_carton, type_conditionnement) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vendu_par_carton, unites_par_carton, prix_carton, type_conditionnement))
         if ok:
             flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
             envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
@@ -1298,9 +1308,10 @@ def modifier_produit(id):
                 prix_carton = int(float(pc))
             except ValueError:
                 prix_carton = None
+        type_conditionnement = request.form.get('type_conditionnement', '').strip() or 'carton'
         ok = exe("""UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?,
-                    valeur_unite=?, unites_par_carton=?, prix_carton=? WHERE id=?""",
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, unites_par_carton, prix_carton, id))
+                    valeur_unite=?, unites_par_carton=?, prix_carton=?, type_conditionnement=? WHERE id=?""",
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, unites_par_carton, prix_carton, type_conditionnement, id))
         if ok:
             flash(f'✅ Produit "{nom}" modifié')
         else:
@@ -1622,13 +1633,16 @@ def admin_ventes():
                                        p.valeur_unite,
                                        COALESCE(p.vendu_par_carton, 0),
                                        p.unites_par_carton,
-                                       p.prix_carton
+                                       p.prix_carton,
+                                       COALESCE(p.type_conditionnement, 'carton')
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
-            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente
+            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente,
+                p.unites_par_carton, p.type_conditionnement
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
                 ORDER BY s.date_sortie DESC LIMIT 20''')
+            historique = [list(h[:8]) + [_libelle_mode_achat(h[2], h[8], h[9])] for h in historique]
             stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
                 FROM sorties s JOIN users u ON s.employe_id=u.id
                 WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
@@ -1689,16 +1703,19 @@ def vente():
                                        p.valeur_unite,
                                        COALESCE(p.vendu_par_carton, 0),
                                        p.unites_par_carton,
-                                       p.prix_carton
+                                       p.prix_carton,
+                                       COALESCE(p.type_conditionnement, 'carton')
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
-            historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente
+            historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente,
+                p.unites_par_carton, p.type_conditionnement
                 FROM sorties s 
                 JOIN produits p ON s.produit_id = p.id 
                 JOIN users u ON s.employe_id = u.id
                 WHERE DATE(s.date_sortie) = CURRENT_DATE 
                 ORDER BY s.date_sortie DESC LIMIT 20''')
+            historique = [list(h[:9]) + [_libelle_mode_achat(h[2], h[9], h[10])] for h in historique]
             stats_vendeurs = qall('''SELECT u.role, COUNT(s.id), COALESCE(SUM(s.total), 0)
                 FROM sorties s 
                 JOIN users u ON s.employe_id = u.id
@@ -1719,11 +1736,43 @@ def vente():
         flash(f'❌ Erreur: {str(e)}')
         return redirect('/login')
 
+def _libelle_mode_achat(qty, unites_par_carton, type_conditionnement):
+    """Déduit automatiquement, à partir de la seule quantité vendue, ce qu'elle représente :
+    une fraction usuelle (½, ⅓, ¼), un ou plusieurs conditionnements complets, ou un nombre
+    d'unités détachées. Rien à saisir en plus par l'employé — tout est calculé ici."""
+    if not unites_par_carton or unites_par_carton < 2 or not qty:
+        return None
+    n = unites_par_carton
+    label = type_conditionnement or 'carton'
+
+    if qty == n:
+        return f'1 {label} complet'
+
+    if qty < n:
+        if qty == n // 2:
+            return f'½ {label}'
+        if qty == n // 3:
+            return f'⅓ {label}'
+        if qty == n // 4:
+            return f'¼ {label}'
+        if qty == 1:
+            return f"à l'unité (détail {label})"
+        return f'{qty} unités détachées (détail {label})'
+
+    # qty > n : un ou plusieurs conditionnements complets, avec éventuellement un reste
+    plein, reste = divmod(qty, n)
+    if reste == 0:
+        return f'{plein} × {label} complet' if plein > 1 else f'1 {label} complet'
+    return f'{plein} × {label} complet + {reste} unité(s) détachée(s)'
+
+
 def _recuperer_lignes_recu(groupe_vente):
     """Retourne (lignes, archivee) pour un groupe_vente, en cherchant d'abord dans
-    sorties (ventes récentes) puis dans archive_ventes (ventes archivées)."""
+    sorties (ventes récentes) puis dans archive_ventes (ventes archivées).
+    Chaque ligne se termine par un libellé de mode d'achat (ex: '½ carton') ou None."""
     lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                             s.date_sortie, s.client, u.nom
+                             s.date_sortie, s.client, u.nom,
+                             p.unites_par_carton, p.type_conditionnement
                       FROM sorties s
                       JOIN produits p ON s.produit_id = p.id
                       JOIN users u ON s.employe_id = u.id
@@ -1734,7 +1783,8 @@ def _recuperer_lignes_recu(groupe_vente):
         # juste après l'enregistrement de la vente, on retente une fois.
         sleep(0.4)
         lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                                 s.date_sortie, s.client, u.nom
+                                 s.date_sortie, s.client, u.nom,
+                                 p.unites_par_carton, p.type_conditionnement
                           FROM sorties s
                           JOIN produits p ON s.produit_id = p.id
                           JOIN users u ON s.employe_id = u.id
@@ -1744,15 +1794,25 @@ def _recuperer_lignes_recu(groupe_vente):
     if not lignes:
         # La vente n'est plus dans "sorties" : elle a peut-être été archivée
         # (archivage hebdomadaire). On cherche alors dans archive_ventes.
-        lignes_archive = qall('''SELECT produit_id, produit_nom, quantite, prix_unitaire, total,
-                                         date_vente, client, employe_nom
-                                  FROM archive_ventes
-                                  WHERE groupe_vente = ?
-                                  ORDER BY id''', (groupe_vente,))
+        lignes_archive = qall('''SELECT a.produit_id, a.produit_nom, a.quantite, a.prix_unitaire, a.total,
+                                         a.date_vente, a.client, a.employe_nom,
+                                         p.unites_par_carton, p.type_conditionnement
+                                  FROM archive_ventes a
+                                  LEFT JOIN produits p ON a.produit_id = p.id
+                                  WHERE a.groupe_vente = ?
+                                  ORDER BY a.id''', (groupe_vente,))
         if lignes_archive:
             lignes = lignes_archive
             archivee = True
-    return lignes, archivee
+    # Remplace les 2 dernières colonnes brutes par un libellé unique du mode d'achat
+    lignes_finales = []
+    for l in lignes:
+        qty = l[2]
+        unites_par_carton = l[8]
+        type_conditionnement = l[9]
+        badge = _libelle_mode_achat(qty, unites_par_carton, type_conditionnement)
+        lignes_finales.append(list(l[:8]) + [badge])
+    return lignes_finales, archivee
 
 
 @app.route('/vente/recu/<groupe_vente>')
@@ -1799,7 +1859,7 @@ def export_pdf_recu(groupe_vente):
 
         # Format ticket compact (largeur réduite, hauteur adaptée au contenu)
         largeur = 226  # ~8cm
-        hauteur = 330 + len(lignes) * 16
+        hauteur = 330 + len(lignes) * 26
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=(largeur, hauteur))
 
@@ -1864,7 +1924,16 @@ def export_pdf_recu(groupe_vente):
             nom = l[1] if len(l[1]) <= 22 else l[1][:20] + '…'
             c.drawString(10, y, f"{l[2]} x {nom}")
             c.drawRightString(largeur - 10, y, format_prix(l[4]))
-            y -= 14
+            y -= 12
+            if l[8]:
+                c.setFont("Helvetica-Oblique", 6.5)
+                c.setFillColorRGB(0.18, 0.5, 0.22)
+                c.drawString(14, y, l[8])
+                c.setFillColorRGB(0.2, 0.2, 0.2)
+                c.setFont("Helvetica", 8)
+                y -= 10
+            else:
+                y -= 2
 
         c.setDash(2, 2)
         c.line(10, y, largeur - 10, y)
@@ -2464,12 +2533,14 @@ def rapport_journalier_jour(jour):
             return redirect('/login')
 
         ventes_jour = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                                      s.date_sortie, s.client, u.nom, s.groupe_vente
+                                      s.date_sortie, s.client, u.nom, s.groupe_vente,
+                                      p.unites_par_carton, p.type_conditionnement
                                FROM sorties s
                                JOIN produits p ON s.produit_id = p.id
                                JOIN users u ON s.employe_id = u.id
                                WHERE DATE(s.date_sortie) = ?
                                ORDER BY s.date_sortie ASC''', (jour,))
+        ventes_jour = [list(v[:9]) + [_libelle_mode_achat(v[2], v[9], v[10])] for v in ventes_jour]
         entrees_jour = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total,
                                        e.date_entree, e.fournisseur, u.nom
                                 FROM entrees e
@@ -2622,11 +2693,14 @@ def admin_archive_jour(jour):
     if session.get('role') != 'admin':
         return redirect('/login')
     try:
-        ventes_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,date_vente,
-                               employe_id,client,archive_date,semaine,annee,produit_nom,employe_nom,groupe_vente
-                               FROM archive_ventes
-                               WHERE date_vente LIKE ?
-                               ORDER BY date_vente ASC''', (jour + '%',))
+        ventes_jour = qall('''SELECT a.id,a.produit_id,a.quantite,a.prix_unitaire,a.total,a.date_vente,
+                               a.employe_id,a.client,a.archive_date,a.semaine,a.annee,a.produit_nom,a.employe_nom,a.groupe_vente,
+                               p.unites_par_carton, p.type_conditionnement
+                               FROM archive_ventes a
+                               LEFT JOIN produits p ON a.produit_id = p.id
+                               WHERE a.date_vente LIKE ?
+                               ORDER BY a.date_vente ASC''', (jour + '%',))
+        ventes_jour = [list(v[:14]) + [_libelle_mode_achat(v[2], v[14], v[15])] for v in ventes_jour]
         entrees_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,date_entree,
                                 fournisseur,employe_id,archive_date,semaine,annee,produit_nom,employe_nom
                                 FROM archive_entrees

@@ -149,7 +149,7 @@
                 <tbody>
                     {% for l in lignes %}
                     <tr>
-                        <td>{{ l[1] }}</td>
+                        <td>{{ l[1] }}{% if l[8] %}<br><span style="font-size:11px; color:#1e7e34;">📦 {{ l[8] }}</span>{% endif %}</td>
                         <td class="num">{{ l[2] }}</td>
                         <td class="num">{{ "{:,.0f}".format(l[3]) }}</td>
                         <td class="num">{{ "{:,.0f}".format(l[4]) }}</td>

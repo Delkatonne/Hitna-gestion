@@ -53,7 +53,7 @@
                 {% for v in ventes_jour %}
                 <tr>
                     <td>{{ v[5].split(' ')[1] if v[5] else '-' }}</td>
-                    <td><strong>{{ v[11] if v[11] else 'Produit #' + v[1]|string }}</strong></td>
+                    <td><strong>{{ v[11] if v[11] else 'Produit #' + v[1]|string }}</strong>{% if v[14] %}<br><span style="font-size:11px; color:#1e7e34;">📦 {{ v[14] }}</span>{% endif %}</td>
                     <td>{{ v[2] }}</td>
                     <td>{{ v[3] }} FCFA</td>
                     <td style="color: #28a745; font-weight: bold;">{{ v[4] }} FCFA</td>

@@ -5,6 +5,17 @@
 {% block page_subtitle %}Ajoutez, modifiez ou supprimez vos produits{% endblock %}
 
 {% block content %}
+
+<datalist id="suggestions-conditionnement">
+    <option value="carton">
+    <option value="pack">
+    <option value="plateau">
+    <option value="casier">
+    <option value="sachet">
+    <option value="boîte">
+    <option value="sac">
+    <option value="bidon">
+</datalist>
 <style>
     /* ── Formulaire ajout ───────────────────── */
     .form-grid {
@@ -328,18 +339,22 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>📦 Unités par carton <span style="font-weight:400; color:#999; font-size:12px;">(optionnel — pack de 6, carton de 24...)</span></label>
+                <label>🏷️ Type de conditionnement <span style="font-weight:400; color:#999; font-size:12px;">(optionnel)</span></label>
+                <input type="text" name="type_conditionnement" id="ajout-type-conditionnement" list="suggestions-conditionnement" placeholder="Ex: carton" value="carton" autocomplete="off" oninput="majLabelConditionnement('ajout')">
+                <div style="font-size:11px; color:#888; margin-top:4px;">Choisissez dans la liste ou tapez librement (carton, pack, plateau, casier, sachet, boîte...).</div>
+
+                <label style="margin-top:12px; display:block;">📦 Unités par {{ '' }}<span id="ajout-label-unites">carton</span> <span style="font-weight:400; color:#999; font-size:12px;">(optionnel — pack de 6, carton de 24...)</span></label>
                 <input type="number" name="unites_par_carton" id="ajout-unites-par-carton" min="2" placeholder="Ex: 24" oninput="majApercuCarton('ajout')">
                 <div style="font-size:11px; color:#888; margin-top:4px;">
-                    Si rempli, le produit sera vendable à l'unité, au demi, tiers ou quart de carton (ou toute quantité intermédiaire).
-                    ⚠️ Dans ce cas, indiquez le <strong>prix et le stock ci-dessus en unités individuelles</strong>, pas en cartons.
+                    Si rempli, le produit sera vendable à l'unité, au demi, tiers ou quart de conditionnement (ou toute quantité intermédiaire).
+                    ⚠️ Dans ce cas, indiquez le <strong>prix et le stock ci-dessus en unités individuelles</strong>, pas en conditionnements complets.
                 </div>
                 <div id="ajout-apercu-carton" style="display:none; margin-top:8px; background:#e8f5e9; border:1px solid #c3e6cb; border-radius:8px; padding:10px 12px; font-size:12px; color:#1e7e34;"></div>
                 <div style="margin-top:12px;">
-                    <label>💰 Prix du carton complet <span style="font-weight:400; color:#999; font-size:12px;">(optionnel — si différent de prix unitaire × unités)</span></label>
+                    <label>💰 Prix du conditionnement complet <span style="font-weight:400; color:#999; font-size:12px;">(optionnel — si différent de prix unitaire × unités)</span></label>
                     <input type="number" name="prix_carton" id="ajout-prix-carton" min="0" placeholder="Ex: 2800 (tarif de gros)" oninput="majApercuCarton('ajout')">
                     <div style="font-size:11px; color:#888; margin-top:4px;">
-                        Laissez vide si le carton complet doit coûter exactement prix unitaire × unités par carton.
+                        Laissez vide si le conditionnement complet doit coûter exactement prix unitaire × unités par conditionnement.
                     </div>
                 </div>
             </div>
@@ -414,9 +429,9 @@
                         <td>
                             <strong>{{ p[1] }}</strong>
                             {% if p[12] %}
-                                <span class="unite-badge" style="background:#e8f5e9; color:#1e7e34; margin-left:6px;">📦 {{ p[13] }}/carton</span>
+                                <span class="unite-badge" style="background:#e8f5e9; color:#1e7e34; margin-left:6px;">📦 {{ p[13] }}/{{ p[15] or 'carton' }}</span>
                                 {% if p[14] %}
-                                <span class="unite-badge" style="background:#fff3cd; color:#856404; margin-left:4px;">💰 carton: {{ p[14] }} FCFA</span>
+                                <span class="unite-badge" style="background:#fff3cd; color:#856404; margin-left:4px;">💰 {{ (p[15] or 'carton')|capitalize }}: {{ p[14] }} FCFA</span>
                                 {% endif %}
                             {% endif %}
                         </td>
@@ -441,7 +456,7 @@
                         <td>{{ p[4] }}</td>
                         <td>
                             <!-- Modifier -->
-                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[13] if p[13] is not none else 'null' }}, {{ p[14] if p[14] is not none else 'null' }})"
+                            <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[13] if p[13] is not none else 'null' }}, {{ p[14] if p[14] is not none else 'null' }}, '{{ (p[15] or 'carton')|replace("'", "\\'") }}')"
                                     style="background:#1e3c72;color:white;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;">
                                 ✏️ Modifier
                             </button>
@@ -479,9 +494,9 @@
             {% if p[12] %}
             <div class="card-row">
                 <label>Vente au détail</label>
-                <span class="unite-badge" style="background:#e8f5e9; color:#1e7e34;">📦 {{ p[13] }} unités/carton</span>
+                <span class="unite-badge" style="background:#e8f5e9; color:#1e7e34;">📦 {{ p[13] }} unités/{{ p[15] or 'carton' }}</span>
                 {% if p[14] %}
-                <span class="unite-badge" style="background:#fff3cd; color:#856404; margin-left:4px;">💰 {{ p[14] }} FCFA/carton</span>
+                <span class="unite-badge" style="background:#fff3cd; color:#856404; margin-left:4px;">💰 {{ p[14] }} FCFA/{{ p[15] or 'carton' }}</span>
                 {% endif %}
             </div>
             {% endif %}
@@ -509,7 +524,7 @@
             </div>
             <div class="card-actions">
                 <button class="card-btn-save"
-                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[13] if p[13] is not none else 'null' }}, {{ p[14] if p[14] is not none else 'null' }})">
+                        onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[13] if p[13] is not none else 'null' }}, {{ p[14] if p[14] is not none else 'null' }}, '{{ (p[15] or 'carton')|replace("'", "\\'") }}')">
                     ✏️ Modifier
                 </button>
                 {% if not p[12] %}
@@ -576,12 +591,16 @@
                 <input type="number" name="stock_min" id="modal-stock-min" min="0" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
             </div>
             <div class="form-group" style="margin-bottom:20px;">
-                <label>📦 Unités par carton <span style="font-weight:400; color:#999; font-size:12px;">(uniquement si déjà converti en vente au détail)</span></label>
+                <label>🏷️ Type de conditionnement <span style="font-weight:400; color:#999; font-size:12px;">(optionnel)</span></label>
+                <input type="text" name="type_conditionnement" id="modal-type-conditionnement" list="suggestions-conditionnement" placeholder="Ex: carton" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;" autocomplete="off" oninput="majLabelConditionnement('modal')">
+            </div>
+            <div class="form-group" style="margin-bottom:20px;">
+                <label>📦 Unités par <span id="modal-label-unites">carton</span> <span style="font-weight:400; color:#999; font-size:12px;">(uniquement si déjà converti en vente au détail)</span></label>
                 <input type="number" name="unites_par_carton" id="modal-unites-par-carton" min="2" placeholder="Ex: 24" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;" oninput="majApercuCarton('modal')">
                 <div id="modal-apercu-carton" style="display:none; margin-top:8px; background:#e8f5e9; border:1px solid #c3e6cb; border-radius:8px; padding:10px 12px; font-size:12px; color:#1e7e34;"></div>
             </div>
             <div class="form-group" style="margin-bottom:20px;">
-                <label>💰 Prix du carton complet <span style="font-weight:400; color:#999; font-size:12px;">(optionnel — tarif de gros)</span></label>
+                <label>💰 Prix du conditionnement complet <span style="font-weight:400; color:#999; font-size:12px;">(optionnel — tarif de gros)</span></label>
                 <input type="number" name="prix_carton" id="modal-prix-carton" min="0" placeholder="Ex: 2800" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;" oninput="majApercuCarton('modal')">
             </div>
             <div style="display:flex;gap:10px;">
@@ -689,6 +708,9 @@ function majApercuCarton(prefixe) {
         return;
     }
 
+    const champLabel = document.getElementById(prefixe + '-type-conditionnement');
+    const label = (champLabel && champLabel.value.trim()) ? champLabel.value.trim() : 'carton';
+
     const moitie = Math.floor(n / 2);
     const tiers = Math.floor(n / 3);
     const quart = Math.floor(n / 4);
@@ -697,7 +719,7 @@ function majApercuCarton(prefixe) {
     if (quart >= 1) lignes.push(`¼ = ${quart} unités`);
     if (tiers >= 1) lignes.push(`⅓ = ${tiers} unités`);
     if (moitie >= 1) lignes.push(`½ = ${moitie} unités`);
-    lignes.push(`carton complet = ${n} unités`);
+    lignes.push(`${label} complet = ${n} unités`);
 
     let texte = `<strong>Aperçu de vente :</strong> ${lignes.join(' · ')}. ` +
         `N'importe quelle autre quantité reste aussi possible en saisie libre.`;
@@ -713,11 +735,11 @@ function majApercuCarton(prefixe) {
             if (prixCarton > 0) {
                 const economie = prixCartonTheorique - prixCarton;
                 texte += `<br><br><strong>💰 Comparatif :</strong> ${n} unités au prix unitaire = ${prixCartonTheorique.toLocaleString()} FCFA. ` +
-                    `Prix carton saisi = ${prixCarton.toLocaleString()} FCFA` +
-                    (economie > 0 ? ` (soit ${economie.toLocaleString()} FCFA d'économie sur le carton complet).` :
+                    `Prix ${label} saisi = ${prixCarton.toLocaleString()} FCFA` +
+                    (economie > 0 ? ` (soit ${economie.toLocaleString()} FCFA d'économie sur le ${label} complet).` :
                      economie < 0 ? ` (⚠️ plus cher que ${n} unités au détail — vérifiez).` : ` (identique au prix unitaire × ${n}).`);
             } else {
-                texte += `<br><br>💡 Sans prix carton renseigné, un carton complet coûtera ${prixCartonTheorique.toLocaleString()} FCFA (prix unitaire × ${n}).`;
+                texte += `<br><br>💡 Sans prix ${label} renseigné, un ${label} complet coûtera ${prixCartonTheorique.toLocaleString()} FCFA (prix unitaire × ${n}).`;
             }
         }
     }
@@ -726,7 +748,7 @@ function majApercuCarton(prefixe) {
     apercu.style.display = 'block';
 }
 
-function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeurUnite, unitesParCarton, prixCarton) {
+function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeurUnite, unitesParCarton, prixCarton, typeConditionnement) {
     document.getElementById('form-modifier').action = '/admin/produits/modifier/' + id;
     document.getElementById('modal-nom').value      = nom;
     document.getElementById('modal-prix').value     = prix;
@@ -735,10 +757,20 @@ function ouvrirModal(id, nom, prix, stock, stockMin, uniteId, categorieId, valeu
     document.getElementById('modal-unite').value    = (uniteId === null || uniteId === undefined) ? '' : uniteId;
     document.getElementById('modal-categorie').value = (categorieId === null || categorieId === undefined) ? '' : categorieId;
     document.getElementById('modal-valeur-unite').value = (valeurUnite === null || valeurUnite === undefined) ? '' : valeurUnite;
+    document.getElementById('modal-type-conditionnement').value = (typeConditionnement === null || typeConditionnement === undefined || typeConditionnement === '') ? 'carton' : typeConditionnement;
     document.getElementById('modal-unites-par-carton').value = (unitesParCarton === null || unitesParCarton === undefined) ? '' : unitesParCarton;
     document.getElementById('modal-prix-carton').value = (prixCarton === null || prixCarton === undefined) ? '' : prixCarton;
+    majLabelConditionnement('modal');
     majApercuCarton('modal');
     document.getElementById('modal-modifier').style.display = 'flex';
+}
+
+function majLabelConditionnement(prefixe) {
+    const champ = document.getElementById(prefixe + '-type-conditionnement');
+    const label = document.getElementById(prefixe + '-label-unites');
+    if (champ && label) {
+        label.textContent = (champ.value || 'carton').trim() || 'carton';
+    }
 }
 
 function fermerModal() {

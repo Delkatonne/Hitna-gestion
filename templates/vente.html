@@ -704,34 +704,34 @@
     {% if produits and produits|length > 0 %}
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
-        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unite="{{ p[4] }}" data-unites-carton="{{ p[8] if p[8] else '' }}" data-prix-carton="{{ p[9] if p[9] else '' }}">
+        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unite="{{ p[4] }}" data-unites-carton="{{ p[8] if p[8] else '' }}" data-prix-carton="{{ p[9] if p[9] else '' }}" data-type-conditionnement="{{ p[10] or 'carton' }}">
             {% if p[4] %}<div class="unite-badge-vente">📏 {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
             <div class="product-price">{{ p[2] }} <small>FCFA / unité</small></div>
             {% if p[9] %}
-            <div class="product-price-carton">📦 Carton ({{ p[8] }}) : {{ p[9] }} <small>FCFA</small></div>
+            <div class="product-price-carton">📦 {{ (p[10] or 'Carton')|capitalize }} ({{ p[8] }}) : {{ p[9] }} <small>FCFA</small></div>
             {% endif %}
             <div class="product-stock">📦 Stock: {{ p[3] }} unités</div>
             <button type="button" class="btn-add-cart" onclick="ajouterAuPanier({{ p[0] }})">➕ Ajouter au panier</button>
             {% if p[7] and p[8] and p[8] > 1 %}
             <div class="carton-quick-select">
-                <span class="carton-quick-label">📦 Vente au détail (carton de {{ p[8] }}) :</span>
+                <span class="carton-quick-label">📦 Vente au détail ({{ p[10] or 'carton' }} de {{ p[8] }}) :</span>
                 <div class="carton-quick-buttons">
                     <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, 1)">1 unité</button>
                     <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, 2)">2 unités</button>
                     {% set quart = p[8] // 4 %}
                     {% if quart >= 1 %}
-                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ quart }})">¼ carton ({{ quart }})</button>
+                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ quart }})">¼ {{ p[10] or 'carton' }} ({{ quart }})</button>
                     {% endif %}
                     {% set tiers = p[8] // 3 %}
                     {% if tiers >= 1 %}
-                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ tiers }})">⅓ carton ({{ tiers }})</button>
+                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ tiers }})">⅓ {{ p[10] or 'carton' }} ({{ tiers }})</button>
                     {% endif %}
                     {% set moitie = p[8] // 2 %}
                     {% if moitie >= 1 %}
-                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ moitie }})">½ carton ({{ moitie }})</button>
+                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ moitie }})">½ {{ p[10] or 'carton' }} ({{ moitie }})</button>
                     {% endif %}
-                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ p[8] }})">1 carton ({{ p[8] }})</button>
+                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ p[8] }})">1 {{ p[10] or 'carton' }} ({{ p[8] }})</button>
                 </div>
                 <div class="carton-qty-libre">
                     <input type="number" min="1" max="{{ p[3] }}" placeholder="Autre qté" id="qtelibre-{{ p[0] }}">
@@ -796,7 +796,7 @@
                 {% for v in historique %}
                 <tr>
                     <td>{{ v[4].split(' ')[1] if v[4] else '-' }}</td>
-                    <td><strong>{{ v[1] }}</strong></td>
+                    <td><strong>{{ v[1] }}</strong>{% if v[9] %}<br><span style="font-size:11px; color:#1e7e34;">📦 {{ v[9] }}</span>{% endif %}</td>
                     <td>{{ v[2] }}</td>
                     <td style="color: #28a745; font-weight: bold;">{{ v[3] }} FCFA</td>
                     <td>{{ v[5] or '-' }}</td>
@@ -901,6 +901,7 @@
         const stock = parseInt(card.getAttribute('data-stock'));
         const unitesParCarton = parseInt(card.getAttribute('data-unites-carton')) || null;
         const prixCarton = parseInt(card.getAttribute('data-prix-carton')) || null;
+        const typeConditionnement = card.getAttribute('data-type-conditionnement') || 'carton';
 
         if (cart[id]) {
             if (cart[id].qty < stock) {
@@ -920,7 +921,8 @@
                 stock: stock,
                 qty: 1,
                 unitesParCarton: unitesParCarton,
-                prixCarton: prixCarton
+                prixCarton: prixCarton,
+                typeConditionnement: typeConditionnement
             };
         }
         card.classList.add('in-cart');
@@ -933,6 +935,7 @@
         const stock = parseInt(card.getAttribute('data-stock'));
         const unitesParCarton = parseInt(card.getAttribute('data-unites-carton')) || null;
         const prixCarton = parseInt(card.getAttribute('data-prix-carton')) || null;
+        const typeConditionnement = card.getAttribute('data-type-conditionnement') || 'carton';
 
         if (cart[id]) {
             const nouvelleQty = cart[id].qty + qty;
@@ -953,7 +956,8 @@
                 stock: stock,
                 qty: qty,
                 unitesParCarton: unitesParCarton,
-                prixCarton: prixCarton
+                prixCarton: prixCarton,
+                typeConditionnement: typeConditionnement
             };
         }
         card.classList.add('in-cart');
@@ -996,10 +1000,11 @@
     function libelleModeAchat(item) {
         const n = item.unitesParCarton;
         if (!n) return '';
-        if (item.qty === n) return ' <span class="cart-mode-badge cart-mode-carton">📦 1 carton complet</span>';
-        if (item.qty === Math.floor(n / 2)) return ' <span class="cart-mode-badge">½ carton</span>';
-        if (item.qty === Math.floor(n / 3)) return ' <span class="cart-mode-badge">⅓ carton</span>';
-        if (item.qty === Math.floor(n / 4)) return ' <span class="cart-mode-badge">¼ carton</span>';
+        const t = item.typeConditionnement || 'carton';
+        if (item.qty === n) return ` <span class="cart-mode-badge cart-mode-carton">📦 1 ${t} complet</span>`;
+        if (item.qty === Math.floor(n / 2)) return ` <span class="cart-mode-badge">½ ${t}</span>`;
+        if (item.qty === Math.floor(n / 3)) return ` <span class="cart-mode-badge">⅓ ${t}</span>`;
+        if (item.qty === Math.floor(n / 4)) return ` <span class="cart-mode-badge">¼ ${t}</span>`;
         return '';
     }
 
