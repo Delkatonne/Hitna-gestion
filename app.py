@@ -1483,9 +1483,25 @@ def entrees_list():
 # /api/sync (actions mises en file d'attente pendant une coupure réseau)
 # ══════════════════════════════════════════════════════════════
 
+ALPHABET_RECU = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # sans 0/O ni 1/I/L, pour éviter les confusions à la lecture
+
+def _generer_numero_recu():
+    """Génère un numéro de reçu court et lisible du type HITNA-7X9K2M,
+    en évitant les collisions avec un reçu déjà existant (actif ou archivé)."""
+    for _ in range(10):
+        code = ''.join(random.choice(ALPHABET_RECU) for _ in range(6))
+        numero = f'HITNA-{code}'
+        existe = q1("SELECT 1 FROM sorties WHERE groupe_vente = ? LIMIT 1", (numero,)) \
+            or q1("SELECT 1 FROM archive_ventes WHERE groupe_vente = ? LIMIT 1", (numero,))
+        if not existe:
+            return numero
+    # Filet de sécurité improbable : on retombe sur un identifiant garanti unique
+    return f'HITNA-{uuid.uuid4().hex[:6].upper()}'
+
+
 def _traiter_vente_cart(cart, client, employe_id):
     """cart: liste de {produit_id, quantite}. Retourne (groupe_vente, lignes_ok, erreurs)."""
-    groupe_vente = uuid.uuid4().hex[:12]
+    groupe_vente = _generer_numero_recu()
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     lignes_ok = []
     erreurs = []
