@@ -64,17 +64,6 @@
         font-weight: bold;
         color: #28a745;
     }
-
-    .product-price-carton {
-        font-size: 12px;
-        font-weight: 600;
-        color: #856404;
-        background: #fff3cd;
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 6px;
-        margin-top: 4px;
-    }
     
     .product-stock {
         font-size: 12px;
@@ -107,73 +96,6 @@
     }
 
     .product-card .btn-add-cart:hover {
-        background: #2a5298;
-    }
-
-    .carton-quick-select {
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px dashed #dee2e6;
-    }
-
-    .carton-quick-label {
-        display: block;
-        font-size: 10.5px;
-        color: #888;
-        margin-bottom: 6px;
-    }
-
-    .carton-quick-buttons {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-    }
-
-    .carton-quick-buttons button {
-        flex: 1 1 auto;
-        min-width: 64px;
-        padding: 6px 8px;
-        background: #e8f5e9;
-        color: #1e7e34;
-        border: 1px solid #c3e6cb;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-    }
-
-    .carton-quick-buttons button:hover {
-        background: #d4edda;
-    }
-
-    .carton-qty-libre {
-        display: flex;
-        gap: 5px;
-        margin-top: 6px;
-    }
-
-    .carton-qty-libre input {
-        flex: 1;
-        min-width: 0;
-        padding: 6px 8px;
-        border: 1px solid #ced4da;
-        border-radius: 6px;
-        font-size: 11px;
-    }
-
-    .carton-qty-libre button {
-        flex-shrink: 0;
-        padding: 6px 12px;
-        background: #1e3c72;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-    }
-
-    .carton-qty-libre button:hover {
         background: #2a5298;
     }
 
@@ -214,23 +136,6 @@
         min-width: 120px;
         font-weight: bold;
         font-size: 14px;
-    }
-
-    .cart-mode-badge {
-        display: inline-block;
-        font-size: 10px;
-        font-weight: 600;
-        background: #e8f5e9;
-        color: #1e7e34;
-        padding: 2px 7px;
-        border-radius: 10px;
-        margin-left: 4px;
-        vertical-align: middle;
-    }
-
-    .cart-mode-badge.cart-mode-carton {
-        background: #fff3cd;
-        color: #856404;
     }
 
     .cart-item-qty {
@@ -641,41 +546,13 @@
     <h2 class="card-title">📦 Produits disponibles</h2>
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
-        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unites-carton="{{ p[8] if p[8] else '' }}" data-prix-carton="{{ p[9] if p[9] else '' }}" data-type-conditionnement="{{ p[10] or 'carton' }}">
+        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-fractionnable="{{ p[7] }}">
             {% if p[4] %}<div class="unite-badge-vente">📏 {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
+            {% if p[7] %}<div class="unite-badge-vente" style="background:#fff3cd; color:#856404;">➗ Vendable en 1/2, 1/4...</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
-            <div class="product-price">{{ p[2] }} <small>FCFA / unité</small></div>
-            {% if p[9] %}
-            <div class="product-price-carton">📦 {{ (p[10] or 'Carton')|capitalize }} ({{ p[8] }}) : {{ p[9] }} <small>FCFA</small></div>
-            {% endif %}
-            <div class="product-stock">📦 Stock: {{ p[3] }} unités</div>
+            <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
+            <div class="product-stock">📦 Stock: {{ p[3]|qte }} unités</div>
             <button type="button" class="btn-add-cart" onclick="adminAjouterAuPanier({{ p[0] }})">➕ Ajouter au panier</button>
-            {% if p[7] and p[8] and p[8] > 1 %}
-            <div class="carton-quick-select">
-                <span class="carton-quick-label">📦 Vente au détail ({{ p[10] or 'carton' }} de {{ p[8] }}) :</span>
-                <div class="carton-quick-buttons">
-                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, 1)">1 unité</button>
-                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, 2)">2 unités</button>
-                    {% set quart = p[8] // 4 %}
-                    {% if quart >= 1 %}
-                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ quart }})">¼ {{ p[10] or 'carton' }} ({{ quart }})</button>
-                    {% endif %}
-                    {% set tiers = p[8] // 3 %}
-                    {% if tiers >= 1 %}
-                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ tiers }})">⅓ {{ p[10] or 'carton' }} ({{ tiers }})</button>
-                    {% endif %}
-                    {% set moitie = p[8] // 2 %}
-                    {% if moitie >= 1 %}
-                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ moitie }})">½ {{ p[10] or 'carton' }} ({{ moitie }})</button>
-                    {% endif %}
-                    <button type="button" onclick="adminAjouterQuantitePanier({{ p[0] }}, {{ p[8] }})">1 {{ p[10] or 'carton' }} ({{ p[8] }})</button>
-                </div>
-                <div class="carton-qty-libre">
-                    <input type="number" min="1" max="{{ p[3] }}" placeholder="Autre qté" id="admin-qtelibre-{{ p[0] }}">
-                    <button type="button" onclick="adminAjouterQuantiteLibre({{ p[0] }})">Ajouter</button>
-                </div>
-            </div>
-            {% endif %}
         </div>
         {% endfor %}
     </div>
@@ -694,7 +571,7 @@
     <form method="post" id="adminSaleForm" action="/admin/ventes">
         <input type="hidden" name="cart_json" id="adminCartJsonInput">
         <input type="hidden" name="client" id="adminClientName" value="">
-        <input type="hidden" name="mode_paiement" id="adminModePaiement" value="Espèces">
+        <input type="hidden" name="telephone" id="adminClientTelephone" value="">
 
         <div id="adminTotalDisplay" style="display: none;">
             <div class="total-amount">
@@ -719,7 +596,6 @@
                     <th>Produit</th>
                     <th>Quantité</th>
                     <th>Total</th>
-                    <th>Paiement</th>
                     <th>Vendeur</th>
                     <th>Client</th>
                     <th>Reçu</th>
@@ -729,10 +605,9 @@
                 {% for v in historique %}
                 <tr>
                     <td>{{ v[4] }}</td>
-                    <td><strong>{{ v[1] }}</strong>{% if v[8] %}<br><span style="font-size:11px; color:#1e7e34;">📦 {{ v[8] }}</span>{% endif %}</td>
-                    <td>{{ v[2] }}</td>
+                    <td><strong>{{ v[1] }}</strong></td>
+                    <td>{{ v[2]|qte }}</td>
                     <td style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(v[3]) }} FCFA</td>
-                    <td><span style="font-size:12px; background:#f0f0f0; padding:3px 8px; border-radius:6px;">{{ v[9] or 'Espèces' }}</span></td>
                     <td>
                         {% if '👑' in v[5] %}
                             <span class="vendeur-admin">{{ v[5] }}</span>
@@ -764,17 +639,9 @@
 <!-- Modal client -->
 <div id="adminClientModal" class="modal">
     <div class="modal-content">
-        <h3>👤 Nom du client</h3>
-        <input type="text" id="adminClientNameInput" placeholder="Entrez le nom du client" autocomplete="off">
-        <div style="margin-top:14px;">
-            <label style="display:block; font-weight:600; margin-bottom:6px;">💳 Mode de paiement</label>
-            <div style="display:flex; flex-direction:column; gap:6px;">
-                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="admin-mode-paiement-radio" value="Espèces" checked> 💵 Espèces</label>
-                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="admin-mode-paiement-radio" value="MTN MobileMoney"> 📱 MTN MobileMoney</label>
-                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="admin-mode-paiement-radio" value="Moov MoovMoney"> 📱 Moov MoovMoney</label>
-                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="admin-mode-paiement-radio" value="Celtiis CeltiisCash"> 📱 Celtiis CeltiisCash</label>
-            </div>
-        </div>
+        <h3>👤 Informations client</h3>
+        <input type="text" id="adminClientNameInput" placeholder="Nom du client" autocomplete="off">
+        <input type="tel" id="adminClientPhoneInput" placeholder="📞 Téléphone (pour la fiche client)" autocomplete="off" style="margin-top:10px;">
         <div class="btn-group">
             <button class="btn-confirm" onclick="adminConfirmClientName()">✅ Confirmer</button>
             <button class="btn-skip" onclick="adminSkipClientName()">⏭️ Passer</button>
@@ -821,98 +688,76 @@
     // ============================================================
     // ADMIN - GESTION DU PANIER
     // ============================================================
+    // Arrondi à 3 décimales pour éviter les erreurs de flottant JS (ex: 0.1+0.2)
+    function adminArrondirQte(v) {
+        return Math.round(v * 1000) / 1000;
+    }
+
+    function adminFormaterQte(v) {
+        return (Math.round(v * 1000) / 1000).toString();
+    }
+
     function adminAjouterAuPanier(id) {
         const card = document.getElementById('card-' + id);
         if (!card) return;
-        const stock = parseInt(card.getAttribute('data-stock'));
-        const unitesParCarton = parseInt(card.getAttribute('data-unites-carton')) || null;
-        const prixCarton = parseInt(card.getAttribute('data-prix-carton')) || null;
-        const typeConditionnement = card.getAttribute('data-type-conditionnement') || 'carton';
+        const stock = parseFloat(card.getAttribute('data-stock'));
+        const fractionnable = card.getAttribute('data-fractionnable') === '1';
+        const step = fractionnable ? 0.5 : 1;
 
         if (adminCart[id]) {
-            if (adminCart[id].qty < stock) {
-                adminCart[id].qty += 1;
+            const nouvelleQty = adminArrondirQte(adminCart[id].qty + step);
+            if (nouvelleQty <= stock) {
+                adminCart[id].qty = nouvelleQty;
             } else {
-                alert(`Stock insuffisant ! Il reste ${stock} unités`);
+                alert(`Stock insuffisant ! Il reste ${adminFormaterQte(stock)} unités`);
             }
         } else {
-            if (stock < 1) {
-                alert('Ce produit n\'a plus de stock');
+            if (stock < step) {
+                alert('Ce produit n\'a plus assez de stock');
                 return;
             }
             adminCart[id] = {
                 id: id,
                 name: card.getAttribute('data-nom'),
-                price: parseInt(card.getAttribute('data-price')),
+                price: parseFloat(card.getAttribute('data-price')),
                 stock: stock,
-                qty: 1,
-                unitesParCarton: unitesParCarton,
-                prixCarton: prixCarton,
-                typeConditionnement: typeConditionnement
+                fractionnable: fractionnable,
+                step: step,
+                qty: 1
             };
         }
         card.classList.add('in-cart');
         adminRenderCart();
-    }
-
-    function adminAjouterQuantitePanier(id, qty) {
-        const card = document.getElementById('card-' + id);
-        if (!card) return;
-        const stock = parseInt(card.getAttribute('data-stock'));
-        const unitesParCarton = parseInt(card.getAttribute('data-unites-carton')) || null;
-        const prixCarton = parseInt(card.getAttribute('data-prix-carton')) || null;
-        const typeConditionnement = card.getAttribute('data-type-conditionnement') || 'carton';
-
-        if (adminCart[id]) {
-            const nouvelleQty = adminCart[id].qty + qty;
-            if (nouvelleQty > stock) {
-                alert(`Stock insuffisant ! Il reste ${stock} unités (déjà ${adminCart[id].qty} dans le panier)`);
-                return;
-            }
-            adminCart[id].qty = nouvelleQty;
-        } else {
-            if (qty > stock) {
-                alert(`Stock insuffisant ! Il reste ${stock} unités`);
-                return;
-            }
-            adminCart[id] = {
-                id: id,
-                name: card.getAttribute('data-nom'),
-                price: parseInt(card.getAttribute('data-price')),
-                stock: stock,
-                qty: qty,
-                unitesParCarton: unitesParCarton,
-                prixCarton: prixCarton,
-                typeConditionnement: typeConditionnement
-            };
-        }
-        card.classList.add('in-cart');
-        adminRenderCart();
-    }
-
-    function adminAjouterQuantiteLibre(id) {
-        const input = document.getElementById('admin-qtelibre-' + id);
-        const qty = parseInt(input.value);
-        if (!qty || qty < 1) {
-            alert('Entrez une quantité valide (1 ou plus)');
-            return;
-        }
-        adminAjouterQuantitePanier(id, qty);
-        input.value = '';
     }
 
     function adminChangerQuantitePanier(id, delta) {
         if (!adminCart[id]) return;
-        const nouvelleQty = adminCart[id].qty + delta;
+        const step = adminCart[id].step || 1;
+        const nouvelleQty = adminArrondirQte(adminCart[id].qty + delta);
         if (nouvelleQty > adminCart[id].stock) {
-            alert(`Stock insuffisant ! Il reste ${adminCart[id].stock} unités`);
+            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminCart[id].stock)} unités`);
             return;
         }
-        if (nouvelleQty < 1) {
+        if (nouvelleQty < step) {
             adminRetirerDuPanier(id);
             return;
         }
         adminCart[id].qty = nouvelleQty;
+        adminRenderCart();
+    }
+
+    function adminSetQuantitePanier(id, valeur) {
+        if (!adminCart[id]) return;
+        let q = adminArrondirQte(parseFloat(valeur));
+        if (isNaN(q) || q <= 0) {
+            adminRetirerDuPanier(id);
+            return;
+        }
+        if (q > adminCart[id].stock) {
+            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminCart[id].stock)} unités`);
+            q = adminCart[id].stock;
+        }
+        adminCart[id].qty = q;
         adminRenderCart();
     }
 
@@ -921,24 +766,6 @@
         const card = document.getElementById('card-' + id);
         if (card) card.classList.remove('in-cart');
         adminRenderCart();
-    }
-
-    function adminLibelleModeAchat(item) {
-        const n = item.unitesParCarton;
-        if (!n) return '';
-        const t = item.typeConditionnement || 'carton';
-        if (item.qty === n) return ` <span class="cart-mode-badge cart-mode-carton">📦 1 ${t} complet</span>`;
-        if (item.qty === Math.floor(n / 2)) return ` <span class="cart-mode-badge">½ ${t}</span>`;
-        if (item.qty === Math.floor(n / 3)) return ` <span class="cart-mode-badge">⅓ ${t}</span>`;
-        if (item.qty === Math.floor(n / 4)) return ` <span class="cart-mode-badge">¼ ${t}</span>`;
-        return '';
-    }
-
-    function adminCalculerSousTotal(item) {
-        if (item.prixCarton && item.unitesParCarton && item.qty === item.unitesParCarton) {
-            return item.prixCarton;
-        }
-        return item.qty * item.price;
     }
 
     function adminRenderCart() {
@@ -956,16 +783,32 @@
         let total = 0;
         ids.forEach(id => {
             const item = adminCart[id];
-            const subtotal = adminCalculerSousTotal(item);
+            const subtotal = Math.round(item.qty * item.price);
             total += subtotal;
+            const step = item.step || 1;
+
+            let qtyControl;
+            if (item.fractionnable) {
+                qtyControl = `
+                    <button type="button" onclick="adminChangerQuantitePanier(${id}, -${step})">-</button>
+                    <input type="number" class="cart-item-qty-input" value="${adminFormaterQte(item.qty)}"
+                           step="0.01" min="0.01"
+                           onchange="adminSetQuantitePanier(${id}, this.value)"
+                           style="width:55px; text-align:center; border:1px solid #ccc; border-radius:6px; padding:4px;">
+                    <button type="button" onclick="adminChangerQuantitePanier(${id}, ${step})">+</button>
+                `;
+            } else {
+                qtyControl = `
+                    <button type="button" onclick="adminChangerQuantitePanier(${id}, -1)">-</button>
+                    <span>${adminFormaterQte(item.qty)}</span>
+                    <button type="button" onclick="adminChangerQuantitePanier(${id}, 1)">+</button>
+                `;
+            }
+
             html += `
                 <div class="cart-item">
-                    <div class="cart-item-name">${item.name}${adminLibelleModeAchat(item)}</div>
-                    <div class="cart-item-qty">
-                        <button type="button" onclick="adminChangerQuantitePanier(${id}, -1)">-</button>
-                        <span>${item.qty}</span>
-                        <button type="button" onclick="adminChangerQuantitePanier(${id}, 1)">+</button>
-                    </div>
+                    <div class="cart-item-name">${item.name}${item.fractionnable ? ' <small style="color:#856404;">➗</small>' : ''}</div>
+                    <div class="cart-item-qty">${qtyControl}</div>
                     <div class="cart-item-subtotal">${subtotal.toLocaleString()} FCFA</div>
                     <button type="button" class="cart-item-remove" onclick="adminRetirerDuPanier(${id})">🗑️</button>
                 </div>
@@ -1003,22 +846,17 @@
         return Object.values(adminCart).map(item => ({ produit_id: item.id, quantite: item.qty }));
     }
 
-    function adminModePaiementSelectionne() {
-        const r = document.querySelector('input[name="admin-mode-paiement-radio"]:checked');
-        return r ? r.value : 'Espèces';
-    }
-
     function adminConfirmClientName() {
         try {
             const clientName = document.getElementById('adminClientNameInput').value;
+            const clientPhone = document.getElementById('adminClientPhoneInput').value.trim();
             document.getElementById('adminClientName').value = clientName;
-            document.getElementById('adminModePaiement').value = adminModePaiementSelectionne();
+            document.getElementById('adminClientTelephone').value = clientPhone;
             document.getElementById('adminCartJsonInput').value = JSON.stringify(adminBuildCartPayload());
             document.getElementById('adminClientModal').style.display = 'none';
             
             const form = document.getElementById('adminSaleForm');
             if (form) {
-                if (typeof hitnaShowLoading === 'function') hitnaShowLoading('Enregistrement de la vente...');
                 form.submit();
             } else {
                 alert('Erreur: formulaire non trouvé');
@@ -1032,13 +870,12 @@
     function adminSkipClientName() {
         try {
             document.getElementById('adminClientName').value = '';
-            document.getElementById('adminModePaiement').value = adminModePaiementSelectionne();
+            document.getElementById('adminClientTelephone').value = '';
             document.getElementById('adminCartJsonInput').value = JSON.stringify(adminBuildCartPayload());
             document.getElementById('adminClientModal').style.display = 'none';
             
             const form = document.getElementById('adminSaleForm');
             if (form) {
-                if (typeof hitnaShowLoading === 'function') hitnaShowLoading('Enregistrement de la vente...');
                 form.submit();
             } else {
                 alert('Erreur: formulaire non trouvé');

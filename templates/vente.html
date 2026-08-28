@@ -64,17 +64,6 @@
         font-weight: bold;
         color: #28a745;
     }
-
-    .product-price-carton {
-        font-size: 12px;
-        font-weight: 600;
-        color: #856404;
-        background: #fff3cd;
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 6px;
-        margin-top: 4px;
-    }
     
     .product-stock {
         font-size: 12px;
@@ -107,73 +96,6 @@
     }
 
     .product-card .btn-add-cart:hover {
-        background: #2a5298;
-    }
-
-    .carton-quick-select {
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px dashed #dee2e6;
-    }
-
-    .carton-quick-label {
-        display: block;
-        font-size: 10.5px;
-        color: #888;
-        margin-bottom: 6px;
-    }
-
-    .carton-quick-buttons {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-    }
-
-    .carton-quick-buttons button {
-        flex: 1 1 auto;
-        min-width: 64px;
-        padding: 6px 8px;
-        background: #e8f5e9;
-        color: #1e7e34;
-        border: 1px solid #c3e6cb;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-    }
-
-    .carton-quick-buttons button:hover {
-        background: #d4edda;
-    }
-
-    .carton-qty-libre {
-        display: flex;
-        gap: 5px;
-        margin-top: 6px;
-    }
-
-    .carton-qty-libre input {
-        flex: 1;
-        min-width: 0;
-        padding: 6px 8px;
-        border: 1px solid #ced4da;
-        border-radius: 6px;
-        font-size: 11px;
-    }
-
-    .carton-qty-libre button {
-        flex-shrink: 0;
-        padding: 6px 12px;
-        background: #1e3c72;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-    }
-
-    .carton-qty-libre button:hover {
         background: #2a5298;
     }
 
@@ -214,23 +136,6 @@
         min-width: 120px;
         font-weight: bold;
         font-size: 14px;
-    }
-
-    .cart-mode-badge {
-        display: inline-block;
-        font-size: 10px;
-        font-weight: 600;
-        background: #e8f5e9;
-        color: #1e7e34;
-        padding: 2px 7px;
-        border-radius: 10px;
-        margin-left: 4px;
-        vertical-align: middle;
-    }
-
-    .cart-mode-badge.cart-mode-carton {
-        background: #fff3cd;
-        color: #856404;
     }
 
     .cart-item-qty {
@@ -704,41 +609,13 @@
     {% if produits and produits|length > 0 %}
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
-        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unite="{{ p[4] }}" data-unites-carton="{{ p[8] if p[8] else '' }}" data-prix-carton="{{ p[9] if p[9] else '' }}" data-type-conditionnement="{{ p[10] or 'carton' }}">
+        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unite="{{ p[4] }}" data-fractionnable="{{ p[7] }}">
             {% if p[4] %}<div class="unite-badge-vente">📏 {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
+            {% if p[7] %}<div class="unite-badge-vente" style="background:#fff3cd; color:#856404;">➗ Vendable en 1/2, 1/4...</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
-            <div class="product-price">{{ p[2] }} <small>FCFA / unité</small></div>
-            {% if p[9] %}
-            <div class="product-price-carton">📦 {{ (p[10] or 'Carton')|capitalize }} ({{ p[8] }}) : {{ p[9] }} <small>FCFA</small></div>
-            {% endif %}
-            <div class="product-stock">📦 Stock: {{ p[3] }} unités</div>
+            <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
+            <div class="product-stock">📦 Stock: {{ p[3]|qte }} unités</div>
             <button type="button" class="btn-add-cart" onclick="ajouterAuPanier({{ p[0] }})">➕ Ajouter au panier</button>
-            {% if p[7] and p[8] and p[8] > 1 %}
-            <div class="carton-quick-select">
-                <span class="carton-quick-label">📦 Vente au détail ({{ p[10] or 'carton' }} de {{ p[8] }}) :</span>
-                <div class="carton-quick-buttons">
-                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, 1)">1 unité</button>
-                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, 2)">2 unités</button>
-                    {% set quart = p[8] // 4 %}
-                    {% if quart >= 1 %}
-                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ quart }})">¼ {{ p[10] or 'carton' }} ({{ quart }})</button>
-                    {% endif %}
-                    {% set tiers = p[8] // 3 %}
-                    {% if tiers >= 1 %}
-                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ tiers }})">⅓ {{ p[10] or 'carton' }} ({{ tiers }})</button>
-                    {% endif %}
-                    {% set moitie = p[8] // 2 %}
-                    {% if moitie >= 1 %}
-                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ moitie }})">½ {{ p[10] or 'carton' }} ({{ moitie }})</button>
-                    {% endif %}
-                    <button type="button" onclick="ajouterQuantitePanier({{ p[0] }}, {{ p[8] }})">1 {{ p[10] or 'carton' }} ({{ p[8] }})</button>
-                </div>
-                <div class="carton-qty-libre">
-                    <input type="number" min="1" max="{{ p[3] }}" placeholder="Autre qté" id="qtelibre-{{ p[0] }}">
-                    <button type="button" onclick="ajouterQuantiteLibre({{ p[0] }})">Ajouter</button>
-                </div>
-            </div>
-            {% endif %}
         </div>
         {% endfor %}
     </div>
@@ -762,7 +639,7 @@
     <form method="post" id="saleForm" action="/vente">
         <input type="hidden" name="cart_json" id="cartJsonInput">
         <input type="hidden" name="client" id="clientName" value="">
-        <input type="hidden" name="mode_paiement" id="modePaiementInput" value="Espèces">
+        <input type="hidden" name="telephone" id="clientTelephone" value="">
 
         <div id="totalDisplay" style="display: none;">
             <div class="total-amount">
@@ -788,7 +665,6 @@
                     <th>Produit</th>
                     <th>Quantité</th>
                     <th>Total (FCFA)</th>
-                    <th>Paiement</th>
                     <th>Client</th>
                     <th>Vendeur</th>
                     <th>Reçu</th>
@@ -798,10 +674,9 @@
                 {% for v in historique %}
                 <tr>
                     <td>{{ v[4].split(' ')[1] if v[4] else '-' }}</td>
-                    <td><strong>{{ v[1] }}</strong>{% if v[9] %}<br><span style="font-size:11px; color:#1e7e34;">📦 {{ v[9] }}</span>{% endif %}</td>
-                    <td>{{ v[2] }}</td>
+                    <td><strong>{{ v[1] }}</strong></td>
+                    <td>{{ v[2]|qte }}</td>
                     <td style="color: #28a745; font-weight: bold;">{{ v[3] }} FCFA</td>
-                    <td><span style="font-size:12px; background:#f0f0f0; padding:3px 8px; border-radius:6px;">{{ v[10] or 'Espèces' }}</span></td>
                     <td>{{ v[5] or '-' }}</td>
                     <td>
                         {% if v[7] == 'admin' %}
@@ -847,18 +722,10 @@
 <!-- Modal client -->
 <div id="clientModal" class="modal">
     <div class="modal-content">
-        <h3>👤 Nom du client</h3>
+        <h3>👤 Informations client</h3>
         <p style="color: #666; font-size: 14px; margin-bottom: 10px;"></p>
-        <input type="text" id="clientNameInput" placeholder="Entrez le nom du client" autocomplete="off">
-        <div style="margin-top:14px;">
-            <label style="display:block; font-weight:600; margin-bottom:6px;">💳 Mode de paiement</label>
-            <div style="display:flex; flex-direction:column; gap:6px;">
-                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="mode-paiement-radio" value="Espèces" checked> 💵 Espèces</label>
-                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="mode-paiement-radio" value="MTN MobileMoney"> 📱 MTN MobileMoney</label>
-                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="mode-paiement-radio" value="Moov MoovMoney"> 📱 Moov MoovMoney</label>
-                <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="radio" name="mode-paiement-radio" value="Celtiis CeltiisCash"> 📱 Celtiis CeltiisCash</label>
-            </div>
-        </div>
+        <input type="text" id="clientNameInput" placeholder="Nom du client" autocomplete="off">
+        <input type="tel" id="clientPhoneInput" placeholder="📞 Téléphone (pour la fiche client)" autocomplete="off" style="margin-top:10px;">
         <div class="btn-group">
             <button class="btn-confirm" onclick="confirmClientName()">✅ Confirmer</button>
             <button class="btn-skip" onclick="skipClientName()">⏭️ Passer</button>
@@ -907,98 +774,79 @@
     // ============================================================
     // GESTION DU PANIER
     // ============================================================
+    // Arrondi à 3 décimales pour éviter les erreurs de flottant JS (ex: 0.1+0.2)
+    function arrondirQte(v) {
+        return Math.round(v * 1000) / 1000;
+    }
+
+    // Formate une quantité pour l'affichage (20 au lieu de 20.000, 19.5 au lieu de 19.500)
+    function formaterQte(v) {
+        return (Math.round(v * 1000) / 1000).toString();
+    }
+
     function ajouterAuPanier(id) {
         const card = document.getElementById('card-' + id);
         if (!card) return;
-        const stock = parseInt(card.getAttribute('data-stock'));
-        const unitesParCarton = parseInt(card.getAttribute('data-unites-carton')) || null;
-        const prixCarton = parseInt(card.getAttribute('data-prix-carton')) || null;
-        const typeConditionnement = card.getAttribute('data-type-conditionnement') || 'carton';
+        const stock = parseFloat(card.getAttribute('data-stock'));
+        const fractionnable = card.getAttribute('data-fractionnable') === '1';
+        const step = fractionnable ? 0.5 : 1;
 
         if (cart[id]) {
-            if (cart[id].qty < stock) {
-                cart[id].qty += 1;
+            const nouvelleQty = arrondirQte(cart[id].qty + step);
+            if (nouvelleQty <= stock) {
+                cart[id].qty = nouvelleQty;
             } else {
-                alert(`Stock insuffisant ! Il reste ${stock} unités`);
+                alert(`Stock insuffisant ! Il reste ${formaterQte(stock)} unités`);
             }
         } else {
-            if (stock < 1) {
-                alert('Ce produit n\'a plus de stock');
+            if (stock < step) {
+                alert('Ce produit n\'a plus assez de stock');
                 return;
             }
             cart[id] = {
                 id: id,
                 name: card.getAttribute('data-nom'),
-                price: parseInt(card.getAttribute('data-price')),
+                price: parseFloat(card.getAttribute('data-price')),
                 stock: stock,
-                qty: 1,
-                unitesParCarton: unitesParCarton,
-                prixCarton: prixCarton,
-                typeConditionnement: typeConditionnement
+                fractionnable: fractionnable,
+                step: step,
+                qty: 1
             };
         }
         card.classList.add('in-cart');
         renderCart();
-    }
-
-    function ajouterQuantitePanier(id, qty) {
-        const card = document.getElementById('card-' + id);
-        if (!card) return;
-        const stock = parseInt(card.getAttribute('data-stock'));
-        const unitesParCarton = parseInt(card.getAttribute('data-unites-carton')) || null;
-        const prixCarton = parseInt(card.getAttribute('data-prix-carton')) || null;
-        const typeConditionnement = card.getAttribute('data-type-conditionnement') || 'carton';
-
-        if (cart[id]) {
-            const nouvelleQty = cart[id].qty + qty;
-            if (nouvelleQty > stock) {
-                alert(`Stock insuffisant ! Il reste ${stock} unités (déjà ${cart[id].qty} dans le panier)`);
-                return;
-            }
-            cart[id].qty = nouvelleQty;
-        } else {
-            if (qty > stock) {
-                alert(`Stock insuffisant ! Il reste ${stock} unités`);
-                return;
-            }
-            cart[id] = {
-                id: id,
-                name: card.getAttribute('data-nom'),
-                price: parseInt(card.getAttribute('data-price')),
-                stock: stock,
-                qty: qty,
-                unitesParCarton: unitesParCarton,
-                prixCarton: prixCarton,
-                typeConditionnement: typeConditionnement
-            };
-        }
-        card.classList.add('in-cart');
-        renderCart();
-    }
-
-    function ajouterQuantiteLibre(id) {
-        const input = document.getElementById('qtelibre-' + id);
-        const qty = parseInt(input.value);
-        if (!qty || qty < 1) {
-            alert('Entrez une quantité valide (1 ou plus)');
-            return;
-        }
-        ajouterQuantitePanier(id, qty);
-        input.value = '';
     }
 
     function changerQuantitePanier(id, delta) {
         if (!cart[id]) return;
-        const nouvelleQty = cart[id].qty + delta;
+        const step = cart[id].step || 1;
+        const nouvelleQty = arrondirQte(cart[id].qty + delta);
         if (nouvelleQty > cart[id].stock) {
-            alert(`Stock insuffisant ! Il reste ${cart[id].stock} unités`);
+            alert(`Stock insuffisant ! Il reste ${formaterQte(cart[id].stock)} unités`);
             return;
         }
-        if (nouvelleQty < 1) {
+        if (nouvelleQty < step) {
             retirerDuPanier(id);
             return;
         }
         cart[id].qty = nouvelleQty;
+        renderCart();
+    }
+
+    // Permet de saisir directement une quantité (ex: 0.5, 2.5) pour les
+    // produits vendables en fraction (carton, pack...).
+    function setQuantitePanier(id, valeur) {
+        if (!cart[id]) return;
+        let q = arrondirQte(parseFloat(valeur));
+        if (isNaN(q) || q <= 0) {
+            retirerDuPanier(id);
+            return;
+        }
+        if (q > cart[id].stock) {
+            alert(`Stock insuffisant ! Il reste ${formaterQte(cart[id].stock)} unités`);
+            q = cart[id].stock;
+        }
+        cart[id].qty = q;
         renderCart();
     }
 
@@ -1007,26 +855,6 @@
         const card = document.getElementById('card-' + id);
         if (card) card.classList.remove('in-cart');
         renderCart();
-    }
-
-    function libelleModeAchat(item) {
-        const n = item.unitesParCarton;
-        if (!n) return '';
-        const t = item.typeConditionnement || 'carton';
-        if (item.qty === n) return ` <span class="cart-mode-badge cart-mode-carton">📦 1 ${t} complet</span>`;
-        if (item.qty === Math.floor(n / 2)) return ` <span class="cart-mode-badge">½ ${t}</span>`;
-        if (item.qty === Math.floor(n / 3)) return ` <span class="cart-mode-badge">⅓ ${t}</span>`;
-        if (item.qty === Math.floor(n / 4)) return ` <span class="cart-mode-badge">¼ ${t}</span>`;
-        return '';
-    }
-
-    function calculerSousTotal(item) {
-        // Reflète exactement la règle appliquée côté serveur : le prix carton
-        // s'applique uniquement si la quantité correspond exactement au carton complet.
-        if (item.prixCarton && item.unitesParCarton && item.qty === item.unitesParCarton) {
-            return item.prixCarton;
-        }
-        return item.qty * item.price;
     }
 
     function renderCart() {
@@ -1044,16 +872,34 @@
         let total = 0;
         ids.forEach(id => {
             const item = cart[id];
-            const subtotal = calculerSousTotal(item);
+            const subtotal = Math.round(item.qty * item.price);
             total += subtotal;
+            const step = item.step || 1;
+
+            let qtyControl;
+            if (item.fractionnable) {
+                // Produit vendable en fraction : champ modifiable directement
+                // (0.5 = 1/2 carton, 0.25 = 1/4 carton, etc.)
+                qtyControl = `
+                    <button type="button" onclick="changerQuantitePanier(${id}, -${step})">-</button>
+                    <input type="number" class="cart-item-qty-input" value="${formaterQte(item.qty)}"
+                           step="0.01" min="0.01"
+                           onchange="setQuantitePanier(${id}, this.value)"
+                           style="width:55px; text-align:center; border:1px solid #ccc; border-radius:6px; padding:4px;">
+                    <button type="button" onclick="changerQuantitePanier(${id}, ${step})">+</button>
+                `;
+            } else {
+                qtyControl = `
+                    <button type="button" onclick="changerQuantitePanier(${id}, -1)">-</button>
+                    <span>${formaterQte(item.qty)}</span>
+                    <button type="button" onclick="changerQuantitePanier(${id}, 1)">+</button>
+                `;
+            }
+
             html += `
                 <div class="cart-item">
-                    <div class="cart-item-name">${item.name}${libelleModeAchat(item)}</div>
-                    <div class="cart-item-qty">
-                        <button type="button" onclick="changerQuantitePanier(${id}, -1)">-</button>
-                        <span>${item.qty}</span>
-                        <button type="button" onclick="changerQuantitePanier(${id}, 1)">+</button>
-                    </div>
+                    <div class="cart-item-name">${item.name}${item.fractionnable ? ' <small style="color:#856404;">➗</small>' : ''}</div>
+                    <div class="cart-item-qty">${qtyControl}</div>
                     <div class="cart-item-subtotal">${subtotal.toLocaleString()} FCFA</div>
                     <button type="button" class="cart-item-remove" onclick="retirerDuPanier(${id})">🗑️</button>
                 </div>
@@ -1102,17 +948,14 @@
         return Object.values(cart).map(item => ({ produit_id: item.id, quantite: item.qty }));
     }
 
-    function modePaiementSelectionne() {
-        const r = document.querySelector('input[name="mode-paiement-radio"]:checked');
-        return r ? r.value : 'Espèces';
-    }
-
     function confirmClientName() {
         try {
             const clientName = document.getElementById('clientNameInput').value;
+            const clientPhone = document.getElementById('clientPhoneInput').value.trim();
             document.getElementById('clientName').value = clientName;
+            document.getElementById('clientTelephone').value = clientPhone;
             document.getElementById('clientModal').style.display = 'none';
-            soumettreVente(clientName, modePaiementSelectionne());
+            soumettreVente(clientName, clientPhone);
         } catch (error) {
             console.error('❌ Erreur confirmClientName:', error);
             alert('Erreur: ' + error.message);
@@ -1122,21 +965,21 @@
     function skipClientName() {
         try {
             document.getElementById('clientName').value = '';
+            document.getElementById('clientTelephone').value = '';
             document.getElementById('clientModal').style.display = 'none';
-            soumettreVente('', modePaiementSelectionne());
+            soumettreVente('', '');
         } catch (error) {
             console.error('❌ Erreur skipClientName:', error);
             alert('Erreur: ' + error.message);
         }
     }
 
-    function soumettreVente(clientName, modePaiement) {
+    function soumettreVente(clientName, clientPhone) {
         const cartPayload = buildCartPayload();
-        modePaiement = modePaiement || 'Espèces';
 
         // Mode hors ligne : on met la vente en file d'attente au lieu de soumettre le formulaire
         if (typeof navigator !== 'undefined' && !navigator.onLine && window.hitnaQueueIfOffline) {
-            window.hitnaQueueIfOffline('vente', { client: clientName, cart: cartPayload, mode_paiement: modePaiement }).then(function(queued) {
+            window.hitnaQueueIfOffline('vente', { client: clientName, telephone: clientPhone, cart: cartPayload }).then(function(queued) {
                 if (queued) {
                     alert('📡 Vente enregistrée hors ligne. Elle sera synchronisée automatiquement dès le retour du réseau (le reçu ne sera disponible qu\'après synchronisation).');
                     cart = {};
@@ -1148,10 +991,8 @@
         }
 
         document.getElementById('cartJsonInput').value = JSON.stringify(cartPayload);
-        document.getElementById('modePaiementInput').value = modePaiement;
         const form = document.getElementById('saleForm');
         if (form) {
-            if (typeof hitnaShowLoading === 'function') hitnaShowLoading('Enregistrement de la vente...');
             form.submit();
         } else {
             alert('Erreur: formulaire non trouvé');

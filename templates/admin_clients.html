@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Clients - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-recherche {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 25px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    .form-recherche .form-group {
+        flex: 1;
+        min-width: 200px;
+    }
+    .form-recherche input {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        box-sizing: border-box;
+    }
+    .client-card {
+        background: white;
+        border-radius: 12px;
+        padding: 15px 18px;
+        margin-bottom: 10px;
+        border: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        text-decoration: none;
+        color: inherit;
+        transition: box-shadow 0.15s ease;
+    }
+    .client-card:hover {
+        box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+    }
+    .client-card .infos h3 {
+        font-size: 15px;
+        color: #1e3c72;
+        margin-bottom: 4px;
+    }
+    .client-card .infos p {
+        font-size: 12px;
+        color: #888;
+    }
+    .client-card .montant {
+        text-align: right;
+    }
+    .client-card .montant .total {
+        font-size: 16px;
+        font-weight: bold;
+        color: #28a745;
+    }
+    .client-card .montant .nb {
+        font-size: 12px;
+        color: #888;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}👥 Clients{% endblock %}
+{% block page_subtitle %}{{ nb_clients }} client(s) enregistré(s) — historique d'achats par numéro de téléphone{% endblock %}
+
+{% block content %}
+<div class="card">
+    <form method="get" class="form-recherche">
+        <div class="form-group">
+            <label>🔍 Rechercher</label>
+            <input type="text" name="q" placeholder="Nom ou numéro de téléphone" value="{{ recherche }}">
+        </div>
+        <div class="form-group" style="flex: 0 0 auto;">
+            <button type="submit" style="background:#1e3c72; color:white; padding:10px 25px;">🔍 Rechercher</button>
+        </div>
+        {% if recherche %}
+        <div class="form-group" style="flex: 0 0 auto;">
+            <a href="/admin/clients" style="display:inline-block; background:#6c757d; color:white; padding:10px 20px; border-radius:8px; text-decoration:none;">✕ Effacer</a>
+        </div>
+        {% endif %}
+    </form>
+
+    {% if clients %}
+        {% for c in clients %}
+        <a href="/admin/clients/{{ c[0] }}" class="client-card">
+            <div class="infos">
+                <h3>🙋 {{ c[1] }}</h3>
+                <p>📞 {{ c[2] }}{% if c[3] %} · 📍 {{ c[3] }}{% endif %}</p>
+            </div>
+            <div class="montant">
+                <div class="total">{{ "{:,.0f}".format(c[5] or 0) }} FCFA</div>
+                <div class="nb">{{ c[4] or 0 }} achat(s){% if c[6] %} · dernier le {{ c[6].split(' ')[0] }}{% endif %}</div>
+            </div>
+        </a>
+        {% endfor %}
+    {% else %}
+        <p style="text-align:center; color:#999; padding:40px;">
+            {% if recherche %}
+                📭 Aucun client trouvé pour cette recherche
+            {% else %}
+                📭 Aucun client enregistré pour le moment.<br>
+                <small>Un client est automatiquement créé dès qu'un numéro de téléphone est saisi lors d'une vente.</small>
+            {% endif %}
+        </p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard">← Retour au Dashboard</a>
+</div>
+{% endblock %}

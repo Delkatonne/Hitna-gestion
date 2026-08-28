@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Commandes fournisseurs - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-cf {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+    .stat-cf {
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+        color: white;
+    }
+    .stat-cf.attente { background: linear-gradient(135deg, #ffc107, #e0a800); color: #333; }
+    .stat-cf.retard { background: linear-gradient(135deg, #dc3545, #c82333); }
+    .stat-cf .number { font-size: 28px; font-weight: bold; }
+
+    .form-cf {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+    }
+    .form-cf .form-row {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+    .form-cf .form-group {
+        flex: 1;
+        min-width: 160px;
+    }
+    .form-cf select, .form-cf input, .form-cf textarea {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        box-sizing: border-box;
+    }
+
+    .statut-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: bold;
+    }
+    .statut-badge.commandé { background: #fff3cd; color: #856404; }
+    .statut-badge.livré { background: #d4edda; color: #155724; }
+    .statut-badge.annulée { background: #e2e3e5; color: #383d41; }
+    .statut-badge.retard { background: #f8d7da; color: #721c24; }
+
+    .cf-card {
+        background: white;
+        border-radius: 12px;
+        padding: 15px 18px;
+        margin-bottom: 10px;
+        border: 1px solid #e0e0e0;
+        border-left: 4px solid #6c757d;
+    }
+    .cf-card.commandé { border-left-color: #ffc107; }
+    .cf-card.livré { border-left-color: #28a745; opacity: 0.85; }
+    .cf-card.annulée { border-left-color: #6c757d; opacity: 0.6; }
+    .cf-card.en-retard { border-left-color: #dc3545; background: #fff8f8; }
+
+    .cf-card .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    .cf-card h3 { font-size: 15px; color: #1e3c72; }
+    .cf-card .dates {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 10px;
+    }
+    .cf-card .dates strong { color: #333; }
+    .cf-card .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .livrer-form {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+    }
+    .livrer-form input {
+        width: 110px;
+        padding: 6px;
+        border: 2px solid #28a745;
+        border-radius: 6px;
+        font-size: 12px;
+    }
+    @media (max-width: 768px) {
+        .form-cf .form-row { flex-direction: column; }
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}📦 Commandes fournisseurs{% endblock %}
+{% block page_subtitle %}Suivi des réapprovisionnements : commandé, livraison prévue, livré{% endblock %}
+
+{% block content %}
+
+<div class="stats-cf">
+    <div class="stat-cf attente">
+        <h3>⏳ En attente de livraison</h3>
+        <div class="number">{{ nb_en_attente }}</div>
+    </div>
+    <div class="stat-cf retard">
+        <h3>🚨 En retard</h3>
+        <div class="number">{{ nb_en_retard }}</div>
+    </div>
+</div>
+
+<!-- Formulaire d'ajout -->
+<div class="card">
+    <h2 class="card-title">➕ Passer une commande</h2>
+    <form method="post" action="/admin/commandes-fournisseurs/ajouter" class="form-cf">
+        <div class="form-row">
+            <div class="form-group">
+                <label>🏢 Fournisseur</label>
+                <select name="fournisseur_id" required>
+                    <option value="">-- Choisir --</option>
+                    {% for f in fournisseurs %}
+                    <option value="{{ f[0] }}">{{ f[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>📦 Produit</label>
+                <select name="produit_id" required>
+                    <option value="">-- Choisir --</option>
+                    {% for p in produits %}
+                    <option value="{{ p[0] }}">{{ p[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>🔢 Quantité</label>
+                <input type="number" name="quantite" min="0.01" step="0.01" required>
+            </div>
+            <div class="form-group">
+                <label>💰 Prix d'achat unitaire estimé (FCFA)</label>
+                <input type="number" name="prix_unitaire" min="0" step="1">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>📅 Date de commande</label>
+                <input type="date" name="date_commande" value="{{ today_iso }}">
+            </div>
+            <div class="form-group">
+                <label>🚚 Livraison prévue le</label>
+                <input type="date" name="date_livraison_prevue">
+            </div>
+            <div class="form-group" style="flex:2;">
+                <label>📝 Notes (optionnel)</label>
+                <input type="text" name="notes" placeholder="Ex: confirmé par téléphone">
+            </div>
+            <div class="form-group" style="display:flex; align-items:flex-end;">
+                <button type="submit" style="background:#28a745; width:100%;">💾 Enregistrer la commande</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Liste -->
+<div class="card">
+    <h2 class="card-title">📋 Commandes</h2>
+    <div class="nav-links" style="margin-bottom:15px;">
+        <a href="/admin/commandes-fournisseurs" style="{% if not filtre_statut %}font-weight:bold; text-decoration:underline;{% endif %}">Toutes</a>
+        <a href="/admin/commandes-fournisseurs?statut=commandé" style="{% if filtre_statut=='commandé' %}font-weight:bold; text-decoration:underline;{% endif %}">⏳ En attente</a>
+        <a href="/admin/commandes-fournisseurs?statut=livré" style="{% if filtre_statut=='livré' %}font-weight:bold; text-decoration:underline;{% endif %}">✅ Livrées</a>
+        <a href="/admin/commandes-fournisseurs?statut=annulée" style="{% if filtre_statut=='annulée' %}font-weight:bold; text-decoration:underline;{% endif %}">🚫 Annulées</a>
+    </div>
+
+    {% if commandes %}
+        {% for c in commandes %}
+        {% set en_retard = (c[8] == 'commandé' and c[6] and c[6] < today_iso) %}
+        <div class="cf-card {{ c[8] }} {% if en_retard %}en-retard{% endif %}">
+            <div class="header">
+                <h3>📦 {{ c[3]|qte }} × {{ c[2] or 'Produit supprimé' }} — {{ c[1] or 'Fournisseur supprimé' }}</h3>
+                <span class="statut-badge {% if en_retard %}retard{% else %}{{ c[8] }}{% endif %}">
+                    {% if en_retard %}🚨 En retard
+                    {% elif c[8] == 'commandé' %}⏳ Commandé
+                    {% elif c[8] == 'livré' %}✅ Livré
+                    {% else %}🚫 Annulée{% endif %}
+                </span>
+            </div>
+            <div class="dates">
+                <span>📅 Commandé le <strong>{{ c[5] or '-' }}</strong></span>
+                <span>🚚 Livraison prévue <strong>{{ c[6] or 'non précisée' }}</strong></span>
+                {% if c[7] %}<span>✅ Livré le <strong>{{ c[7].split(' ')[0] }}</strong></span>{% endif %}
+                {% if c[4] %}<span>💰 {{ "{:,.0f}".format(c[4]) }} FCFA/unité</span>{% endif %}
+            </div>
+            {% if c[9] %}<p style="font-size:12px; color:#888; margin-bottom:10px;">📝 {{ c[9] }}</p>{% endif %}
+            <div class="actions">
+                {% if c[8] == 'commandé' %}
+                <form method="post" action="/admin/commandes-fournisseurs/livrer/{{ c[0] }}" class="livrer-form"
+                      onsubmit="return confirm('Confirmer la livraison ? {{ c[3]|qte }} × {{ c[2] }} seront ajoutés au stock.')">
+                    <input type="number" name="prix_unitaire" placeholder="Prix réel" min="0" step="1" value="{{ c[4] or '' }}">
+                    <button type="submit" class="btn-small" style="background:#28a745; color:white;">✅ Marquer livré</button>
+                </form>
+                <a href="/admin/commandes-fournisseurs/annuler/{{ c[0] }}"
+                   onclick="return confirm('Annuler cette commande ?')"
+                   class="btn-small" style="background:#6c757d; color:white;">🚫 Annuler</a>
+                {% endif %}
+                <a href="/admin/commandes-fournisseurs/supprimer/{{ c[0] }}"
+                   onclick="return confirm('Supprimer définitivement cette commande de l\'historique ?')"
+                   class="btn-small" style="background:#dc3545; color:white;">🗑️</a>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align:center; color:#999; padding:40px;">📭 Aucune commande fournisseur enregistrée</p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/admin/fournisseurs">🏢 Gérer les fournisseurs</a>
+    <a href="/dashboard">← Retour au Dashboard</a>
+</div>
+{% endblock %}

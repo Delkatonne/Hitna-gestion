@@ -12,11 +12,23 @@ from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'hitna_secret')
-# Session persistante (30 jours) : sans ça, Flask crée par défaut une session
-# "de navigateur" que Chrome peut effacer quand l'app installée (PWA) est
-# fermée/tuée en arrière-plan sur mobile — ce qui déconnecte l'employé, qui
-# ne peut alors plus jamais se reconnecter s'il est hors ligne à ce moment-là.
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+
+# ──────────────────────────────────────────────────────────────
+# FILTRE JINJA : affichage propre des quantités décimales
+# (20.000 -> "20", 19.500 -> "19.5") — utilisé pour les produits
+# vendus en fraction de carton/pack.
+# ──────────────────────────────────────────────────────────────
+def format_qte(value):
+    try:
+        d = float(value)
+    except (TypeError, ValueError):
+        return value
+    if d == int(d):
+        return str(int(d))
+    s = f'{d:.3f}'.rstrip('0').rstrip('.')
+    return s
+
+app.jinja_env.filters['qte'] = format_qte
 
 # ──────────────────────────────────────────────────────────────
 # CORS — uniquement pour les endpoints publics /api/*, utilisés par
@@ -161,7 +173,7 @@ BACKUP_TABLES = [
     'users', 'produits', 'categories_produits', 'unites_mesure', 'fournisseurs',
     'sorties', 'entrees', 'pertes', 'alertes_produits', 'notifications',
     'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_recap',
-    'commandes', 'messages_contact',
+    'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
 ]
 
 def generer_backup_json():
@@ -286,26 +298,44 @@ def init_db():
 
         c.execute('''CREATE TABLE IF NOT EXISTS produits (
             id SERIAL PRIMARY KEY, nom TEXT, prix INTEGER,
-            stock INTEGER DEFAULT 0, stock_min INTEGER DEFAULT 5)''')
+            stock NUMERIC(10,3) DEFAULT 0, stock_min INTEGER DEFAULT 5,
+            vente_fractionnable INTEGER DEFAULT 0)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS sorties (
-            id SERIAL PRIMARY KEY, produit_id INTEGER, quantite INTEGER,
+            id SERIAL PRIMARY KEY, produit_id INTEGER, quantite NUMERIC(10,3),
             prix_unitaire INTEGER, total INTEGER, date_sortie TEXT,
             client TEXT, employe_id INTEGER)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS entrees (
-            id SERIAL PRIMARY KEY, produit_id INTEGER, quantite INTEGER,
+            id SERIAL PRIMARY KEY, produit_id INTEGER, quantite NUMERIC(10,3),
             prix_unitaire INTEGER, total INTEGER, date_entree TEXT,
             fournisseur TEXT, employe_id INTEGER)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS pertes (
-            id SERIAL PRIMARY KEY, produit_id INTEGER, quantite INTEGER,
+            id SERIAL PRIMARY KEY, produit_id INTEGER, quantite NUMERIC(10,3),
             prix_unitaire INTEGER, total INTEGER, motif TEXT,
             date_perte TEXT, employe_id INTEGER)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS fournisseurs (
             id SERIAL PRIMARY KEY, nom TEXT UNIQUE, produits TEXT,
             telephone TEXT, email TEXT, adresse TEXT)''')
+
+        # ── COMMANDES FOURNISSEURS — suivi des réapprovisionnements :
+        #    quand une commande a été passée, quand la livraison est
+        #    prévue, et quand elle a effectivement eu lieu.
+        c.execute('''CREATE TABLE IF NOT EXISTS commandes_fournisseurs (
+            id SERIAL PRIMARY KEY,
+            fournisseur_id INTEGER,
+            produit_id INTEGER,
+            quantite NUMERIC(10,3),
+            prix_unitaire INTEGER,
+            date_commande TEXT,
+            date_livraison_prevue TEXT,
+            date_livraison_reelle TEXT,
+            statut TEXT DEFAULT 'commandé',
+            notes TEXT DEFAULT '',
+            employe_id INTEGER,
+            date_creation TEXT)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS notifications (
             id SERIAL PRIMARY KEY, user_id INTEGER, type TEXT,
@@ -321,19 +351,19 @@ def init_db():
             expires_at TEXT, used INTEGER DEFAULT 0)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS archive_ventes (
-            id INTEGER, produit_id INTEGER, quantite INTEGER,
+            id INTEGER, produit_id INTEGER, quantite NUMERIC(10,3),
             prix_unitaire INTEGER, total INTEGER, date_vente TEXT,
             employe_id INTEGER, client TEXT, archive_date TEXT,
             semaine INTEGER, annee INTEGER, produit_nom TEXT, employe_nom TEXT)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS archive_entrees (
-            id INTEGER, produit_id INTEGER, quantite INTEGER,
+            id INTEGER, produit_id INTEGER, quantite NUMERIC(10,3),
             prix_unitaire INTEGER, total INTEGER, date_entree TEXT,
             fournisseur TEXT, employe_id INTEGER, archive_date TEXT,
             semaine INTEGER, annee INTEGER, produit_nom TEXT, employe_nom TEXT)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS archive_pertes (
-            id INTEGER, produit_id INTEGER, quantite INTEGER,
+            id INTEGER, produit_id INTEGER, quantite NUMERIC(10,3),
             prix_unitaire INTEGER, total INTEGER, motif TEXT,
             date_perte TEXT, employe_id INTEGER, archive_date TEXT,
             semaine INTEGER, annee INTEGER, produit_nom TEXT, employe_nom TEXT)''')
@@ -350,6 +380,27 @@ def init_db():
             symbole TEXT,
             description TEXT,
             actif INTEGER DEFAULT 1)''')
+
+        # ── CHARGES (loyer, salaires, factures...) — pour calculer un
+        #    vrai bénéfice net, pas juste Ventes - Achats de stock.
+        c.execute('''CREATE TABLE IF NOT EXISTS charges (
+            id SERIAL PRIMARY KEY,
+            categorie TEXT,
+            libelle TEXT,
+            montant INTEGER,
+            date_charge TEXT,
+            recurrente INTEGER DEFAULT 0,
+            employe_id INTEGER,
+            date_creation TEXT)''')
+
+        # ── CLIENTS — fiche client avec historique d'achats,
+        #    identifiés de façon unique par leur numéro de téléphone.
+        c.execute('''CREATE TABLE IF NOT EXISTS clients (
+            id SERIAL PRIMARY KEY,
+            nom TEXT,
+            telephone TEXT UNIQUE,
+            adresse TEXT DEFAULT '',
+            date_creation TEXT)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS categories_produits (
             id SERIAL PRIMARY KEY,
@@ -414,38 +465,6 @@ def init_db():
             print(f"⚠️ Erreur ajout colonne valeur_unite: {e}")
 
         try:
-            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='vendu_par_carton'")
-            if not c.fetchone():
-                c.execute("ALTER TABLE produits ADD COLUMN vendu_par_carton INTEGER DEFAULT 0")
-                print("✅ Colonne 'vendu_par_carton' ajoutée à produits")
-        except Exception as e:
-            print(f"⚠️ Erreur ajout colonne vendu_par_carton: {e}")
-
-        try:
-            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='unites_par_carton'")
-            if not c.fetchone():
-                c.execute("ALTER TABLE produits ADD COLUMN unites_par_carton INTEGER")
-                print("✅ Colonne 'unites_par_carton' ajoutée à produits (vente au détail depuis un carton)")
-        except Exception as e:
-            print(f"⚠️ Erreur ajout colonne unites_par_carton: {e}")
-
-        try:
-            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='prix_carton'")
-            if not c.fetchone():
-                c.execute("ALTER TABLE produits ADD COLUMN prix_carton INTEGER")
-                print("✅ Colonne 'prix_carton' ajoutée à produits (prix du carton complet, distinct du prix unitaire)")
-        except Exception as e:
-            print(f"⚠️ Erreur ajout colonne prix_carton: {e}")
-
-        try:
-            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='type_conditionnement'")
-            if not c.fetchone():
-                c.execute("ALTER TABLE produits ADD COLUMN type_conditionnement TEXT DEFAULT 'carton'")
-                print("✅ Colonne 'type_conditionnement' ajoutée à produits (libellé libre : carton, pack, plateau, casier...)")
-        except Exception as e:
-            print(f"⚠️ Erreur ajout colonne type_conditionnement: {e}")
-
-        try:
             c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sorties' AND column_name='groupe_vente'")
             if not c.fetchone():
                 c.execute("ALTER TABLE sorties ADD COLUMN groupe_vente TEXT")
@@ -463,21 +482,61 @@ def init_db():
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne groupe_vente à archive_ventes: {e}")
 
+        # ── FICHE CLIENT — rattache une vente à un client (identifié
+        #    par téléphone) pour retrouver son historique d'achats.
         try:
-            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sorties' AND column_name='mode_paiement'")
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sorties' AND column_name='client_id'")
             if not c.fetchone():
-                c.execute("ALTER TABLE sorties ADD COLUMN mode_paiement TEXT DEFAULT 'Espèces'")
-                print("✅ Colonne 'mode_paiement' ajoutée à sorties (Espèces / MTN MobileMoney / Moov MoovMoney / Celtiis CeltiisCash)")
+                c.execute("ALTER TABLE sorties ADD COLUMN client_id INTEGER")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_sorties_client ON sorties(client_id)")
+                print("✅ Colonne 'client_id' ajoutée à sorties (fiche client)")
         except Exception as e:
-            print(f"⚠️ Erreur ajout colonne mode_paiement: {e}")
+            print(f"⚠️ Erreur ajout colonne client_id à sorties: {e}")
 
         try:
-            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='archive_ventes' AND column_name='mode_paiement'")
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='archive_ventes' AND column_name='client_id'")
             if not c.fetchone():
-                c.execute("ALTER TABLE archive_ventes ADD COLUMN mode_paiement TEXT DEFAULT 'Espèces'")
-                print("✅ Colonne 'mode_paiement' ajoutée à archive_ventes")
+                c.execute("ALTER TABLE archive_ventes ADD COLUMN client_id INTEGER")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_archive_ventes_client ON archive_ventes(client_id)")
+                print("✅ Colonne 'client_id' ajoutée à archive_ventes (fiche client)")
         except Exception as e:
-            print(f"⚠️ Erreur ajout colonne mode_paiement à archive_ventes: {e}")
+            print(f"⚠️ Erreur ajout colonne client_id à archive_ventes: {e}")
+
+        # ── VENTE FRACTIONNÉE (ex: 1/2 carton) ──────────────────────
+        # 1) Colonne permettant à l'admin d'autoriser la vente en fraction
+        #    pour un produit donné (cartons, packs...). Désactivée par
+        #    défaut pour les produits vendus uniquement à l'unité.
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='vente_fractionnable'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE produits ADD COLUMN vente_fractionnable INTEGER DEFAULT 0")
+                print("✅ Colonne 'vente_fractionnable' ajoutée à produits")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne vente_fractionnable: {e}")
+
+        # 2) Passage des colonnes de stock/quantité en NUMERIC pour
+        #    pouvoir stocker des demi-cartons, quarts, etc. Les valeurs
+        #    entières existantes (ex: 20) deviennent 20.000 — aucune
+        #    perte de données.
+        colonnes_a_convertir = [
+            ('produits', 'stock'),
+            ('sorties', 'quantite'),
+            ('entrees', 'quantite'),
+            ('pertes', 'quantite'),
+            ('archive_ventes', 'quantite'),
+            ('archive_entrees', 'quantite'),
+            ('archive_pertes', 'quantite'),
+        ]
+        for table, colonne in colonnes_a_convertir:
+            try:
+                c.execute("""SELECT data_type FROM information_schema.columns
+                             WHERE table_name=%s AND column_name=%s""", (table, colonne))
+                row = c.fetchone()
+                if row and row[0] == 'integer':
+                    c.execute(f"ALTER TABLE {table} ALTER COLUMN {colonne} TYPE NUMERIC(10,3)")
+                    print(f"✅ Colonne '{colonne}' de '{table}' convertie en NUMERIC (vente fractionnée)")
+            except Exception as e:
+                print(f"⚠️ Erreur conversion {table}.{colonne} en NUMERIC: {e}")
 
         c.execute('CREATE INDEX IF NOT EXISTS idx_sorties_date ON sorties(date_sortie)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_entrees_date ON entrees(date_entree)')
@@ -545,14 +604,18 @@ def archiver_hebdomadaire():
         now_s = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         cm.execute('''SELECT s.id,s.produit_id,s.quantite,s.prix_unitaire,s.total,
-                             s.date_sortie,s.client,s.employe_id,p.nom,u.nom,s.groupe_vente,s.mode_paiement
+                             s.date_sortie,s.client,s.employe_id,p.nom,u.nom,s.groupe_vente,s.client_id
                       FROM sorties s JOIN produits p ON s.produit_id=p.id
                       JOIN users u ON s.employe_id=u.id
                       WHERE DATE(s.date_sortie)>=%s AND DATE(s.date_sortie)<=%s''',
                    (debut.strftime('%Y-%m-%d'), fin.strftime('%Y-%m-%d')))
         ventes = cm.fetchall()
         for v in ventes:
-            cm.execute('''INSERT INTO archive_ventes VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+            cm.execute('''INSERT INTO archive_ventes
+                           (id, produit_id, quantite, prix_unitaire, total, date_vente,
+                            employe_id, client, archive_date, semaine, annee,
+                            produit_nom, employe_nom, groupe_vente, client_id)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
                        (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9],v[10],v[11]))
             cm.execute("DELETE FROM sorties WHERE id=%s",(v[0],))
 
@@ -794,7 +857,6 @@ def login():
                     return redirect('/login')
                 
                 login_reset(ip)
-                session.permanent = True
                 session.update({
                     'user_id': user[0],
                     'role': user[4],
@@ -1220,10 +1282,7 @@ def produits_list():
                                       COALESCE(c.icone, '') as categorie_icone,
                                       p.categorie_id,
                                       p.valeur_unite,
-                                      COALESCE(p.vendu_par_carton, 0),
-                                      p.unites_par_carton,
-                                      p.prix_carton,
-                                      COALESCE(p.type_conditionnement, 'carton')
+                                      COALESCE(p.vente_fractionnable, 0) as vente_fractionnable
                                FROM produits p 
                                LEFT JOIN unites_mesure u ON p.unite_id = u.id 
                                LEFT JOIN categories_produits c ON p.categorie_id = c.id
@@ -1244,8 +1303,9 @@ def ajouter_produit():
             return redirect('/login')
         nom = request.form.get('nom', '')
         prix = int(float(request.form.get('prix', 0)))
-        stock = int(request.form.get('stock', 0))
+        stock = round(float(request.form.get('stock', 0) or 0), 3)
         smin = int(request.form.get('stock_min', 5))
+        vente_fractionnable = 1 if request.form.get('vente_fractionnable') else 0
         unite_id = request.form.get('unite_id')
         if not unite_id or unite_id == '0':
             unite_id = None
@@ -1258,27 +1318,8 @@ def ajouter_produit():
             categorie_id = int(categorie_id)
         valeur_unite = request.form.get('valeur_unite', '').strip()
         valeur_unite = float(valeur_unite) if valeur_unite else None
-        upc = request.form.get('unites_par_carton', '').strip()
-        vendu_par_carton = 0
-        unites_par_carton = None
-        if upc:
-            try:
-                unites_par_carton = int(upc)
-                if unites_par_carton > 1:
-                    vendu_par_carton = 1
-            except ValueError:
-                unites_par_carton = None
-        pc = request.form.get('prix_carton', '').strip()
-        prix_carton = None
-        if pc:
-            try:
-                prix_carton = int(float(pc))
-            except ValueError:
-                prix_carton = None
-        type_conditionnement = request.form.get('type_conditionnement', '').strip() or 'carton'
-        ok = exe("""INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite,
-                    vendu_par_carton, unites_par_carton, prix_carton, type_conditionnement) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vendu_par_carton, unites_par_carton, prix_carton, type_conditionnement))
+        ok = exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable) VALUES (?,?,?,?,?,?,?,?)",
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable))
         if ok:
             flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
             envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
@@ -1294,10 +1335,19 @@ def modifier_produit(id):
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
+
+        # ── Confirmation par mot de passe avant toute modification ──
+        admin_password = request.form.get('admin_password', '')
+        r = q1("SELECT password_hash FROM users WHERE id=?", (session.get('user_id'),))
+        if not r or not verify_password(admin_password, r[0], user_id=session.get('user_id')):
+            flash('❌ Mot de passe incorrect — modification annulée')
+            return redirect('/admin/produits')
+
         nom = request.form.get('nom', '')
         prix = int(float(request.form.get('prix', 0)))
-        stock = int(request.form.get('stock', 0))
+        stock = round(float(request.form.get('stock', 0) or 0), 3)
         smin = int(request.form.get('stock_min', 5))
+        vente_fractionnable = 1 if request.form.get('vente_fractionnable') else 0
         unite_id = request.form.get('unite_id')
         if not unite_id or unite_id == '0':
             unite_id = None
@@ -1310,24 +1360,8 @@ def modifier_produit(id):
             categorie_id = int(categorie_id)
         valeur_unite = request.form.get('valeur_unite', '').strip()
         valeur_unite = float(valeur_unite) if valeur_unite else None
-        upc = request.form.get('unites_par_carton', '').strip()
-        unites_par_carton = None
-        if upc:
-            try:
-                unites_par_carton = int(upc)
-            except ValueError:
-                unites_par_carton = None
-        pc = request.form.get('prix_carton', '').strip()
-        prix_carton = None
-        if pc:
-            try:
-                prix_carton = int(float(pc))
-            except ValueError:
-                prix_carton = None
-        type_conditionnement = request.form.get('type_conditionnement', '').strip() or 'carton'
-        ok = exe("""UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?,
-                    valeur_unite=?, unites_par_carton=?, prix_carton=?, type_conditionnement=? WHERE id=?""",
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, unites_par_carton, prix_carton, type_conditionnement, id))
+        ok = exe("UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?, valeur_unite=?, vente_fractionnable=? WHERE id=?", 
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable, id))
         if ok:
             flash(f'✅ Produit "{nom}" modifié')
         else:
@@ -1335,64 +1369,6 @@ def modifier_produit(id):
     except Exception as e:
         print(f"❌ Erreur modifier_produit: {e}")
         flash('❌ Erreur lors de la modification')
-    return redirect('/admin/produits')
-
-@app.route('/admin/produits/convertir_carton/<int:id>')
-def convertir_carton_form(id):
-    """Affiche un aperçu avant/après avant de convertir un produit compté en
-    cartons vers un suivi de stock en unités individuelles (vente au détail)."""
-    try:
-        if session.get('role') != 'admin':
-            return redirect('/login')
-        p = q1("SELECT id, nom, prix, stock, vendu_par_carton, unites_par_carton FROM produits WHERE id=?", (id,))
-        if not p:
-            flash('❌ Produit introuvable')
-            return redirect('/admin/produits')
-        if p[4] == 1:
-            flash(f'ℹ️ "{p[1]}" est déjà en vente au détail (unités individuelles)')
-            return redirect('/admin/produits')
-        return render_template('convertir_carton.html', produit=p)
-    except Exception as e:
-        print(f"❌ Erreur convertir_carton_form: {e}")
-        flash('❌ Erreur lors du chargement de la conversion')
-        return redirect('/admin/produits')
-
-@app.route('/admin/produits/convertir_carton/<int:id>', methods=['POST'])
-def convertir_carton_appliquer(id):
-    """Applique la conversion : stock (cartons) -> stock (unités), prix (carton) -> prix (unité).
-    Action irréversible d'un simple clic ; nécessite une confirmation explicite du formulaire."""
-    try:
-        if session.get('role') != 'admin':
-            return redirect('/login')
-        if request.form.get('confirmation') != 'CONVERTIR':
-            flash('❌ Conversion annulée : confirmation non saisie correctement')
-            return redirect(f'/admin/produits/convertir_carton/{id}')
-
-        p = q1("SELECT id, nom, prix, stock, vendu_par_carton FROM produits WHERE id=?", (id,))
-        if not p:
-            flash('❌ Produit introuvable')
-            return redirect('/admin/produits')
-        if p[4] == 1:
-            flash(f'ℹ️ "{p[1]}" est déjà en vente au détail')
-            return redirect('/admin/produits')
-
-        unites_par_carton = int(request.form.get('unites_par_carton', 0))
-        if unites_par_carton < 2:
-            flash('❌ Le nombre d\'unités par carton doit être d\'au moins 2')
-            return redirect(f'/admin/produits/convertir_carton/{id}')
-
-        nom, prix_carton, stock_cartons = p[1], p[2], p[3]
-        nouveau_stock = stock_cartons * unites_par_carton
-        nouveau_prix = round(prix_carton / unites_par_carton)
-
-        exe("""UPDATE produits SET stock=?, prix=?, vendu_par_carton=1, unites_par_carton=? WHERE id=?""",
-            (nouveau_stock, nouveau_prix, unites_par_carton, id))
-
-        flash(f'✅ "{nom}" converti : {stock_cartons} carton(s) → {nouveau_stock} unités, '
-              f'prix unitaire {nouveau_prix} FCFA (était {prix_carton} FCFA/carton)')
-    except Exception as e:
-        print(f"❌ Erreur convertir_carton_appliquer: {e}")
-        flash('❌ Erreur lors de la conversion')
     return redirect('/admin/produits')
 
 @app.route('/admin/produits/supprimer/<int:id>')
@@ -1408,9 +1384,15 @@ def supprimer_produit(id):
             pertes = q1("SELECT COUNT(*) FROM pertes WHERE produit_id=?", (id,))
             a_des_mouvements = (ventes and ventes[0] > 0) or (entrees and entrees[0] > 0) or (pertes and pertes[0] > 0)
             if a_des_mouvements and not force:
-                flash(f'❌ "{p[0]}" a des mouvements (ventes/entrées/pertes). Utilise la sélection multiple avec "Forcer" pour le supprimer quand même.')
+                flash(f'❌ "{p[0]}" a des mouvements (ventes/entrées/pertes). Utilise la sélection multiple avec "🚨 Forcer" (mot de passe requis) pour le supprimer quand même.')
                 return redirect('/admin/produits')
             if a_des_mouvements and force:
+                # Suppression forcée : nécessite le mot de passe admin car c'est
+                # irréversible et efface aussi l'historique (ventes/entrées/pertes).
+                r = q1("SELECT password_hash FROM users WHERE id=?", (session.get('user_id'),))
+                if not r or not verify_password(request.args.get('admin_password', ''), r[0], user_id=session.get('user_id')):
+                    flash('❌ Mot de passe incorrect — suppression forcée annulée')
+                    return redirect('/admin/produits')
                 exe("DELETE FROM sorties WHERE produit_id=?", (id,))
                 exe("DELETE FROM entrees WHERE produit_id=?", (id,))
                 exe("DELETE FROM pertes WHERE produit_id=?", (id,))
@@ -1434,6 +1416,14 @@ def supprimer_produits_multiple():
         if not ids:
             flash('⚠️ Aucun produit sélectionné')
             return redirect('/admin/produits')
+
+        if force:
+            # Suppression forcée : mot de passe admin obligatoire, vérifié une
+            # seule fois pour tout le lot. Si incorrect, on n'efface RIEN.
+            r = q1("SELECT password_hash FROM users WHERE id=?", (session.get('user_id'),))
+            if not r or not verify_password(request.form.get('admin_password', ''), r[0], user_id=session.get('user_id')):
+                flash('❌ Mot de passe incorrect — suppression forcée annulée (rien n\'a été supprimé)')
+                return redirect('/admin/produits')
 
         supprimes = []
         bloques = []
@@ -1485,7 +1475,7 @@ def entrees_list():
         else:
             entrees = qall('''SELECT e.id,p.nom,e.quantite,e.prix_unitaire,e.total,e.date_entree,e.fournisseur
                 FROM entrees e JOIN produits p ON e.produit_id=p.id ORDER BY e.date_entree DESC LIMIT 30''')
-            produits = qall("SELECT id,nom,stock FROM produits ORDER BY nom")
+            produits = qall("SELECT id,nom,stock,COALESCE(vente_fractionnable,0) FROM produits ORDER BY nom")
             set_cached(cache_key, (entrees, produits))
         return render_template('entrees.html', entrees=entrees, produits=produits)
     except Exception as e:
@@ -1499,63 +1489,59 @@ def entrees_list():
 # /api/sync (actions mises en file d'attente pendant une coupure réseau)
 # ══════════════════════════════════════════════════════════════
 
-ALPHABET_RECU = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # sans 0/O ni 1/I/L, pour éviter les confusions à la lecture
+def trouver_ou_creer_client(nom, telephone):
+    """Retrouve un client par son numéro de téléphone (identifiant unique),
+    le crée s'il n'existe pas encore, et met à jour son nom si besoin.
+    Opération atomique (upsert) pour éviter les doublons en cas de ventes
+    simultanées sur le même numéro. Retourne l'id du client, ou None si
+    aucun téléphone n'est fourni."""
+    telephone = (telephone or '').strip()
+    if not telephone:
+        return None
+    nom = (nom or '').strip() or 'Client'
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    client_id = exe('''INSERT INTO clients (nom, telephone, date_creation) VALUES (?,?,?)
+                        ON CONFLICT (telephone) DO UPDATE SET
+                            nom = CASE WHEN EXCLUDED.nom <> 'Client' THEN EXCLUDED.nom ELSE clients.nom END
+                        RETURNING id''',
+                    (nom, telephone, now), returning=True)
+    return client_id if client_id else None
 
-def _generer_numero_recu():
-    """Génère un numéro de reçu court et lisible du type HITNA-7X9K2M,
-    en évitant les collisions avec un reçu déjà existant (actif ou archivé)."""
-    for _ in range(10):
-        code = ''.join(random.choice(ALPHABET_RECU) for _ in range(6))
-        numero = f'HITNA-{code}'
-        existe = q1("SELECT 1 FROM sorties WHERE groupe_vente = ? LIMIT 1", (numero,)) \
-            or q1("SELECT 1 FROM archive_ventes WHERE groupe_vente = ? LIMIT 1", (numero,))
-        if not existe:
-            return numero
-    # Filet de sécurité improbable : on retombe sur un identifiant garanti unique
-    return f'HITNA-{uuid.uuid4().hex[:6].upper()}'
-
-
-def _traiter_vente_cart(cart, client, employe_id, mode_paiement=None):
+def _traiter_vente_cart(cart, client, employe_id, telephone=None):
     """cart: liste de {produit_id, quantite}. Retourne (groupe_vente, lignes_ok, erreurs)."""
-    groupe_vente = _generer_numero_recu()
-    mode_paiement = mode_paiement or 'Espèces'
+    groupe_vente = uuid.uuid4().hex[:12]
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     lignes_ok = []
     erreurs = []
+    client_id = trouver_ou_creer_client(client, telephone)
     for item in cart:
         try:
             pid = int(item.get('produit_id', 0))
-            qty = int(item.get('quantite', 0))
+            qty = round(float(item.get('quantite', 0)), 3)
         except (TypeError, ValueError, AttributeError):
             continue
         if pid <= 0 or qty <= 0:
             continue
-        p = q1("SELECT nom, prix, stock, prix_carton, unites_par_carton FROM produits WHERE id=?", (pid,))
+        p = q1("SELECT nom, prix, stock, vente_fractionnable FROM produits WHERE id=?", (pid,))
         if not p:
             erreurs.append(f'Produit #{pid} introuvable')
             continue
-        nom, prix_unitaire, stock, prix_carton, unites_par_carton = p
-        if qty > stock:
-            erreurs.append(f'Stock insuffisant pour "{nom}" ({stock} restant(s))')
+        if not p[3] and qty != int(qty):
+            erreurs.append(f'"{p[0]}" ne peut être vendu qu\'en quantité entière')
             continue
-        # Prix carton appliqué uniquement si la quantité vendue correspond EXACTEMENT
-        # au nombre d'unités par carton défini pour ce produit — jamais deviné côté
-        # client, toujours vérifié ici à partir des données réelles en base.
-        if prix_carton and unites_par_carton and qty == unites_par_carton:
-            total = prix_carton
-            prix_unitaire_ligne = round(prix_carton / qty)
-        else:
-            total = prix_unitaire * qty
-            prix_unitaire_ligne = prix_unitaire
+        if qty > float(p[2]):
+            erreurs.append(f'Stock insuffisant pour "{p[0]}" ({format_qte(p[2])} restant(s))')
+            continue
+        total = round(p[1] * qty)
         insert_ok = exe("""INSERT INTO sorties
-            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, mode_paiement)
+            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id)
             VALUES (?,?,?,?,?,?,?,?,?)""",
-            (pid, qty, prix_unitaire_ligne, total, now, client, employe_id, groupe_vente, mode_paiement))
+            (pid, qty, p[1], total, now, client, employe_id, groupe_vente, client_id))
         if not insert_ok:
-            erreurs.append(f'Échec d\'enregistrement pour "{nom}" (erreur serveur)')
+            erreurs.append(f'Échec d\'enregistrement pour "{p[0]}" (erreur serveur)')
             continue
         exe("UPDATE produits SET stock = stock - ? WHERE id = ?", (qty, pid))
-        lignes_ok.append(f'{qty} x {nom}')
+        lignes_ok.append(f'{format_qte(qty)} x {p[0]}')
     if lignes_ok:
         verifier_alertes_stock()
     return groupe_vente, lignes_ok, erreurs
@@ -1564,15 +1550,18 @@ def _traiter_vente_cart(cart, client, employe_id, mode_paiement=None):
 def _traiter_entree(pid, qty, pu, fournisseur, employe_id):
     """Retourne (ok: bool, message: str)."""
     try:
-        pid, qty, pu = int(pid), int(qty), int(pu)
+        pid, pu = int(pid), int(pu)
+        qty = round(float(qty), 3)
     except (TypeError, ValueError):
         return False, 'Données invalides'
     if pid <= 0 or qty <= 0 or pu <= 0:
         return False, 'Données invalides'
-    p = q1("SELECT nom FROM produits WHERE id=?", (pid,))
+    p = q1("SELECT nom, vente_fractionnable FROM produits WHERE id=?", (pid,))
     if not p:
         return False, f'Produit #{pid} introuvable'
-    total = qty * pu
+    if not p[1] and qty != int(qty):
+        return False, f'"{p[0]}" ne peut être reçu qu\'en quantité entière'
+    total = round(qty * pu)
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     insert_ok = exe("INSERT INTO entrees (produit_id,quantite,prix_unitaire,total,date_entree,fournisseur,employe_id) VALUES (?,?,?,?,?,?,?)",
         (pid, qty, pu, total, now, fournisseur or '', employe_id))
@@ -1580,23 +1569,26 @@ def _traiter_entree(pid, qty, pu, fournisseur, employe_id):
         return False, f'❌ Échec d\'enregistrement de l\'entrée pour "{p[0]}" (erreur serveur)'
     exe("UPDATE produits SET stock=stock+? WHERE id=?", (qty, pid))
     verifier_alertes_stock()
-    return True, f'✅ Entrée : +{qty} {p[0]}'
+    return True, f'✅ Entrée : +{format_qte(qty)} {p[0]}'
 
 
 def _traiter_perte(pid, qty, motif, employe_id):
     """Retourne (ok: bool, message: str)."""
     try:
-        pid, qty = int(pid), int(qty)
+        pid = int(pid)
+        qty = round(float(qty), 3)
     except (TypeError, ValueError):
         return False, 'Données invalides'
     if pid <= 0 or qty <= 0:
         return False, 'Données invalides'
-    p = q1("SELECT nom,prix,stock FROM produits WHERE id=?", (pid,))
+    p = q1("SELECT nom,prix,stock,vente_fractionnable FROM produits WHERE id=?", (pid,))
     if not p:
         return False, f'Produit #{pid} introuvable'
-    if qty > p[2]:
-        return False, f'Stock insuffisant ! {p[2]} unités de {p[0]}'
-    total = qty * p[1]
+    if not p[3] and qty != int(qty):
+        return False, f'"{p[0]}" ne peut être enregistré en perte qu\'en quantité entière'
+    if qty > float(p[2]):
+        return False, f'Stock insuffisant ! {format_qte(p[2])} unités de {p[0]}'
+    total = round(qty * p[1])
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     insert_ok = exe("INSERT INTO pertes (produit_id,quantite,prix_unitaire,total,motif,date_perte,employe_id) VALUES (?,?,?,?,?,?,?)",
         (pid, qty, p[1], total, motif or 'Non précisé', now, employe_id))
@@ -1604,8 +1596,8 @@ def _traiter_perte(pid, qty, motif, employe_id):
         return False, f'❌ Échec d\'enregistrement de la perte pour "{p[0]}" (erreur serveur)'
     exe("UPDATE produits SET stock=GREATEST(0,stock-?) WHERE id=?", (qty, pid))
     envoyer_notification_a_tous('perte', '⚠️ Perte signalée',
-        f'{qty} unités de "{p[0]}" perdues ({total} FCFA)', '/admin/pertes')
-    return True, f'⚠️ Perte : {qty}×{p[0]} = {total} FCFA'
+        f'{format_qte(qty)} unités de "{p[0]}" perdues ({total} FCFA)', '/admin/pertes')
+    return True, f'⚠️ Perte : {format_qte(qty)}×{p[0]} = {total} FCFA'
 
 
 @app.route('/admin/entrees/ajouter', methods=['POST'])
@@ -1635,7 +1627,7 @@ def admin_ventes():
         if request.method == 'POST':
             cart_json = request.form.get('cart_json', '')
             client = request.form.get('client', '').strip()
-            mode_paiement = request.form.get('mode_paiement', '').strip() or 'Espèces'
+            telephone = request.form.get('telephone', '').strip()
             try:
                 cart = json.loads(cart_json) if cart_json else []
             except (ValueError, TypeError):
@@ -1645,7 +1637,7 @@ def admin_ventes():
                 flash('❌ Le panier est vide')
                 return redirect('/admin/ventes')
 
-            groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), mode_paiement)
+            groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), telephone)
 
             for e in erreurs:
                 flash(f'⚠️ {e}')
@@ -1665,18 +1657,13 @@ def admin_ventes():
                                        COALESCE(u.symbole,'') as unite_symbole,
                                        COALESCE(u.nom,'') as unite_nom,
                                        p.valeur_unite,
-                                       COALESCE(p.vendu_par_carton, 0),
-                                       p.unites_par_carton,
-                                       p.prix_carton,
-                                       COALESCE(p.type_conditionnement, 'carton')
+                                       COALESCE(p.vente_fractionnable, 0) as vente_fractionnable
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
-            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente,
-                p.unites_par_carton, p.type_conditionnement, s.mode_paiement
+            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
                 ORDER BY s.date_sortie DESC LIMIT 20''')
-            historique = [list(h[:8]) + [_libelle_mode_achat(h[2], h[8], h[9]), h[10] or 'Espèces'] for h in historique]
             stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
                 FROM sorties s JOIN users u ON s.employe_id=u.id
                 WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
@@ -1701,7 +1688,7 @@ def vente():
             try:
                 cart_json = request.form.get('cart_json', '')
                 client = request.form.get('client', '').strip()
-                mode_paiement = request.form.get('mode_paiement', '').strip() or 'Espèces'
+                telephone = request.form.get('telephone', '').strip()
                 try:
                     cart = json.loads(cart_json) if cart_json else []
                 except (ValueError, TypeError):
@@ -1711,7 +1698,7 @@ def vente():
                     flash('❌ Le panier est vide')
                     return redirect('/vente')
 
-                groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), mode_paiement)
+                groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), telephone)
 
                 for e in erreurs:
                     flash(f'⚠️ {e}')
@@ -1736,21 +1723,16 @@ def vente():
                                        COALESCE(u.symbole,'') as unite_symbole,
                                        COALESCE(u.nom,'') as unite_nom,
                                        p.valeur_unite,
-                                       COALESCE(p.vendu_par_carton, 0),
-                                       p.unites_par_carton,
-                                       p.prix_carton,
-                                       COALESCE(p.type_conditionnement, 'carton')
+                                       COALESCE(p.vente_fractionnable, 0) as vente_fractionnable
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
-            historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente,
-                p.unites_par_carton, p.type_conditionnement, s.mode_paiement
+            historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente
                 FROM sorties s 
                 JOIN produits p ON s.produit_id = p.id 
                 JOIN users u ON s.employe_id = u.id
                 WHERE DATE(s.date_sortie) = CURRENT_DATE 
                 ORDER BY s.date_sortie DESC LIMIT 20''')
-            historique = [list(h[:9]) + [_libelle_mode_achat(h[2], h[9], h[10]), h[11] or 'Espèces'] for h in historique]
             stats_vendeurs = qall('''SELECT u.role, COUNT(s.id), COALESCE(SUM(s.total), 0)
                 FROM sorties s 
                 JOIN users u ON s.employe_id = u.id
@@ -1771,43 +1753,11 @@ def vente():
         flash(f'❌ Erreur: {str(e)}')
         return redirect('/login')
 
-def _libelle_mode_achat(qty, unites_par_carton, type_conditionnement):
-    """Déduit automatiquement, à partir de la seule quantité vendue, ce qu'elle représente :
-    une fraction usuelle (½, ⅓, ¼), un ou plusieurs conditionnements complets, ou un nombre
-    d'unités détachées. Rien à saisir en plus par l'employé — tout est calculé ici."""
-    if not unites_par_carton or unites_par_carton < 2 or not qty:
-        return None
-    n = unites_par_carton
-    label = type_conditionnement or 'carton'
-
-    if qty == n:
-        return f'1 {label} complet'
-
-    if qty < n:
-        if qty == n // 2:
-            return f'½ {label}'
-        if qty == n // 3:
-            return f'⅓ {label}'
-        if qty == n // 4:
-            return f'¼ {label}'
-        if qty == 1:
-            return f"à l'unité (détail {label})"
-        return f'{qty} unités détachées (détail {label})'
-
-    # qty > n : un ou plusieurs conditionnements complets, avec éventuellement un reste
-    plein, reste = divmod(qty, n)
-    if reste == 0:
-        return f'{plein} × {label} complet' if plein > 1 else f'1 {label} complet'
-    return f'{plein} × {label} complet + {reste} unité(s) détachée(s)'
-
-
 def _recuperer_lignes_recu(groupe_vente):
-    """Retourne (lignes, archivee, mode_paiement) pour un groupe_vente, en cherchant d'abord dans
-    sorties (ventes récentes) puis dans archive_ventes (ventes archivées).
-    Chaque ligne se termine par un libellé de mode d'achat (ex: '½ carton') ou None."""
+    """Retourne (lignes, archivee) pour un groupe_vente, en cherchant d'abord dans
+    sorties (ventes récentes) puis dans archive_ventes (ventes archivées)."""
     lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                             s.date_sortie, s.client, u.nom,
-                             p.unites_par_carton, p.type_conditionnement, s.mode_paiement
+                             s.date_sortie, s.client, u.nom
                       FROM sorties s
                       JOIN produits p ON s.produit_id = p.id
                       JOIN users u ON s.employe_id = u.id
@@ -1818,8 +1768,7 @@ def _recuperer_lignes_recu(groupe_vente):
         # juste après l'enregistrement de la vente, on retente une fois.
         sleep(0.4)
         lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                                 s.date_sortie, s.client, u.nom,
-                                 p.unites_par_carton, p.type_conditionnement, s.mode_paiement
+                                 s.date_sortie, s.client, u.nom
                           FROM sorties s
                           JOIN produits p ON s.produit_id = p.id
                           JOIN users u ON s.employe_id = u.id
@@ -1829,27 +1778,15 @@ def _recuperer_lignes_recu(groupe_vente):
     if not lignes:
         # La vente n'est plus dans "sorties" : elle a peut-être été archivée
         # (archivage hebdomadaire). On cherche alors dans archive_ventes.
-        lignes_archive = qall('''SELECT a.produit_id, a.produit_nom, a.quantite, a.prix_unitaire, a.total,
-                                         a.date_vente, a.client, a.employe_nom,
-                                         p.unites_par_carton, p.type_conditionnement, a.mode_paiement
-                                  FROM archive_ventes a
-                                  LEFT JOIN produits p ON a.produit_id = p.id
-                                  WHERE a.groupe_vente = ?
-                                  ORDER BY a.id''', (groupe_vente,))
+        lignes_archive = qall('''SELECT produit_id, produit_nom, quantite, prix_unitaire, total,
+                                         date_vente, client, employe_nom
+                                  FROM archive_ventes
+                                  WHERE groupe_vente = ?
+                                  ORDER BY id''', (groupe_vente,))
         if lignes_archive:
             lignes = lignes_archive
             archivee = True
-    # Remplace les colonnes brutes de conditionnement par un libellé unique du mode d'achat
-    lignes_finales = []
-    mode_paiement = 'Espèces'
-    for l in lignes:
-        qty = l[2]
-        unites_par_carton = l[8]
-        type_conditionnement = l[9]
-        mode_paiement = l[10] or 'Espèces'
-        badge = _libelle_mode_achat(qty, unites_par_carton, type_conditionnement)
-        lignes_finales.append(list(l[:8]) + [badge])
-    return lignes_finales, archivee, mode_paiement
+    return lignes, archivee
 
 
 @app.route('/vente/recu/<groupe_vente>')
@@ -1858,7 +1795,7 @@ def recu_vente(groupe_vente):
     try:
         if 'user_id' not in session:
             return redirect('/login')
-        lignes, archivee, mode_paiement = _recuperer_lignes_recu(groupe_vente)
+        lignes, archivee = _recuperer_lignes_recu(groupe_vente)
         if not lignes:
             flash('❌ Reçu introuvable (vente trop ancienne ou identifiant invalide)')
             return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
@@ -1870,7 +1807,6 @@ def recu_vente(groupe_vente):
             client=lignes[0][6],
             vendeur=lignes[0][7],
             date_vente=lignes[0][5],
-            mode_paiement=mode_paiement,
             archivee=archivee)
     except Exception as e:
         print(f"❌ Erreur recu_vente: {e}")
@@ -1885,7 +1821,7 @@ def export_pdf_recu(groupe_vente):
     try:
         if 'user_id' not in session:
             return redirect('/login')
-        lignes, archivee, mode_paiement = _recuperer_lignes_recu(groupe_vente)
+        lignes, archivee = _recuperer_lignes_recu(groupe_vente)
         if not lignes:
             flash('❌ Reçu introuvable')
             return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
@@ -1897,7 +1833,7 @@ def export_pdf_recu(groupe_vente):
 
         # Format ticket compact (largeur réduite, hauteur adaptée au contenu)
         largeur = 226  # ~8cm
-        hauteur = 342 + len(lignes) * 26
+        hauteur = 330 + len(lignes) * 16
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=(largeur, hauteur))
 
@@ -1941,8 +1877,6 @@ def export_pdf_recu(groupe_vente):
         c.drawString(10, y, f"Client: {client}")
         y -= 12
         c.drawString(10, y, f"N° reçu: {groupe_vente}")
-        y -= 12
-        c.drawString(10, y, f"Paiement: {mode_paiement}")
         if archivee:
             y -= 12
             c.setFillColorRGB(0.6, 0.4, 0)
@@ -1964,16 +1898,7 @@ def export_pdf_recu(groupe_vente):
             nom = l[1] if len(l[1]) <= 22 else l[1][:20] + '…'
             c.drawString(10, y, f"{l[2]} x {nom}")
             c.drawRightString(largeur - 10, y, format_prix(l[4]))
-            y -= 12
-            if l[8]:
-                c.setFont("Helvetica-Oblique", 6.5)
-                c.setFillColorRGB(0.18, 0.5, 0.22)
-                c.drawString(14, y, l[8])
-                c.setFillColorRGB(0.2, 0.2, 0.2)
-                c.setFont("Helvetica", 8)
-                y -= 10
-            else:
-                y -= 2
+            y -= 14
 
         c.setDash(2, 2)
         c.line(10, y, largeur - 10, y)
@@ -2059,7 +1984,7 @@ def pertes_list():
         pertes = qall('''SELECT p.id,pr.nom,p.quantite,p.prix_unitaire,p.total,p.motif,p.date_perte,u.nom
             FROM pertes p JOIN produits pr ON p.produit_id=pr.id JOIN users u ON p.employe_id=u.id
             ORDER BY p.date_perte DESC LIMIT 100''')
-        produits = qall("SELECT id,nom,prix,stock FROM produits ORDER BY nom")
+        produits = qall("SELECT id,nom,prix,stock,COALESCE(vente_fractionnable,0) FROM produits ORDER BY nom")
         s_auj = q1("SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE DATE(date_perte)=CURRENT_DATE")
         s_auj = s_auj if s_auj else (0,0,0)
         s_mois = q1("SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE date_perte::timestamp >= NOW() - INTERVAL '30 days'")
@@ -2427,6 +2352,324 @@ def supprimer_fournisseur(id):
     return redirect('/admin/fournisseurs')
 
 # ══════════════════════════════════════════════════════════════
+# COMMANDES FOURNISSEURS — commandé / livraison prévue / livré
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/commandes-fournisseurs')
+def commandes_fournisseurs_list():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        filtre_statut = request.args.get('statut', '')
+
+        sql = '''SELECT cf.id, f.nom, p.nom, cf.quantite, cf.prix_unitaire,
+                         cf.date_commande, cf.date_livraison_prevue, cf.date_livraison_reelle,
+                         cf.statut, cf.notes, cf.fournisseur_id, cf.produit_id
+                  FROM commandes_fournisseurs cf
+                  LEFT JOIN fournisseurs f ON cf.fournisseur_id = f.id
+                  LEFT JOIN produits p ON cf.produit_id = p.id'''
+        params = ()
+        if filtre_statut:
+            sql += " WHERE cf.statut = ?"
+            params = (filtre_statut,)
+        sql += " ORDER BY (cf.statut = 'commandé') DESC, cf.date_livraison_prevue ASC NULLS LAST, cf.id DESC"
+
+        commandes = qall(sql, params)
+        fournisseurs = qall("SELECT id, nom FROM fournisseurs ORDER BY nom")
+        produits = qall("SELECT id, nom FROM produits ORDER BY nom")
+        nb_en_attente = q1("SELECT COUNT(*) FROM commandes_fournisseurs WHERE statut='commandé'")
+        nb_en_attente = nb_en_attente[0] if nb_en_attente else 0
+        nb_en_retard = q1('''SELECT COUNT(*) FROM commandes_fournisseurs
+                              WHERE statut='commandé' AND date_livraison_prevue IS NOT NULL
+                              AND DATE(date_livraison_prevue) < CURRENT_DATE''')
+        nb_en_retard = nb_en_retard[0] if nb_en_retard else 0
+
+        return render_template('admin_commandes_fournisseurs.html', commandes=commandes,
+            fournisseurs=fournisseurs, produits=produits, filtre_statut=filtre_statut,
+            nb_en_attente=nb_en_attente, nb_en_retard=nb_en_retard,
+            today_iso=datetime.now().strftime('%Y-%m-%d'))
+    except Exception as e:
+        print(f"❌ Erreur commandes_fournisseurs_list: {e}")
+        flash('Erreur lors du chargement des commandes fournisseurs')
+        return redirect('/dashboard')
+
+@app.route('/admin/commandes-fournisseurs/ajouter', methods=['POST'])
+def ajouter_commande_fournisseur():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        fournisseur_id = int(request.form.get('fournisseur_id', 0) or 0)
+        produit_id = int(request.form.get('produit_id', 0) or 0)
+        quantite = round(float(request.form.get('quantite', 0) or 0), 3)
+        prix_unitaire = int(float(request.form.get('prix_unitaire', 0) or 0))
+        date_commande = request.form.get('date_commande') or datetime.now().strftime('%Y-%m-%d')
+        date_livraison_prevue = request.form.get('date_livraison_prevue') or None
+        notes = request.form.get('notes', '').strip()
+
+        if not fournisseur_id or not produit_id or quantite <= 0:
+            flash('❌ Fournisseur, produit et quantité sont obligatoires')
+            return redirect('/admin/commandes-fournisseurs')
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe('''INSERT INTO commandes_fournisseurs
+               (fournisseur_id, produit_id, quantite, prix_unitaire, date_commande,
+                date_livraison_prevue, statut, notes, employe_id, date_creation)
+               VALUES (?,?,?,?,?,?,'commandé',?,?,?)''',
+            (fournisseur_id, produit_id, quantite, prix_unitaire, date_commande,
+             date_livraison_prevue, notes, session.get('user_id', 1), now))
+        flash('✅ Commande fournisseur enregistrée')
+    except Exception as e:
+        print(f"❌ Erreur ajouter_commande_fournisseur: {e}")
+        flash('❌ Erreur lors de l\'enregistrement de la commande')
+    return redirect('/admin/commandes-fournisseurs')
+
+@app.route('/admin/commandes-fournisseurs/livrer/<int:id>', methods=['POST'])
+def livrer_commande_fournisseur(id):
+    """Marque une commande comme livrée et ajoute automatiquement la
+    quantité au stock (comme une entrée normale)."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        cmd = q1('''SELECT cf.produit_id, cf.quantite, cf.prix_unitaire, cf.statut, f.nom
+                     FROM commandes_fournisseurs cf LEFT JOIN fournisseurs f ON cf.fournisseur_id=f.id
+                     WHERE cf.id=?''', (id,))
+        if not cmd:
+            flash('❌ Commande introuvable')
+            return redirect('/admin/commandes-fournisseurs')
+        if cmd[3] == 'livré':
+            flash('⚠️ Cette commande a déjà été marquée comme livrée')
+            return redirect('/admin/commandes-fournisseurs')
+
+        produit_id, quantite, prix_unitaire, _, fournisseur_nom = cmd
+        # Prix ajustable au moment de la livraison (le prix a pu changer depuis la commande)
+        prix_livraison = request.form.get('prix_unitaire', '').strip()
+        prix_final = int(float(prix_livraison)) if prix_livraison else (prix_unitaire or 0)
+        if prix_final <= 0:
+            flash('❌ Un prix d\'achat unitaire est nécessaire pour enregistrer la livraison')
+            return redirect('/admin/commandes-fournisseurs')
+
+        ok, message = _traiter_entree(produit_id, quantite, prix_final, fournisseur_nom, session.get('user_id', 1))
+        if not ok:
+            flash(message)
+            return redirect('/admin/commandes-fournisseurs')
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe('''UPDATE commandes_fournisseurs
+               SET statut='livré', date_livraison_reelle=?, prix_unitaire=?
+               WHERE id=?''', (now, prix_final, id))
+        flash(f'✅ Livraison enregistrée — {message}')
+    except Exception as e:
+        print(f"❌ Erreur livrer_commande_fournisseur: {e}")
+        flash('❌ Erreur lors de l\'enregistrement de la livraison')
+    return redirect('/admin/commandes-fournisseurs')
+
+@app.route('/admin/commandes-fournisseurs/annuler/<int:id>')
+def annuler_commande_fournisseur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        exe("UPDATE commandes_fournisseurs SET statut='annulée' WHERE id=? AND statut='commandé'", (id,))
+        flash('🚫 Commande annulée')
+    except Exception as e:
+        print(f"❌ Erreur annuler_commande_fournisseur: {e}")
+        flash('❌ Erreur lors de l\'annulation')
+    return redirect('/admin/commandes-fournisseurs')
+
+@app.route('/admin/commandes-fournisseurs/supprimer/<int:id>')
+def supprimer_commande_fournisseur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        exe("DELETE FROM commandes_fournisseurs WHERE id=?", (id,))
+        flash('🗑️ Commande supprimée')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_commande_fournisseur: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/commandes-fournisseurs')
+
+# ══════════════════════════════════════════════════════════════
+# CHARGES (loyer, salaires, factures...) — bénéfice net
+# ══════════════════════════════════════════════════════════════
+CATEGORIES_CHARGES = ['Loyer', 'Salaires', 'Facture (eau/électricité/internet)', 'Transport', 'Entretien', 'Impôts/Taxes', 'Autre']
+
+@app.route('/admin/charges')
+def charges_list():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        charges = qall('''SELECT c.id, c.categorie, c.libelle, c.montant, c.date_charge,
+                                  c.recurrente, u.nom
+                           FROM charges c LEFT JOIN users u ON c.employe_id = u.id
+                           ORDER BY c.date_charge DESC, c.id DESC LIMIT 200''')
+
+        stats_mois = q1('''SELECT COUNT(*), COALESCE(SUM(montant),0) FROM charges
+                            WHERE DATE(date_charge) >= DATE_TRUNC('month', CURRENT_DATE)::date''')
+        par_categorie = qall('''SELECT categorie, COALESCE(SUM(montant),0) FROM charges
+                                 WHERE DATE(date_charge) >= DATE_TRUNC('month', CURRENT_DATE)::date
+                                 GROUP BY categorie ORDER BY 2 DESC''')
+
+        # Bénéfice net du mois = (Ventes - Achats de stock) - Charges du mois
+        marge_mois = q1('''SELECT
+                COALESCE((SELECT SUM(total) FROM sorties WHERE DATE(date_sortie) >= DATE_TRUNC('month', CURRENT_DATE)::date),0),
+                COALESCE((SELECT SUM(total) FROM entrees WHERE DATE(date_entree) >= DATE_TRUNC('month', CURRENT_DATE)::date),0)
+            ''')
+        ventes_mois = marge_mois[0] if marge_mois else 0
+        achats_mois = marge_mois[1] if marge_mois else 0
+        charges_mois = stats_mois[1] if stats_mois else 0
+        benefice_net_mois = ventes_mois - achats_mois - charges_mois
+
+        return render_template('admin_charges.html', charges=charges,
+            categories=CATEGORIES_CHARGES, stats_mois=stats_mois, par_categorie=par_categorie,
+            ventes_mois=ventes_mois, achats_mois=achats_mois, charges_mois=charges_mois,
+            benefice_net_mois=benefice_net_mois, today_iso=datetime.now().strftime('%Y-%m-%d'))
+    except Exception as e:
+        print(f"❌ Erreur charges_list: {e}")
+        flash('Erreur lors du chargement des charges')
+        return redirect('/dashboard')
+
+@app.route('/admin/charges/ajouter', methods=['POST'])
+def ajouter_charge():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        categorie = request.form.get('categorie', 'Autre')
+        libelle = request.form.get('libelle', '').strip()
+        montant = int(float(request.form.get('montant', 0) or 0))
+        date_charge = request.form.get('date_charge') or datetime.now().strftime('%Y-%m-%d')
+        recurrente = 1 if request.form.get('recurrente') else 0
+        if montant <= 0:
+            flash('❌ Le montant doit être supérieur à 0')
+            return redirect('/admin/charges')
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe('''INSERT INTO charges (categorie, libelle, montant, date_charge, recurrente, employe_id, date_creation)
+               VALUES (?,?,?,?,?,?,?)''',
+            (categorie, libelle or categorie, montant, date_charge, recurrente, session.get('user_id', 1), now))
+        flash(f'✅ Charge enregistrée : {libelle or categorie} — {montant:,} FCFA'.replace(',', ' '))
+    except Exception as e:
+        print(f"❌ Erreur ajouter_charge: {e}")
+        flash('❌ Erreur lors de l\'ajout de la charge')
+    return redirect('/admin/charges')
+
+@app.route('/admin/charges/supprimer/<int:id>')
+def supprimer_charge(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        c = q1("SELECT libelle FROM charges WHERE id=?", (id,))
+        if c:
+            exe("DELETE FROM charges WHERE id=?", (id,))
+            flash(f'🗑️ Charge "{c[0]}" supprimée')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_charge: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/charges')
+
+# ══════════════════════════════════════════════════════════════
+# CLIENTS — fiche client avec historique d'achats
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/clients')
+def clients_list():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        recherche = request.args.get('q', '').strip()
+
+        sql = '''SELECT c.id, c.nom, c.telephone, c.adresse,
+                        COALESCE(cur.nb,0) + COALESCE(arch.nb,0) as nb_achats,
+                        COALESCE(cur.total,0) + COALESCE(arch.total,0) as total_depense,
+                        GREATEST(cur.dernier, arch.dernier) as dernier_achat
+                 FROM clients c
+                 LEFT JOIN (SELECT client_id, COUNT(*) nb, SUM(total) total, MAX(date_sortie) dernier
+                            FROM sorties WHERE client_id IS NOT NULL GROUP BY client_id) cur ON cur.client_id = c.id
+                 LEFT JOIN (SELECT client_id, COUNT(*) nb, SUM(total) total, MAX(date_vente) dernier
+                            FROM archive_ventes WHERE client_id IS NOT NULL GROUP BY client_id) arch ON arch.client_id = c.id'''
+        params = ()
+        if recherche:
+            sql += " WHERE c.nom ILIKE ? OR c.telephone ILIKE ?"
+            like = f'%{recherche}%'
+            params = (like, like)
+        sql += " ORDER BY total_depense DESC NULLS LAST"
+
+        clients = qall(sql, params)
+        nb_clients = q1("SELECT COUNT(*) FROM clients")
+        nb_clients = nb_clients[0] if nb_clients else 0
+
+        return render_template('admin_clients.html', clients=clients, recherche=recherche, nb_clients=nb_clients)
+    except Exception as e:
+        print(f"❌ Erreur clients_list: {e}")
+        flash('Erreur lors du chargement des clients')
+        return redirect('/dashboard')
+
+@app.route('/admin/clients/<int:id>')
+def fiche_client(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        client = q1("SELECT id, nom, telephone, adresse, date_creation FROM clients WHERE id=?", (id,))
+        if not client:
+            flash('❌ Client introuvable')
+            return redirect('/admin/clients')
+
+        achats = qall('''SELECT s.date_sortie, p.nom, s.quantite, s.total, s.groupe_vente
+                          FROM sorties s JOIN produits p ON s.produit_id=p.id
+                          WHERE s.client_id=?
+                          UNION ALL
+                          SELECT a.date_vente, a.produit_nom, a.quantite, a.total, a.groupe_vente
+                          FROM archive_ventes a
+                          WHERE a.client_id=?
+                          ORDER BY 1 DESC''', (id, id))
+
+        stats = q1('''SELECT COUNT(*), COALESCE(SUM(total),0) FROM (
+                          SELECT total FROM sorties WHERE client_id=?
+                          UNION ALL
+                          SELECT total FROM archive_ventes WHERE client_id=?
+                      ) t''', (id, id))
+        nb_achats = stats[0] if stats else 0
+        total_depense = stats[1] if stats else 0
+        panier_moyen = round(total_depense / nb_achats) if nb_achats else 0
+
+        return render_template('admin_clients_fiche.html', client=client, achats=achats,
+            nb_achats=nb_achats, total_depense=total_depense, panier_moyen=panier_moyen)
+    except Exception as e:
+        print(f"❌ Erreur fiche_client: {e}")
+        flash('Erreur lors du chargement de la fiche client')
+        return redirect('/admin/clients')
+
+@app.route('/admin/clients/modifier/<int:id>', methods=['POST'])
+def modifier_client(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nom = request.form.get('nom', '').strip() or 'Client'
+        telephone = request.form.get('telephone', '').strip()
+        adresse = request.form.get('adresse', '').strip()
+        if not telephone:
+            flash('❌ Le numéro de téléphone est obligatoire')
+            return redirect(f'/admin/clients/{id}')
+        ok = exe("UPDATE clients SET nom=?, telephone=?, adresse=? WHERE id=?", (nom, telephone, adresse, id))
+        if ok:
+            flash(f'✅ Client "{nom}" modifié')
+        else:
+            flash('❌ Ce numéro de téléphone est déjà utilisé par un autre client')
+    except Exception as e:
+        print(f"❌ Erreur modifier_client: {e}")
+        flash('❌ Erreur lors de la modification')
+    return redirect(f'/admin/clients/{id}')
+
+@app.route('/admin/clients/supprimer/<int:id>')
+def supprimer_client(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        c = q1("SELECT nom FROM clients WHERE id=?", (id,))
+        if c:
+            exe("DELETE FROM clients WHERE id=?", (id,))
+            flash(f'🗑️ Client "{c[0]}" supprimé (son historique de ventes reste conservé)')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_client: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/clients')
+
+# ══════════════════════════════════════════════════════════════
 # STATISTIQUES
 # ══════════════════════════════════════════════════════════════
 @app.route('/admin/stats')
@@ -2437,7 +2680,7 @@ def admin_stats():
         cache_key = 'stats_data'
         cached_data = get_cached(cache_key, 120)
         if cached_data:
-            ventes_jour, ventes_mois, top_produits, marge, marge_produits = cached_data
+            ventes_jour, ventes_mois, top_produits, marge, marge_produits, charges_totales = cached_data
         else:
             ventes_jour = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*)
                 FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
@@ -2451,15 +2694,18 @@ def admin_stats():
             marge = q1('''SELECT COALESCE((SELECT SUM(total) FROM sorties),0),
                                  COALESCE((SELECT SUM(total) FROM entrees),0)''')
             marge = marge if marge else (0,0)
+            charges_totales = q1("SELECT COALESCE(SUM(montant),0) FROM charges")
+            charges_totales = charges_totales[0] if charges_totales else 0
             marge_produits = qall('''SELECT p.nom,COALESCE(SUM(s.total),0),COALESCE(SUM(e.total),0),
                 COALESCE(SUM(s.total),0)-COALESCE(SUM(e.total),0)
                 FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
                 LEFT JOIN entrees e ON p.id=e.produit_id GROUP BY p.id,p.nom
                 HAVING COALESCE(SUM(s.total),0)+COALESCE(SUM(e.total),0)>0
                 ORDER BY 4 DESC LIMIT 10''')
-            set_cached(cache_key, (ventes_jour, ventes_mois, top_produits, marge, marge_produits))
+            set_cached(cache_key, (ventes_jour, ventes_mois, top_produits, marge, marge_produits, charges_totales))
         return render_template('admin_stats.html', ventes_jour=ventes_jour, ventes_mois=ventes_mois,
-            top_produits=top_produits, marge_totale=marge, marge_produits=marge_produits)
+            top_produits=top_produits, marge_totale=marge, marge_produits=marge_produits,
+            charges_totales=charges_totales)
     except Exception as e:
         print(f"❌ Erreur admin_stats: {e}")
         flash('Erreur lors du chargement des statistiques')
@@ -2477,7 +2723,6 @@ def admin_recus():
             return redirect('/login')
         date_filtre = request.args.get('date', '').strip()
         client_filtre = request.args.get('client', '').strip()
-        paiement_filtre = request.args.get('paiement', '').strip()
 
         conditions = ["groupe_vente IS NOT NULL"]
         params = []
@@ -2494,33 +2739,26 @@ def admin_recus():
             params.append(f'%{client_filtre}%')
             conditions_arch.append("client ILIKE %s")
             params_arch.append(f'%{client_filtre}%')
-        if paiement_filtre:
-            conditions.append("mode_paiement = %s")
-            params.append(paiement_filtre)
-            conditions_arch.append("mode_paiement = %s")
-            params_arch.append(paiement_filtre)
 
         where_sql = " AND ".join(conditions)
         where_sql_arch = " AND ".join(conditions_arch)
 
         recus = qall(f'''SELECT groupe_vente, client, MIN(date_sortie) as date_v,
-                                 SUM(total) as total_v, COUNT(*) as nb_lignes, false as archivee,
-                                 mode_paiement
+                                 SUM(total) as total_v, COUNT(*) as nb_lignes, false as archivee
                           FROM sorties WHERE {where_sql}
-                          GROUP BY groupe_vente, client, mode_paiement
+                          GROUP BY groupe_vente, client
                           ORDER BY date_v DESC LIMIT 100''', tuple(params))
 
         recus_archives = qall(f'''SELECT groupe_vente, client, MIN(date_vente) as date_v,
-                                          SUM(total) as total_v, COUNT(*) as nb_lignes, true as archivee,
-                                          mode_paiement
+                                          SUM(total) as total_v, COUNT(*) as nb_lignes, true as archivee
                                    FROM archive_ventes WHERE {where_sql_arch}
-                                   GROUP BY groupe_vente, client, mode_paiement
+                                   GROUP BY groupe_vente, client
                                    ORDER BY date_v DESC LIMIT 100''', tuple(params_arch))
 
         tous_recus = sorted(list(recus) + list(recus_archives), key=lambda r: r[2] or '', reverse=True)[:150]
 
         return render_template('admin_recus.html', recus=tous_recus,
-            date_filtre=date_filtre, client_filtre=client_filtre, paiement_filtre=paiement_filtre)
+            date_filtre=date_filtre, client_filtre=client_filtre)
     except Exception as e:
         print(f"❌ Erreur admin_recus: {e}")
         flash('❌ Erreur lors de la recherche de reçus')
@@ -2581,14 +2819,12 @@ def rapport_journalier_jour(jour):
             return redirect('/login')
 
         ventes_jour = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                                      s.date_sortie, s.client, u.nom, s.groupe_vente,
-                                      p.unites_par_carton, p.type_conditionnement, s.mode_paiement
+                                      s.date_sortie, s.client, u.nom, s.groupe_vente
                                FROM sorties s
                                JOIN produits p ON s.produit_id = p.id
                                JOIN users u ON s.employe_id = u.id
                                WHERE DATE(s.date_sortie) = ?
                                ORDER BY s.date_sortie ASC''', (jour,))
-        ventes_jour = [list(v[:9]) + [_libelle_mode_achat(v[2], v[9], v[10]), v[11] or 'Espèces'] for v in ventes_jour]
         entrees_jour = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total,
                                        e.date_entree, e.fournisseur, u.nom
                                 FROM entrees e
@@ -2741,14 +2977,11 @@ def admin_archive_jour(jour):
     if session.get('role') != 'admin':
         return redirect('/login')
     try:
-        ventes_jour = qall('''SELECT a.id,a.produit_id,a.quantite,a.prix_unitaire,a.total,a.date_vente,
-                               a.employe_id,a.client,a.archive_date,a.semaine,a.annee,a.produit_nom,a.employe_nom,a.groupe_vente,
-                               p.unites_par_carton, p.type_conditionnement, a.mode_paiement
-                               FROM archive_ventes a
-                               LEFT JOIN produits p ON a.produit_id = p.id
-                               WHERE a.date_vente LIKE ?
-                               ORDER BY a.date_vente ASC''', (jour + '%',))
-        ventes_jour = [list(v[:14]) + [_libelle_mode_achat(v[2], v[14], v[15]), v[16] or 'Espèces'] for v in ventes_jour]
+        ventes_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,date_vente,
+                               employe_id,client,archive_date,semaine,annee,produit_nom,employe_nom,groupe_vente
+                               FROM archive_ventes
+                               WHERE date_vente LIKE ?
+                               ORDER BY date_vente ASC''', (jour + '%',))
         entrees_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,date_entree,
                                 fournisseur,employe_id,archive_date,semaine,annee,produit_nom,employe_nom
                                 FROM archive_entrees
@@ -3276,12 +3509,13 @@ def api_sync_sorties():
             return jsonify({'error': 'Produit non trouvé'}), 404
         prix_unitaire = produit[0]
         total = data['quantite'] * prix_unitaire
+        client_id = trouver_ou_creer_client(data.get('client', ''), data.get('telephone', ''))
         exe("""INSERT INTO sorties 
-            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, client_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
             (data['produit_id'], data['quantite'], prix_unitaire, total,
              data.get('date_sortie', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
-             data.get('client', ''), data.get('employe_id', 1)))
+             data.get('client', ''), data.get('employe_id', 1), client_id))
         exe("UPDATE produits SET stock = stock - %s WHERE id = %s", (data['quantite'], data['produit_id']))
         verifier_alertes_stock()
         return jsonify({'success': True, 'message': 'Vente synchronisée'})
@@ -3438,74 +3672,6 @@ def reset_password(token):
         return redirect('/login')
 
 # ──────────────────────────────────────────────────────────────
-# RÉAPPROVISIONNEMENT (suggestions basées sur la vitesse de vente)
-# ──────────────────────────────────────────────────────────────
-JOURS_PERIODE_VITESSE = 30    # période d'observation pour calculer la vitesse de vente
-JOURS_COUVERTURE_CIBLE = 21   # nombre de jours de stock visés par la suggestion de commande
-SEUIL_ALERTE_JOURS = 7        # en dessous de ce nombre de jours restants -> "à commander bientôt"
-
-@app.route('/admin/reapprovisionnement')
-def admin_reapprovisionnement():
-    try:
-        if session.get('role') != 'admin':
-            return redirect('/login')
-
-        lignes = qall(f'''
-            SELECT p.id, p.nom, p.stock, p.stock_min,
-                   COALESCE(v.total_vendu, 0) as total_vendu_periode
-            FROM produits p
-            LEFT JOIN (
-                SELECT produit_id, SUM(quantite) as total_vendu
-                FROM sorties
-                WHERE date_sortie::timestamp >= NOW() - INTERVAL '{JOURS_PERIODE_VITESSE} days'
-                GROUP BY produit_id
-            ) v ON v.produit_id = p.id
-            ORDER BY p.nom
-        ''')
-
-        produits_urgents = []
-        produits_ok = []
-        produits_sans_vente = []
-
-        for pid, nom, stock, stock_min, total_vendu in lignes:
-            vitesse_jour = total_vendu / JOURS_PERIODE_VITESSE if total_vendu else 0
-
-            if vitesse_jour > 0:
-                jours_restants = stock / vitesse_jour
-                quantite_cible = vitesse_jour * JOURS_COUVERTURE_CIBLE
-                suggestion = max(0, round(quantite_cible - stock))
-                item = {
-                    'id': pid, 'nom': nom, 'stock': stock, 'stock_min': stock_min,
-                    'vitesse_jour': round(vitesse_jour, 2),
-                    'total_vendu_periode': total_vendu,
-                    'jours_restants': round(jours_restants, 1),
-                    'suggestion': suggestion
-                }
-                if jours_restants <= SEUIL_ALERTE_JOURS:
-                    produits_urgents.append(item)
-                else:
-                    produits_ok.append(item)
-            else:
-                produits_sans_vente.append({
-                    'id': pid, 'nom': nom, 'stock': stock, 'stock_min': stock_min
-                })
-
-        produits_urgents.sort(key=lambda x: x['jours_restants'])
-        produits_ok.sort(key=lambda x: x['jours_restants'])
-
-        return render_template('reapprovisionnement.html',
-            produits_urgents=produits_urgents,
-            produits_ok=produits_ok,
-            produits_sans_vente=produits_sans_vente,
-            jours_periode=JOURS_PERIODE_VITESSE,
-            jours_couverture=JOURS_COUVERTURE_CIBLE,
-            seuil_alerte=SEUIL_ALERTE_JOURS)
-    except Exception as e:
-        print(f"❌ Erreur admin_reapprovisionnement: {e}")
-        flash('Erreur lors du calcul des suggestions de réapprovisionnement')
-        return redirect('/dashboard')
-
-# ──────────────────────────────────────────────────────────────
 # ALERTES PRODUITS (seuils de stock personnalisés)
 # ──────────────────────────────────────────────────────────────
 @app.route('/admin/alertes/produits')
@@ -3592,11 +3758,11 @@ def api_sync():
                 if atype == 'vente':
                     cart = payload.get('cart', [])
                     client = (payload.get('client') or '').strip()
-                    mode_paiement = (payload.get('mode_paiement') or '').strip() or 'Espèces'
+                    telephone = (payload.get('telephone') or '').strip()
                     if not cart:
                         results.append({'client_id': client_id, 'status': 'error_definitif', 'message': 'Panier vide'})
                         continue
-                    groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, employe_id, mode_paiement)
+                    groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, employe_id, telephone)
                     if lignes_ok:
                         results.append({'client_id': client_id, 'status': 'ok', 'message': ', '.join(lignes_ok), 'groupe_vente': groupe_vente})
                     else:

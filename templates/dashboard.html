@@ -264,70 +264,72 @@
 <button type="button" class="btn-export-float" onclick="exportToday()" title="Exporter le point du jour">📄</button>
 
 <script>
-    // Graphique des ventes sur 7 jours
-{% if ventes_7_jours %}
-const joursLabels = [{% for v in ventes_7_jours %}'{{ v[0] }}',{% endfor %}];
-const joursData = [{% for v in ventes_7_jours %}{{ v[1] }},{% endfor %}];
+    document.addEventListener('DOMContentLoaded', function() {
+        // Graphique des ventes sur 7 jours
+        {% if ventes_7_jours %}
+        const joursLabels = [{% for v in ventes_7_jours %}'{{ v[0] }}',{% endfor %}];
+        const joursData = [{% for v in ventes_7_jours %}{{ v[1] }},{% endfor %}];
 
-new Chart(document.getElementById('ventesChart'), {
-    type: 'line',
-    data: {
-        labels: joursLabels,
-        datasets: [{
-            label: 'Ventes (FCFA)',
-            data: joursData,
-            borderColor: '#28a745',
-            backgroundColor: 'rgba(40,167,69,0.1)',
-            borderWidth: 3,
-            fill: true,
-            tension: 0.3,
-            pointRadius: 4,
-            pointBackgroundColor: '#28a745'
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { display: false }
-        },
-        scales: {
-            y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() + ' FCFA' } }
-        }
-    }
-});
-{% endif %}
+        new Chart(document.getElementById('ventesChart'), {
+            type: 'line',
+            data: {
+                labels: joursLabels,
+                datasets: [{
+                    label: 'Ventes (FCFA)',
+                    data: joursData,
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40,167,69,0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#28a745'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() + ' FCFA' } }
+                }
+            }
+        });
+        {% endif %}
 
-// Graphique des ventes par heure
-{% if ventes_par_heure %}
-    const heuresLabels = [{% for v in ventes_par_heure %}'{{ v[0] }}h',{% endfor %}];
-    const heuresData = [{% for v in ventes_par_heure %}{{ v[1] }},{% endfor %}];
+        // Graphique des ventes par heure
+        {% if ventes_par_heure %}
+        const heuresLabels = [{% for v in ventes_par_heure %}'{{ v[0] }}h',{% endfor %}];
+        const heuresData = [{% for v in ventes_par_heure %}{{ v[1] }},{% endfor %}];
 
-new Chart(document.getElementById('ventesHeureChart'), {
-    type: 'bar',
-    data: {
-        labels: heuresLabels,
-        datasets: [{
-            label: 'Ventes (FCFA)',
-            data: heuresData,
-            backgroundColor: '#667eea',
-            borderRadius: 6
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { display: false }
-        },
-        scales: {
-            y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() + ' FCFA' } }
-        }
-    }
-});
-{% endif %}
+        new Chart(document.getElementById('ventesHeureChart'), {
+            type: 'bar',
+            data: {
+                labels: heuresLabels,
+                datasets: [{
+                    label: 'Ventes (FCFA)',
+                    data: heuresData,
+                    backgroundColor: '#667eea',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() + ' FCFA' } }
+                }
+            }
+        });
+        {% endif %}
+    });
 
- function exportToday() {
+    function exportToday() {
         const today = new Date();
         const year = today.getFullYear();
         const month = String(today.getMonth() + 1).padStart(2, '0');

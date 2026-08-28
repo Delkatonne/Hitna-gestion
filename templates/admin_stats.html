@@ -89,7 +89,7 @@
 
 <!-- Marge bénéficiaire totale -->
 <div class="marge-card">
- <h3>Marge bénéficiaire (totale)</h3>
+ <h3>Marge brute (Ventes − Achats de stock)</h3>
  {% if marge_totale %}
  <div class="number">{{ "{:,.0f}".format((marge_totale[0] or 0) - (marge_totale[1] or 0)) }} FCFA</div>
  <p>Ventes : {{ "{:,.0f}".format(marge_totale[0] or 0) }} FCFA &nbsp;|&nbsp; Achats : {{ "{:,.0f}".format(marge_totale[1] or 0) }} FCFA</p>
@@ -97,6 +97,16 @@
  <div class="number">0 FCFA</div>
  <p>Ventes : 0 FCFA | Achats : 0 FCFA</p>
  {% endif %}
+</div>
+
+<!-- Bénéfice net (après charges: loyer, salaires, factures...) -->
+<div class="marge-card" style="background: linear-gradient(135deg, #1e3c72, #2a5298);">
+ <h3>Bénéfice net (après charges)</h3>
+ {% set marge_brute = (marge_totale[0] or 0) - (marge_totale[1] or 0) if marge_totale else 0 %}
+ {% set benefice_net = marge_brute - (charges_totales or 0) %}
+ <div class="number">{{ "{:,.0f}".format(benefice_net) }} FCFA</div>
+ <p>Marge brute : {{ "{:,.0f}".format(marge_brute) }} FCFA &nbsp;|&nbsp; Charges (loyer, salaires...) : {{ "{:,.0f}".format(charges_totales or 0) }} FCFA</p>
+ <a href="/admin/charges" style="display:inline-block; margin-top:10px; color:white; text-decoration:underline; font-size:13px;">💸 Gérer les charges →</a>
 </div>
 
 <div class="stats-container">
