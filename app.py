@@ -1,12 +1,15 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify, url_for, send_file
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
-import hashlib, os, random, string, io, json, uuid, socket, zipfile
+import hashlib, os, random, string, io, json, uuid, socket, zipfile, calendar
 import bcrypt
 import psycopg2
 import psycopg2.extras
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 from time import time, sleep
 from functools import wraps
 
@@ -174,6 +177,7 @@ BACKUP_TABLES = [
     'sorties', 'entrees', 'pertes', 'alertes_produits', 'notifications',
     'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_recap',
     'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
+    'ventes_annulees',
 ]
 
 def generer_backup_json():
@@ -402,6 +406,21 @@ def init_db():
             adresse TEXT DEFAULT '',
             date_creation TEXT)''')
 
+        # ── VENTES ANNULÉES — journal de toutes les ventes annulées,
+        #    conservé même après suppression de la vente d'origine.
+        c.execute('''CREATE TABLE IF NOT EXISTS ventes_annulees (
+            id SERIAL PRIMARY KEY,
+            groupe_vente TEXT,
+            produit_nom TEXT,
+            quantite NUMERIC(10,3),
+            prix_unitaire INTEGER,
+            total INTEGER,
+            client TEXT,
+            vendeur_original TEXT,
+            date_vente_original TEXT,
+            date_annulation TEXT,
+            annule_par TEXT)''')
+
         c.execute('''CREATE TABLE IF NOT EXISTS categories_produits (
             id SERIAL PRIMARY KEY,
             nom TEXT UNIQUE,
@@ -513,6 +532,17 @@ def init_db():
                 print("✅ Colonne 'vente_fractionnable' ajoutée à produits")
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne vente_fractionnable: {e}")
+
+        # ── SCANNER CODE-BARRES — retrouver un produit rapidement via
+        #    la caméra. Unique quand renseigné, mais optionnel (NULL/'').
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='code_barre'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE produits ADD COLUMN code_barre TEXT")
+                c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_produits_code_barre ON produits(code_barre) WHERE code_barre IS NOT NULL AND code_barre <> ''")
+                print("✅ Colonne 'code_barre' ajoutée à produits (scanner)")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne code_barre: {e}")
 
         # 2) Passage des colonnes de stock/quantité en NUMERIC pour
         #    pouvoir stocker des demi-cartons, quarts, etc. Les valeurs
@@ -1282,7 +1312,8 @@ def produits_list():
                                       COALESCE(c.icone, '') as categorie_icone,
                                       p.categorie_id,
                                       p.valeur_unite,
-                                      COALESCE(p.vente_fractionnable, 0) as vente_fractionnable
+                                      COALESCE(p.vente_fractionnable, 0) as vente_fractionnable,
+                                      COALESCE(p.code_barre, '') as code_barre
                                FROM produits p 
                                LEFT JOIN unites_mesure u ON p.unite_id = u.id 
                                LEFT JOIN categories_produits c ON p.categorie_id = c.id
@@ -1318,8 +1349,14 @@ def ajouter_produit():
             categorie_id = int(categorie_id)
         valeur_unite = request.form.get('valeur_unite', '').strip()
         valeur_unite = float(valeur_unite) if valeur_unite else None
-        ok = exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable) VALUES (?,?,?,?,?,?,?,?)",
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable))
+        code_barre = request.form.get('code_barre', '').strip() or None
+        if code_barre:
+            existant = q1("SELECT nom FROM produits WHERE code_barre=?", (code_barre,))
+            if existant:
+                flash(f'❌ Ce code-barres est déjà utilisé par "{existant[0]}"')
+                return redirect('/admin/produits')
+        ok = exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre) VALUES (?,?,?,?,?,?,?,?,?)",
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre))
         if ok:
             flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
             envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
@@ -1360,8 +1397,14 @@ def modifier_produit(id):
             categorie_id = int(categorie_id)
         valeur_unite = request.form.get('valeur_unite', '').strip()
         valeur_unite = float(valeur_unite) if valeur_unite else None
-        ok = exe("UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?, valeur_unite=?, vente_fractionnable=? WHERE id=?", 
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable, id))
+        code_barre = request.form.get('code_barre', '').strip() or None
+        if code_barre:
+            existant = q1("SELECT nom FROM produits WHERE code_barre=? AND id<>?", (code_barre, id))
+            if existant:
+                flash(f'❌ Ce code-barres est déjà utilisé par "{existant[0]}"')
+                return redirect('/admin/produits')
+        ok = exe("UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?, valeur_unite=?, vente_fractionnable=?, code_barre=? WHERE id=?", 
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, id))
         if ok:
             flash(f'✅ Produit "{nom}" modifié')
         else:
@@ -1547,6 +1590,43 @@ def _traiter_vente_cart(cart, client, employe_id, telephone=None):
     return groupe_vente, lignes_ok, erreurs
 
 
+def _annuler_vente(groupe_vente, annule_par_id):
+    """Annule une vente complète (tous les articles du même reçu / groupe_vente) :
+    restaure le stock, journalise l'annulation dans ventes_annulees, puis
+    supprime les lignes de la table sorties.
+    Impossible après minuit le jour même de la vente (règle métier).
+    Retourne (ok: bool, message: str)."""
+    lignes = qall('''SELECT s.id, s.produit_id, s.quantite, p.nom, DATE(s.date_sortie),
+                             s.prix_unitaire, s.total, s.client, s.date_sortie, u.nom
+                      FROM sorties s JOIN produits p ON s.produit_id = p.id
+                      JOIN users u ON s.employe_id = u.id
+                      WHERE s.groupe_vente = ?''', (groupe_vente,))
+    if not lignes:
+        return False, "Vente introuvable (déjà annulée, ou archivée après minuit)"
+
+    date_vente = lignes[0][4]
+    aujourdhui = datetime.now().strftime('%Y-%m-%d')
+    if str(date_vente) != aujourdhui:
+        return False, "❌ Cette vente ne peut plus être annulée (délai dépassé — annulation possible uniquement le jour même, avant minuit)"
+
+    annuleur = q1("SELECT nom FROM users WHERE id=?", (annule_par_id,))
+    nom_annuleur = annuleur[0] if annuleur else 'Inconnu'
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    noms = []
+    for ligne_id, produit_id, quantite, nom_produit, _, prix_unitaire, total, client, date_sortie, vendeur in lignes:
+        exe('''INSERT INTO ventes_annulees
+               (groupe_vente, produit_nom, quantite, prix_unitaire, total, client,
+                vendeur_original, date_vente_original, date_annulation, annule_par)
+               VALUES (?,?,?,?,?,?,?,?,?,?)''',
+            (groupe_vente, nom_produit, quantite, prix_unitaire, total, client,
+             vendeur, date_sortie, now, nom_annuleur))
+        exe("UPDATE produits SET stock = stock + ? WHERE id = ?", (quantite, produit_id))
+        exe("DELETE FROM sorties WHERE id = ?", (ligne_id,))
+        noms.append(f'{format_qte(quantite)} x {nom_produit}')
+    return True, "✅ Vente annulée, stock restauré : " + ", ".join(noms)
+
+
 def _traiter_entree(pid, qty, pu, fournisseur, employe_id):
     """Retourne (ok: bool, message: str)."""
     try:
@@ -1657,7 +1737,8 @@ def admin_ventes():
                                        COALESCE(u.symbole,'') as unite_symbole,
                                        COALESCE(u.nom,'') as unite_nom,
                                        p.valeur_unite,
-                                       COALESCE(p.vente_fractionnable, 0) as vente_fractionnable
+                                       COALESCE(p.vente_fractionnable, 0) as vente_fractionnable,
+                                       COALESCE(p.code_barre, '') as code_barre
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
@@ -1668,7 +1749,7 @@ def admin_ventes():
                 FROM sorties s JOIN users u ON s.employe_id=u.id
                 WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
             set_cached(cache_key, (produits, historique, stats_vendeurs))
-        return render_template('admin_ventes.html', produits=produits, historique=historique, stats_vendeurs=stats_vendeurs)
+        return render_template('admin_ventes.html', produits=produits, historique=historique, stats_vendeurs=stats_vendeurs, today_iso=datetime.now().strftime('%Y-%m-%d'))
     except Exception as e:
         print(f"❌ Erreur admin_ventes: {e}")
         flash('Erreur lors du chargement des ventes')
@@ -1723,7 +1804,8 @@ def vente():
                                        COALESCE(u.symbole,'') as unite_symbole,
                                        COALESCE(u.nom,'') as unite_nom,
                                        p.valeur_unite,
-                                       COALESCE(p.vente_fractionnable, 0) as vente_fractionnable
+                                       COALESCE(p.vente_fractionnable, 0) as vente_fractionnable,
+                                       COALESCE(p.code_barre, '') as code_barre
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
@@ -1787,6 +1869,33 @@ def _recuperer_lignes_recu(groupe_vente):
             lignes = lignes_archive
             archivee = True
     return lignes, archivee
+
+
+@app.route('/vente/annuler/<groupe_vente>', methods=['POST'])
+def annuler_vente_employe(groupe_vente):
+    try:
+        if 'user_id' not in session or session.get('role') != 'employe':
+            flash('❌ Accès réservé aux employés')
+            return redirect('/login')
+        ok, message = _annuler_vente(groupe_vente, session.get("user_id"))
+        flash(message)
+    except Exception as e:
+        print(f"❌ Erreur annuler_vente_employe: {e}")
+        flash("❌ Erreur lors de l'annulation de la vente")
+    return redirect('/vente')
+
+
+@app.route('/admin/ventes/annuler/<groupe_vente>', methods=['POST'])
+def annuler_vente_admin(groupe_vente):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        ok, message = _annuler_vente(groupe_vente, session.get("user_id"))
+        flash(message)
+    except Exception as e:
+        print(f"❌ Erreur annuler_vente_admin: {e}")
+        flash("❌ Erreur lors de l'annulation de la vente")
+    return redirect('/admin/ventes')
 
 
 @app.route('/vente/recu/<groupe_vente>')
@@ -2562,6 +2671,213 @@ def supprimer_charge(id):
         print(f"❌ Erreur supprimer_charge: {e}")
         flash('❌ Erreur lors de la suppression')
     return redirect('/admin/charges')
+
+# ══════════════════════════════════════════════════════════════
+# VENTES ANNULÉES — journal (consultation admin)
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/ventes-annulees')
+def ventes_annulees_list():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        annulations = qall('''SELECT id, groupe_vente, produit_nom, quantite, total, client,
+                                      vendeur_original, date_vente_original, date_annulation, annule_par
+                               FROM ventes_annulees
+                               ORDER BY date_annulation DESC LIMIT 300''')
+        total_annule = q1("SELECT COALESCE(SUM(total),0), COUNT(DISTINCT groupe_vente) FROM ventes_annulees")
+        return render_template('admin_ventes_annulees.html', annulations=annulations,
+            total_annule=total_annule[0] if total_annule else 0,
+            nb_ventes_annulees=total_annule[1] if total_annule else 0)
+    except Exception as e:
+        print(f"❌ Erreur ventes_annulees_list: {e}")
+        flash('Erreur lors du chargement des ventes annulées')
+        return redirect('/dashboard')
+
+# ══════════════════════════════════════════════════════════════
+# EXPORT COMPTABLE PÉRIODIQUE (Excel)
+# ══════════════════════════════════════════════════════════════
+MOIS_FR = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet',
+           'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+
+@app.route('/admin/export')
+def admin_export():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        return render_template('admin_export.html', mois_fr=MOIS_FR,
+            annee_actuelle=datetime.now().year, mois_actuel=datetime.now().month)
+    except Exception as e:
+        print(f"❌ Erreur admin_export: {e}")
+        flash('Erreur lors du chargement de la page export')
+        return redirect('/dashboard')
+
+def _feuille_excel(wb, titre, entetes, lignes, largeurs=None):
+    """Crée une feuille Excel formatée (en-tête coloré, colonnes ajustées, filtre)."""
+    ws = wb.create_sheet(titre)
+    header_fill = PatternFill(start_color="1E3C72", end_color="1E3C72", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    for col, entete in enumerate(entetes, 1):
+        cell = ws.cell(row=1, column=col, value=entete)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    for row_idx, ligne in enumerate(lignes, 2):
+        for col_idx, valeur in enumerate(ligne, 1):
+            ws.cell(row=row_idx, column=col_idx, value=valeur)
+    largeurs = largeurs or [18] * len(entetes)
+    for col_idx, largeur in enumerate(largeurs, 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = largeur
+    ws.freeze_panes = "A2"
+    if lignes:
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(entetes))}{len(lignes)+1}"
+    ws.row_dimensions[1].height = 20
+    return ws
+
+@app.route('/export/excel_comptable')
+def export_excel_comptable():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        annee = int(request.args.get('annee', datetime.now().year))
+        mois = int(request.args.get('mois', datetime.now().month))
+        if mois < 1 or mois > 12:
+            mois = datetime.now().month
+
+        date_debut = f'{annee:04d}-{mois:02d}-01'
+        dernier_jour = calendar.monthrange(annee, mois)[1]
+        date_fin = f'{annee:04d}-{mois:02d}-{dernier_jour:02d}'
+        periode = (date_debut, date_fin, date_debut, date_fin)
+
+        ventes = qall('''SELECT s.date_sortie, p.nom, s.quantite, s.prix_unitaire, s.total, s.client, u.nom
+                          FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
+                          WHERE DATE(s.date_sortie) BETWEEN ? AND ?
+                          UNION ALL
+                          SELECT a.date_vente, a.produit_nom, a.quantite, a.prix_unitaire, a.total, a.client, a.employe_nom
+                          FROM archive_ventes a
+                          WHERE DATE(a.date_vente) BETWEEN ? AND ?
+                          ORDER BY 1''', periode)
+
+        achats = qall('''SELECT e.date_entree, p.nom, e.quantite, e.prix_unitaire, e.total, e.fournisseur, u.nom
+                          FROM entrees e JOIN produits p ON e.produit_id=p.id JOIN users u ON e.employe_id=u.id
+                          WHERE DATE(e.date_entree) BETWEEN ? AND ?
+                          UNION ALL
+                          SELECT a.date_entree, a.produit_nom, a.quantite, a.prix_unitaire, a.total, a.fournisseur, a.employe_nom
+                          FROM archive_entrees a
+                          WHERE DATE(a.date_entree) BETWEEN ? AND ?
+                          ORDER BY 1''', periode)
+
+        pertes = qall('''SELECT p2.date_perte, pr.nom, p2.quantite, p2.motif, p2.total, u.nom
+                          FROM pertes p2 JOIN produits pr ON p2.produit_id=pr.id JOIN users u ON p2.employe_id=u.id
+                          WHERE DATE(p2.date_perte) BETWEEN ? AND ?
+                          UNION ALL
+                          SELECT a.date_perte, a.produit_nom, a.quantite, a.motif, a.total, a.employe_nom
+                          FROM archive_pertes a
+                          WHERE DATE(a.date_perte) BETWEEN ? AND ?
+                          ORDER BY 1''', periode)
+
+        charges = qall('''SELECT c.date_charge, c.categorie, c.libelle, c.montant, COALESCE(u.nom,'-')
+                           FROM charges c LEFT JOIN users u ON c.employe_id=u.id
+                           WHERE DATE(c.date_charge) BETWEEN ? AND ?
+                           ORDER BY c.date_charge''', (date_debut, date_fin))
+
+        total_ventes = sum(float(v[4] or 0) for v in ventes)
+        total_achats = sum(float(a[4] or 0) for a in achats)
+        total_pertes = sum(float(p[4] or 0) for p in pertes)
+        total_charges = sum(float(c[3] or 0) for c in charges)
+        marge_brute = total_ventes - total_achats
+        benefice_net = marge_brute - total_charges
+
+        # ── Construction du classeur Excel ──────────────────────
+        wb = Workbook()
+        wb.remove(wb.active)
+
+        # Feuille 1 : Résumé
+        ws = wb.create_sheet("Résumé", 0)
+        ws.column_dimensions['A'].width = 32
+        ws.column_dimensions['B'].width = 20
+        titre_font = Font(bold=True, size=16, color="1E3C72")
+        ws['A1'] = "HITNA — Rapport comptable"
+        ws['A1'].font = titre_font
+        ws['A2'] = f"Période : {MOIS_FR[mois]} {annee}"
+        ws['A2'].font = Font(italic=True, size=11, color="666666")
+        ws['A3'] = f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
+        ws['A3'].font = Font(size=9, color="999999")
+
+        lignes_resume = [
+            ("Chiffre d'affaires (ventes)", total_ventes),
+            ("Achats de marchandises", -total_achats),
+            ("Marge brute", marge_brute),
+            ("Charges (loyer, salaires, factures...)", -total_charges),
+            ("Bénéfice net", benefice_net),
+            ("", ""),
+            ("Pertes constatées (casse, vol, péremption...)", -total_pertes),
+        ]
+        row = 5
+        for label, montant in lignes_resume:
+            if label == "":
+                row += 1
+                continue
+            cell_label = ws.cell(row=row, column=1, value=label)
+            cell_montant = ws.cell(row=row, column=2, value=round(montant))
+            cell_montant.number_format = '#,##0 "FCFA"'
+            if label in ("Marge brute", "Bénéfice net"):
+                cell_label.font = Font(bold=True)
+                cell_montant.font = Font(bold=True, color="1E7C3A" if montant >= 0 else "C0392B")
+            row += 1
+
+        row += 1
+        ws.cell(row=row, column=1, value="Répartition des charges par catégorie").font = Font(bold=True, underline="single")
+        row += 1
+        par_categorie = {}
+        for c in charges:
+            par_categorie[c[1]] = par_categorie.get(c[1], 0) + float(c[3] or 0)
+        for cat, montant in sorted(par_categorie.items(), key=lambda x: -x[1]):
+            ws.cell(row=row, column=1, value=cat)
+            cell = ws.cell(row=row, column=2, value=round(montant))
+            cell.number_format = '#,##0 "FCFA"'
+            row += 1
+
+        # Feuille 2 : Ventes
+        _feuille_excel(wb, "Ventes",
+            ["Date", "Produit", "Quantité", "Prix unitaire (FCFA)", "Total (FCFA)", "Client", "Vendeur"],
+            [(v[0], v[1], float(v[2] or 0), v[3], v[4], v[5] or '', v[6]) for v in ventes],
+            largeurs=[18, 28, 12, 18, 14, 20, 18])
+
+        # Feuille 3 : Achats
+        _feuille_excel(wb, "Achats (entrées de stock)",
+            ["Date", "Produit", "Quantité", "Prix unitaire (FCFA)", "Total (FCFA)", "Fournisseur", "Enregistré par"],
+            [(a[0], a[1], float(a[2] or 0), a[3], a[4], a[5] or '', a[6]) for a in achats],
+            largeurs=[18, 28, 12, 18, 14, 22, 18])
+
+        # Feuille 4 : Charges
+        _feuille_excel(wb, "Charges",
+            ["Date", "Catégorie", "Libellé", "Montant (FCFA)", "Enregistré par"],
+            [(c[0], c[1], c[2], c[3], c[4]) for c in charges],
+            largeurs=[14, 22, 32, 16, 18])
+
+        # Feuille 5 : Pertes
+        _feuille_excel(wb, "Pertes",
+            ["Date", "Produit", "Quantité", "Motif", "Total (FCFA)", "Enregistré par"],
+            [(p[0], p[1], float(p[2] or 0), p[3], p[4], p[5]) for p in pertes],
+            largeurs=[18, 28, 12, 18, 14, 18])
+
+        # Format monétaire sur les feuilles de détail
+        for nom_feuille, col_montant in [("Ventes", 5), ("Achats (entrées de stock)", 5), ("Charges", 4), ("Pertes", 5)]:
+            ws_detail = wb[nom_feuille]
+            for row_cells in ws_detail.iter_rows(min_row=2, min_col=col_montant, max_col=col_montant):
+                for cell in row_cells:
+                    cell.number_format = '#,##0'
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        nom_fichier = f"Rapport_comptable_HITNA_{MOIS_FR[mois]}_{annee}.xlsx"
+        return send_file(buf, as_attachment=True, download_name=nom_fichier,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    except Exception as e:
+        print(f"❌ Erreur export_excel_comptable: {e}")
+        flash('❌ Erreur lors de la génération du rapport comptable')
+        return redirect('/admin/export')
 
 # ══════════════════════════════════════════════════════════════
 # CLIENTS — fiche client avec historique d'achats

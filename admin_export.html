@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Export comptable - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-export {
+        background: #f8f9fa;
+        padding: 25px;
+        border-radius: 15px;
+        max-width: 500px;
+    }
+    .form-export .form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    .form-export .form-group {
+        flex: 1;
+    }
+    .form-export select {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        box-sizing: border-box;
+        font-size: 14px;
+    }
+    .export-info {
+        background: #eef4ff;
+        border: 1px solid #cfe0ff;
+        border-radius: 12px;
+        padding: 16px 18px;
+        font-size: 13px;
+        color: #1e3c72;
+        margin-bottom: 25px;
+    }
+    .export-info ul {
+        margin: 8px 0 0 20px;
+    }
+    .export-info li {
+        margin-bottom: 4px;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}📊 Export comptable{% endblock %}
+{% block page_subtitle %}Télécharge un rapport Excel formaté pour ta comptabilité{% endblock %}
+
+{% block content %}
+
+<div class="export-info">
+    ℹ️ Le fichier Excel généré contient :
+    <ul>
+        <li><strong>Résumé</strong> — chiffre d'affaires, achats, marge brute, charges et bénéfice net du mois</li>
+        <li><strong>Ventes</strong> — détail de chaque vente (date, produit, montant, client, vendeur)</li>
+        <li><strong>Achats</strong> — détail de chaque entrée de stock (date, produit, fournisseur)</li>
+        <li><strong>Charges</strong> — détail des charges (loyer, salaires, factures...)</li>
+        <li><strong>Pertes</strong> — détail des pertes (casse, vol, péremption...)</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2 class="card-title">📅 Choisir la période</h2>
+    <form method="get" action="/export/excel_comptable" class="form-export">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Mois</label>
+                <select name="mois">
+                    {% for i in range(1, 13) %}
+                    <option value="{{ i }}" {% if i == mois_actuel %}selected{% endif %}>{{ mois_fr[i] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Année</label>
+                <select name="annee">
+                    {% for a in range(annee_actuelle, annee_actuelle - 4, -1) %}
+                    <option value="{{ a }}" {% if a == annee_actuelle %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <button type="submit" style="background:#28a745; width:100%; padding:12px; font-size:15px;">⬇️ Télécharger le rapport Excel</button>
+    </form>
+</div>
+
+<div class="nav-links">
+    <a href="/admin/charges">💸 Voir les charges</a>
+    <a href="/dashboard">← Retour au Dashboard</a>
+</div>
+{% endblock %}

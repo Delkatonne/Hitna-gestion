@@ -814,6 +814,16 @@
                     </a>
                 </div>
                 <div class="nav-item">
+                    <a href="/admin/export" class="nav-link {% if request.endpoint == 'admin_export' %}active{% endif %}">
+                        <span class="icon">📤</span><span>Export comptable</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/ventes-annulees" class="nav-link {% if request.endpoint == 'ventes_annulees_list' %}active{% endif %}">
+                        <span class="icon">🚫</span><span>Ventes annulées</span>
+                    </a>
+                </div>
+                <div class="nav-item">
                     <a href="/admin/clients" class="nav-link {% if request.endpoint in ['clients_list','fiche_client'] %}active{% endif %}">
                         <span class="icon">👥</span><span>Clients</span>
                     </a>
@@ -1237,6 +1247,80 @@
             }, 1000);
         });
     </script>
+
+    <!-- ============================================================
+         SCANNER DE CODE-BARRES — modal + fonctions globales réutilisables
+         sur toutes les pages admin (produits, ventes...).
+         Bibliothèque chargée à la demande (pas au chargement de la page)
+         pour ne pas ralentir l'appli ni gêner le mode hors ligne.
+         ============================================================ -->
+    <div id="scannerModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center; padding:15px;">
+        <div style="background:white; border-radius:16px; padding:20px; max-width:420px; width:92%; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+            <h3 style="color:#1e3c72; margin-bottom:12px;">📷 Scanner un code-barres</h3>
+            <div id="scanner-reader" style="width:100%; border-radius:10px; overflow:hidden; background:#000; min-height:200px;"></div>
+            <p id="scanner-status" style="text-align:center; font-size:13px; color:#666; margin-top:12px;">Chargement de la caméra...</p>
+            <button type="button" onclick="fermerScanner()" style="margin-top:10px; width:100%; background:#6c757d; color:white; border:none; padding:10px; border-radius:8px; cursor:pointer; font-size:14px;">✕ Fermer</button>
+        </div>
+    </div>
+
+    <script>
+        let _html5QrcodeLoaded = false;
+        let _scannerInstance = null;
+        let _scannerCallback = null;
+
+        function _chargerLibScanner(callback) {
+            if (_html5QrcodeLoaded && window.Html5Qrcode) { callback(); return; }
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+            script.onload = function() { _html5QrcodeLoaded = true; callback(); };
+            script.onerror = function() {
+                document.getElementById('scanner-status').textContent = '❌ Impossible de charger le scanner (connexion internet requise la première fois).';
+            };
+            document.head.appendChild(script);
+        }
+
+        function ouvrirScannerCodeBarre(callback) {
+            _scannerCallback = callback;
+            document.getElementById('scannerModal').style.display = 'flex';
+            document.getElementById('scanner-status').textContent = 'Chargement de la caméra...';
+            _chargerLibScanner(function() {
+                try {
+                    _scannerInstance = new Html5Qrcode("scanner-reader");
+                    const config = { fps: 10, qrbox: { width: 260, height: 160 } };
+                    _scannerInstance.start(
+                        { facingMode: "environment" },
+                        config,
+                        function(decodedText) {
+                            const cb = _scannerCallback;
+                            fermerScanner();
+                            if (cb) cb(decodedText);
+                        },
+                        function() { /* image sans code détecté, on continue de scanner */ }
+                    ).then(function() {
+                        document.getElementById('scanner-status').textContent = '🎯 Visez le code-barres du produit';
+                    }).catch(function(err) {
+                        document.getElementById('scanner-status').textContent = '❌ Caméra inaccessible. Vérifiez les autorisations de votre navigateur.';
+                        console.error('Erreur scanner:', err);
+                    });
+                } catch (e) {
+                    document.getElementById('scanner-status').textContent = '❌ Erreur de chargement du scanner';
+                    console.error(e);
+                }
+            });
+        }
+
+        function fermerScanner() {
+            document.getElementById('scannerModal').style.display = 'none';
+            if (_scannerInstance) {
+                const instance = _scannerInstance;
+                _scannerInstance = null;
+                instance.stop().then(function() {
+                    instance.clear();
+                }).catch(function() { /* déjà arrêté */ });
+            }
+        }
+    </script>
+
     {% block extra_js %}{% endblock %}
 </body>
 </html>

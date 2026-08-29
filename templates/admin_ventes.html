@@ -536,8 +536,10 @@
 <!-- Barre de recherche -->
 <div class="card">
     <h2 class="card-title">🔍 Rechercher un produit</h2>
-    <div class="search-container">
-        <input type="text" id="searchInput" class="search-box" placeholder="Tapez le nom du produit..." autocomplete="off">
+    <div class="search-container" style="display:flex; gap:10px;">
+        <input type="text" id="searchInput" class="search-box" placeholder="Tapez le nom du produit..." autocomplete="off" style="flex:1;">
+        <button type="button" onclick="ouvrirScannerCodeBarre(adminRechercherParCodeBarre)"
+                style="background:#1e3c72; color:white; border:none; border-radius:10px; padding:0 18px; cursor:pointer; font-size:15px; white-space:nowrap;">📷 Scanner</button>
     </div>
 </div>
 
@@ -546,7 +548,7 @@
     <h2 class="card-title">📦 Produits disponibles</h2>
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
-        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-fractionnable="{{ p[7] }}">
+        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-fractionnable="{{ p[7] }}" data-barcode="{{ p[8] }}">
             {% if p[4] %}<div class="unite-badge-vente">📏 {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
             {% if p[7] %}<div class="unite-badge-vente" style="background:#fff3cd; color:#856404;">➗ Vendable en 1/2, 1/4...</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
@@ -599,6 +601,7 @@
                     <th>Vendeur</th>
                     <th>Client</th>
                     <th>Reçu</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -623,6 +626,16 @@
                             —
                         {% endif %}
                     </td>
+                    <td>
+                        {% if v[7] and v[4] and v[4].split(' ')[0] == today_iso %}
+                        <form method="post" action="/admin/ventes/annuler/{{ v[7] }}" style="display:inline;"
+                              onsubmit="return confirm('Annuler cette vente ? Le stock sera restauré. Cette action est irréversible.')">
+                            <button type="submit" class="btn-small" style="background:#dc3545; color:white;">❌ Annuler</button>
+                        </form>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -634,6 +647,7 @@
     <a href="/dashboard">← Retour au Dashboard</a>
     <a href="/admin/archives">📚 Archives</a>
     <a href="/admin/stats">📊 Statistiques</a>
+    <a href="/admin/ventes-annulees">🚫 Ventes annulées</a>
 </div>
 
 <!-- Modal client -->
@@ -695,6 +709,24 @@
 
     function adminFormaterQte(v) {
         return (Math.round(v * 1000) / 1000).toString();
+    }
+
+    // Recherche un produit par son code-barres scanné et l'ajoute directement au panier.
+    function adminRechercherParCodeBarre(code) {
+        code = (code || '').trim();
+        if (!code) return;
+        const cards = document.querySelectorAll('.product-card');
+        for (const card of cards) {
+            if (card.getAttribute('data-barcode') === code) {
+                const id = card.getAttribute('data-id');
+                adminAjouterAuPanier(id);
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.style.outline = '3px solid #28a745';
+                setTimeout(function() { card.style.outline = ''; }, 1500);
+                return;
+            }
+        }
+        alert(`❌ Aucun produit trouvé pour le code "${code}".\nVous pouvez l'associer depuis la fiche du produit.`);
     }
 
     function adminAjouterAuPanier(id) {

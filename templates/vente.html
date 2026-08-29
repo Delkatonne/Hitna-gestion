@@ -598,8 +598,10 @@
 <!-- Barre de recherche -->
 <div class="card">
     <h2 class="card-title">🔍 Rechercher un produit</h2>
-    <div class="search-container">
-        <input type="text" id="searchInput" class="search-box" placeholder="Tapez le nom du produit..." autocomplete="off">
+    <div class="search-container" style="display:flex; gap:10px;">
+        <input type="text" id="searchInput" class="search-box" placeholder="Tapez le nom du produit..." autocomplete="off" style="flex:1;">
+        <button type="button" onclick="ouvrirScannerCodeBarre(rechercherParCodeBarre)"
+                style="background:#1e3c72; color:white; border:none; border-radius:10px; padding:0 18px; cursor:pointer; font-size:15px; white-space:nowrap;">📷 Scanner</button>
     </div>
 </div>
 
@@ -609,7 +611,7 @@
     {% if produits and produits|length > 0 %}
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
-        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unite="{{ p[4] }}" data-fractionnable="{{ p[7] }}">
+        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unite="{{ p[4] }}" data-fractionnable="{{ p[7] }}" data-barcode="{{ p[8] }}">
             {% if p[4] %}<div class="unite-badge-vente">📏 {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
             {% if p[7] %}<div class="unite-badge-vente" style="background:#fff3cd; color:#856404;">➗ Vendable en 1/2, 1/4...</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
@@ -668,6 +670,7 @@
                     <th>Client</th>
                     <th>Vendeur</th>
                     <th>Reçu</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -692,6 +695,14 @@
                             —
                         {% endif %}
                     </td>
+                    <td>
+                        {% if v[8] %}
+                        <form method="post" action="/vente/annuler/{{ v[8] }}" style="display:inline;"
+                              onsubmit="return confirm('Annuler cette vente ? Le stock sera restauré. Cette action est irréversible.')">
+                            <button type="submit" class="btn-small" style="background:#dc3545; color:white;">❌ Annuler</button>
+                        </form>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -702,6 +713,7 @@
         <h3>💰 TOTAL DES VENTES DU JOUR</h3>
         <div class="montant">{{ "{:,.0f}".format(total_general[0] if total_general and total_general[0] else 0) }} FCFA</div>
         <div class="nb-ventes">{{ total_general[1] if total_general and total_general[1] else 0 }} vente(s) enregistrée(s)</div>
+        <p style="font-size:11px; opacity:0.8; margin-top:6px;">⏰ Une vente ne peut être annulée que le jour même, avant minuit.</p>
     </div>
     {% else %}
     <p style="text-align: center; color: #999; padding: 40px;">Aucune vente enregistrée aujourd'hui</p>
@@ -782,6 +794,25 @@
     // Formate une quantité pour l'affichage (20 au lieu de 20.000, 19.5 au lieu de 19.500)
     function formaterQte(v) {
         return (Math.round(v * 1000) / 1000).toString();
+    }
+
+    // Recherche un produit par son code-barres scanné et l'ajoute directement
+    // au panier (à défaut d'être trouvé, on prévient l'utilisateur).
+    function rechercherParCodeBarre(code) {
+        code = (code || '').trim();
+        if (!code) return;
+        const cards = document.querySelectorAll('.product-card');
+        for (const card of cards) {
+            if (card.getAttribute('data-barcode') === code) {
+                const id = card.getAttribute('data-id');
+                ajouterAuPanier(id);
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.style.outline = '3px solid #28a745';
+                setTimeout(function() { card.style.outline = ''; }, 1500);
+                return;
+            }
+        }
+        alert(`❌ Aucun produit trouvé pour le code "${code}".\nVous pouvez l'associer depuis la fiche du produit.`);
     }
 
     function ajouterAuPanier(id) {
