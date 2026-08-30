@@ -135,7 +135,6 @@
                 <div><span>👤 Vendeur</span><span>{{ vendeur }}</span></div>
                 <div><span>🙋 Client</span><span>{{ client if client else 'Non renseigné' }}</span></div>
                 <div><span>🔖 N° reçu</span><span>{{ groupe_vente }}</span></div>
-                <div><span>💳 Paiement</span><span>{{ mode_paiement }}</span></div>
             </div>
 
             <table>
@@ -150,8 +149,8 @@
                 <tbody>
                     {% for l in lignes %}
                     <tr>
-                        <td>{{ l[1] }}{% if l[8] %}<br><span style="font-size:11px; color:#1e7e34;">📦 {{ l[8] }}</span>{% endif %}</td>
-                        <td class="num">{{ l[2] }}</td>
+                        <td>{{ l[1] }}{% if l[8] %}<br><small style="color:#888;">{{ l[8] }}</small>{% endif %}</td>
+                        <td class="num">{{ l[2]|qte }}</td>
                         <td class="num">{{ "{:,.0f}".format(l[3]) }}</td>
                         <td class="num">{{ "{:,.0f}".format(l[4]) }}</td>
                     </tr>
@@ -174,19 +173,9 @@
                 <a href="/export/pdf_recu/{{ groupe_vente }}" class="btn-print" style="background:#28a745;">⬇️ PDF</a>
             </div>
             <div class="btn-actions">
-                <a href="{{ '/admin/ventes' if session.role == 'admin' else '/vente' }}" class="btn-back" style="flex:1;" onclick="document.getElementById('recuLoadingOverlay').classList.add('actif');">← Retour</a>
+                <a href="/vente" class="btn-back" style="flex:1;">← Retour</a>
             </div>
         </div>
     </div>
-
-    <!-- Overlay de chargement (page autonome, pas de base.html) -->
-    <div id="recuLoadingOverlay" style="display:none;position:fixed;inset:0;background:rgba(255,255,255,0.88);z-index:99999;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
-        <div style="width:54px;height:54px;border:5px solid #e0e0e0;border-top-color:#1e3c72;border-radius:50%;animation:recuSpin 0.8s linear infinite;"></div>
-        <div style="font-weight:600;color:#1e3c72;font-size:14px;">Chargement...</div>
-    </div>
-    <style>
-        @keyframes recuSpin { to { transform: rotate(360deg); } }
-        #recuLoadingOverlay.actif { display: flex; }
-    </style>
 </body>
 </html>

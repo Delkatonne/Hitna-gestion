@@ -609,7 +609,7 @@
                 {% for v in historique %}
                 <tr>
                     <td>{{ v[4] }}</td>
-                    <td><strong>{{ v[1] }}</strong></td>
+                    <td><strong>{{ v[1] }}</strong>{% if v[8] %}<br><small style="color:#856404;">📦 {{ v[8] }}</small>{% endif %}</td>
                     <td>{{ v[2]|qte }}</td>
                     <td style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(v[3]) }} FCFA</td>
                     <td>

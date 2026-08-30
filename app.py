@@ -419,7 +419,8 @@ def init_db():
             vendeur_original TEXT,
             date_vente_original TEXT,
             date_annulation TEXT,
-            annule_par TEXT)''')
+            annule_par TEXT,
+            palier_nom TEXT)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS categories_produits (
             id SERIAL PRIMARY KEY,
@@ -517,6 +518,25 @@ def init_db():
                 print("✅ Colonne 'groupe_vente' ajoutée à archive_ventes (reçus des ventes archivées)")
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne groupe_vente à archive_ventes: {e}")
+
+        # ── PALIERS DE PRIX — conserver le nom du palier (ex: "Carton de 24")
+        #    même après archivage hebdomadaire ou annulation, pour ne pas
+        #    perdre cette information dans l'historique.
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='archive_ventes' AND column_name='palier_nom'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE archive_ventes ADD COLUMN palier_nom TEXT")
+                print("✅ Colonne 'palier_nom' ajoutée à archive_ventes")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne palier_nom à archive_ventes: {e}")
+
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='ventes_annulees' AND column_name='palier_nom'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE ventes_annulees ADD COLUMN palier_nom TEXT")
+                print("✅ Colonne 'palier_nom' ajoutée à ventes_annulees")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne palier_nom à ventes_annulees: {e}")
 
         # ── FICHE CLIENT — rattache une vente à un client (identifié
         #    par téléphone) pour retrouver son historique d'achats.
@@ -651,7 +671,7 @@ def archiver_hebdomadaire():
         now_s = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         cm.execute('''SELECT s.id,s.produit_id,s.quantite,s.prix_unitaire,s.total,
-                             s.date_sortie,s.client,s.employe_id,p.nom,u.nom,s.groupe_vente,s.client_id
+                             s.date_sortie,s.client,s.employe_id,p.nom,u.nom,s.groupe_vente,s.client_id,s.palier_nom
                       FROM sorties s JOIN produits p ON s.produit_id=p.id
                       JOIN users u ON s.employe_id=u.id
                       WHERE DATE(s.date_sortie)>=%s AND DATE(s.date_sortie)<=%s''',
@@ -661,9 +681,9 @@ def archiver_hebdomadaire():
             cm.execute('''INSERT INTO archive_ventes
                            (id, produit_id, quantite, prix_unitaire, total, date_vente,
                             employe_id, client, archive_date, semaine, annee,
-                            produit_nom, employe_nom, groupe_vente, client_id)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                       (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9],v[10],v[11]))
+                            produit_nom, employe_nom, groupe_vente, client_id, palier_nom)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                       (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9],v[10],v[11],v[12]))
             cm.execute("DELETE FROM sorties WHERE id=%s",(v[0],))
 
         cm.execute('''SELECT e.id,e.produit_id,e.quantite,e.prix_unitaire,e.total,
@@ -1735,7 +1755,7 @@ def _annuler_vente(groupe_vente, annule_par_id):
     Impossible après minuit le jour même de la vente (règle métier).
     Retourne (ok: bool, message: str)."""
     lignes = qall('''SELECT s.id, s.produit_id, s.quantite, p.nom, DATE(s.date_sortie),
-                             s.prix_unitaire, s.total, s.client, s.date_sortie, u.nom
+                             s.prix_unitaire, s.total, s.client, s.date_sortie, u.nom, s.palier_nom
                       FROM sorties s JOIN produits p ON s.produit_id = p.id
                       JOIN users u ON s.employe_id = u.id
                       WHERE s.groupe_vente = ?''', (groupe_vente,))
@@ -1752,16 +1772,16 @@ def _annuler_vente(groupe_vente, annule_par_id):
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     noms = []
-    for ligne_id, produit_id, quantite, nom_produit, _, prix_unitaire, total, client, date_sortie, vendeur in lignes:
+    for ligne_id, produit_id, quantite, nom_produit, _, prix_unitaire, total, client, date_sortie, vendeur, palier_nom in lignes:
         exe('''INSERT INTO ventes_annulees
                (groupe_vente, produit_nom, quantite, prix_unitaire, total, client,
-                vendeur_original, date_vente_original, date_annulation, annule_par)
-               VALUES (?,?,?,?,?,?,?,?,?,?)''',
+                vendeur_original, date_vente_original, date_annulation, annule_par, palier_nom)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
             (groupe_vente, nom_produit, quantite, prix_unitaire, total, client,
-             vendeur, date_sortie, now, nom_annuleur))
+             vendeur, date_sortie, now, nom_annuleur, palier_nom))
         exe("UPDATE produits SET stock = stock + ? WHERE id = ?", (quantite, produit_id))
         exe("DELETE FROM sorties WHERE id = ?", (ligne_id,))
-        noms.append(f'{format_qte(quantite)} x {nom_produit}')
+        noms.append(f'{format_qte(quantite)} x {palier_nom}' if palier_nom else f'{format_qte(quantite)} x {nom_produit}')
     return True, "✅ Vente annulée, stock restauré : " + ", ".join(noms)
 
 
@@ -1890,7 +1910,7 @@ def admin_ventes():
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
-            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente
+            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente,s.palier_nom
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
                 ORDER BY s.date_sortie DESC LIMIT 20''')
             stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
@@ -1959,7 +1979,7 @@ def vente():
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 ORDER BY p.nom''')
-            historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente
+            historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente, s.palier_nom
                 FROM sorties s 
                 JOIN produits p ON s.produit_id = p.id 
                 JOIN users u ON s.employe_id = u.id
@@ -1991,7 +2011,7 @@ def _recuperer_lignes_recu(groupe_vente):
     """Retourne (lignes, archivee) pour un groupe_vente, en cherchant d'abord dans
     sorties (ventes récentes) puis dans archive_ventes (ventes archivées)."""
     lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                             s.date_sortie, s.client, u.nom
+                             s.date_sortie, s.client, u.nom, s.palier_nom
                       FROM sorties s
                       JOIN produits p ON s.produit_id = p.id
                       JOIN users u ON s.employe_id = u.id
@@ -2002,7 +2022,7 @@ def _recuperer_lignes_recu(groupe_vente):
         # juste après l'enregistrement de la vente, on retente une fois.
         sleep(0.4)
         lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                                 s.date_sortie, s.client, u.nom
+                                 s.date_sortie, s.client, u.nom, s.palier_nom
                           FROM sorties s
                           JOIN produits p ON s.produit_id = p.id
                           JOIN users u ON s.employe_id = u.id
@@ -2013,7 +2033,7 @@ def _recuperer_lignes_recu(groupe_vente):
         # La vente n'est plus dans "sorties" : elle a peut-être été archivée
         # (archivage hebdomadaire). On cherche alors dans archive_ventes.
         lignes_archive = qall('''SELECT produit_id, produit_nom, quantite, prix_unitaire, total,
-                                         date_vente, client, employe_nom
+                                         date_vente, client, employe_nom, palier_nom
                                   FROM archive_ventes
                                   WHERE groupe_vente = ?
                                   ORDER BY id''', (groupe_vente,))
@@ -2157,7 +2177,14 @@ def export_pdf_recu(groupe_vente):
         c.setFont("Helvetica", 8)
         for l in lignes:
             nom = l[1] if len(l[1]) <= 22 else l[1][:20] + '…'
-            c.drawString(10, y, f"{l[2]} x {nom}")
+            palier_nom = l[8] if len(l) > 8 and l[8] else None
+            if palier_nom:
+                label = f"{palier_nom} ({nom})"
+                if len(label) > 34:
+                    label = label[:32] + '…'
+            else:
+                label = f"{format_qte(l[2])} x {nom}"
+            c.drawString(10, y, label)
             c.drawRightString(largeur - 10, y, format_prix(l[4]))
             y -= 14
 
