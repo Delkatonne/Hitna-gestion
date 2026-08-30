@@ -428,6 +428,10 @@
                                     style="background:#1e3c72;color:white;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;">
                                 ✏️ Modifier
                             </button>
+                            <a href="/admin/produits/paliers/{{ p[0] }}"
+                               style="background:#28a745;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
+                                💰 Paliers
+                            </a>
                             <!-- Supprimer seul -->
                             <a href="/admin/produits/supprimer/{{ p[0] }}"
                                onclick="return confirm('Supprimer {{ p[1] }} ?')"
@@ -480,6 +484,7 @@
                         onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[12] }})">
                     ✏️ Modifier
                 </button>
+                <a href="/admin/produits/paliers/{{ p[0] }}" class="card-btn-save" style="background:#28a745; text-decoration:none; text-align:center;">💰 Paliers</a>
                 <a href="/admin/produits/supprimer/{{ p[0] }}"
                    onclick="return confirm('Supprimer {{ p[1] }} ?')"
                    class="card-btn-delete">🗑️</a>

@@ -177,7 +177,7 @@ BACKUP_TABLES = [
     'sorties', 'entrees', 'pertes', 'alertes_produits', 'notifications',
     'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_recap',
     'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
-    'ventes_annulees',
+    'ventes_annulees', 'paliers_prix',
 ]
 
 def generer_backup_json():
@@ -426,6 +426,23 @@ def init_db():
             nom TEXT UNIQUE,
             icone TEXT DEFAULT '📦',
             actif INTEGER DEFAULT 1)''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS paliers_prix (
+            id SERIAL PRIMARY KEY,
+            produit_id INTEGER REFERENCES produits(id) ON DELETE CASCADE,
+            nom TEXT NOT NULL,
+            quantite NUMERIC NOT NULL,
+            prix INTEGER NOT NULL,
+            actif INTEGER DEFAULT 1,
+            ordre INTEGER DEFAULT 0)''')
+
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='sorties' AND column_name='palier_nom'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE sorties ADD COLUMN palier_nom TEXT")
+                print("✅ Colonne 'palier_nom' ajoutée à sorties")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne palier_nom: {e}")
 
         c.execute('''CREATE TABLE IF NOT EXISTS commandes (
             id SERIAL PRIMARY KEY,
@@ -1007,6 +1024,103 @@ def supprimer_categorie(id):
     return redirect('/admin/categories')
 
 # ══════════════════════════════════════════════════════════════
+# PALIERS DE PRIX (carton de 24, de 12, unité... par produit)
+# ══════════════════════════════════════════════════════════════
+
+@app.route('/admin/produits/paliers/<int:produit_id>')
+def admin_paliers(produit_id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        produit = q1("SELECT id, nom, prix FROM produits WHERE id=?", (produit_id,))
+        if not produit:
+            flash('❌ Produit introuvable')
+            return redirect('/admin/produits')
+        paliers = qall("SELECT * FROM paliers_prix WHERE produit_id=? ORDER BY ordre, quantite DESC", (produit_id,))
+        return render_template('admin_paliers.html', produit=produit, paliers=paliers)
+    except Exception as e:
+        print(f"❌ Erreur admin_paliers: {e}")
+        flash('Erreur lors du chargement des paliers')
+        return redirect('/admin/produits')
+
+@app.route('/admin/produits/paliers/<int:produit_id>/ajouter', methods=['POST'])
+def ajouter_palier(produit_id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nom = request.form.get('nom', '').strip()
+        quantite = request.form.get('quantite', '').strip()
+        prix = request.form.get('prix', '').strip()
+        if not nom or not quantite or not prix:
+            flash('❌ Nom, quantité et prix sont obligatoires')
+            return redirect(f'/admin/produits/paliers/{produit_id}')
+        try:
+            quantite = round(float(quantite), 3)
+            prix = int(float(prix))
+        except ValueError:
+            flash('❌ Quantité ou prix invalide')
+            return redirect(f'/admin/produits/paliers/{produit_id}')
+        if quantite <= 0 or prix <= 0:
+            flash('❌ La quantité et le prix doivent être positifs')
+            return redirect(f'/admin/produits/paliers/{produit_id}')
+        ok = exe("INSERT INTO paliers_prix (produit_id, nom, quantite, prix, actif, ordre) VALUES (?,?,?,?,1,0)",
+            (produit_id, nom, quantite, prix))
+        if ok:
+            flash(f'✅ Palier "{nom}" ajouté')
+        else:
+            flash('❌ Échec de l\'ajout du palier')
+    except Exception as e:
+        print(f"❌ Erreur ajouter_palier: {e}")
+        flash('❌ Erreur lors de l\'ajout du palier')
+    return redirect(f'/admin/produits/paliers/{produit_id}')
+
+@app.route('/admin/produits/paliers/modifier/<int:id>', methods=['POST'])
+def modifier_palier(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        p = q1("SELECT produit_id FROM paliers_prix WHERE id=?", (id,))
+        if not p:
+            flash('❌ Palier introuvable')
+            return redirect('/admin/produits')
+        produit_id = p[0]
+        nom = request.form.get('nom', '').strip()
+        quantite = request.form.get('quantite', '').strip()
+        prix = request.form.get('prix', '').strip()
+        actif = 1 if request.form.get('actif') else 0
+        try:
+            quantite = round(float(quantite), 3)
+            prix = int(float(prix))
+        except ValueError:
+            flash('❌ Quantité ou prix invalide')
+            return redirect(f'/admin/produits/paliers/{produit_id}')
+        exe("UPDATE paliers_prix SET nom=?, quantite=?, prix=?, actif=? WHERE id=?",
+            (nom, quantite, prix, actif, id))
+        flash(f'✅ Palier "{nom}" modifié')
+    except Exception as e:
+        print(f"❌ Erreur modifier_palier: {e}")
+        flash('❌ Erreur lors de la modification')
+        return redirect('/admin/produits')
+    return redirect(f'/admin/produits/paliers/{produit_id}')
+
+@app.route('/admin/produits/paliers/supprimer/<int:id>')
+def supprimer_palier(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        p = q1("SELECT produit_id, nom FROM paliers_prix WHERE id=?", (id,))
+        if not p:
+            flash('❌ Palier introuvable')
+            return redirect('/admin/produits')
+        exe("DELETE FROM paliers_prix WHERE id=?", (id,))
+        flash(f'🗑️ Palier "{p[1]}" supprimé')
+        return redirect(f'/admin/produits/paliers/{p[0]}')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_palier: {e}")
+        flash('❌ Erreur lors de la suppression')
+        return redirect('/admin/produits')
+
+# ══════════════════════════════════════════════════════════════
 # COMMANDES (issues du futur site web HITNA)
 # ══════════════════════════════════════════════════════════════
 
@@ -1551,7 +1665,10 @@ def trouver_ou_creer_client(nom, telephone):
     return client_id if client_id else None
 
 def _traiter_vente_cart(cart, client, employe_id, telephone=None):
-    """cart: liste de {produit_id, quantite}. Retourne (groupe_vente, lignes_ok, erreurs)."""
+    """cart: liste de {produit_id, quantite, palier_id (optionnel)}.
+    Si palier_id est fourni, quantite = nombre de fois ce palier (ex: 2 cartons de 24),
+    et le stock/prix sont calculés à partir du palier plutôt que du prix de base du produit.
+    Retourne (groupe_vente, lignes_ok, erreurs)."""
     groupe_vente = uuid.uuid4().hex[:12]
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     lignes_ok = []
@@ -1560,31 +1677,52 @@ def _traiter_vente_cart(cart, client, employe_id, telephone=None):
     for item in cart:
         try:
             pid = int(item.get('produit_id', 0))
-            qty = round(float(item.get('quantite', 0)), 3)
+            qty_selection = round(float(item.get('quantite', 0)), 3)
+            palier_id = item.get('palier_id')
+            palier_id = int(palier_id) if palier_id else None
         except (TypeError, ValueError, AttributeError):
             continue
-        if pid <= 0 or qty <= 0:
+        if pid <= 0 or qty_selection <= 0:
             continue
         p = q1("SELECT nom, prix, stock, vente_fractionnable FROM produits WHERE id=?", (pid,))
         if not p:
             erreurs.append(f'Produit #{pid} introuvable')
             continue
-        if not p[3] and qty != int(qty):
-            erreurs.append(f'"{p[0]}" ne peut être vendu qu\'en quantité entière')
-            continue
-        if qty > float(p[2]):
+
+        palier_nom = None
+        if palier_id:
+            palier = q1("SELECT nom, quantite, prix, produit_id FROM paliers_prix WHERE id=? AND actif=1", (palier_id,))
+            if not palier or palier[3] != pid:
+                erreurs.append(f'Palier introuvable pour "{p[0]}"')
+                continue
+            palier_nom = palier[0]
+            qty_base = round(float(palier[1]) * qty_selection, 3)
+            prix_unitaire = round(palier[2] / float(palier[1])) if palier[1] else palier[2]
+            total = round(palier[2] * qty_selection)
+        else:
+            if not p[3] and qty_selection != int(qty_selection):
+                erreurs.append(f'"{p[0]}" ne peut être vendu qu\'en quantité entière')
+                continue
+            qty_base = qty_selection
+            prix_unitaire = p[1]
+            total = round(p[1] * qty_base)
+
+        if qty_base > float(p[2]):
             erreurs.append(f'Stock insuffisant pour "{p[0]}" ({format_qte(p[2])} restant(s))')
             continue
-        total = round(p[1] * qty)
+
         insert_ok = exe("""INSERT INTO sorties
-            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id)
-            VALUES (?,?,?,?,?,?,?,?,?)""",
-            (pid, qty, p[1], total, now, client, employe_id, groupe_vente, client_id))
+            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id, palier_nom)
+            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (pid, qty_base, prix_unitaire, total, now, client, employe_id, groupe_vente, client_id, palier_nom))
         if not insert_ok:
             erreurs.append(f'Échec d\'enregistrement pour "{p[0]}" (erreur serveur)')
             continue
-        exe("UPDATE produits SET stock = stock - ? WHERE id = ?", (qty, pid))
-        lignes_ok.append(f'{format_qte(qty)} x {p[0]}')
+        exe("UPDATE produits SET stock = stock - ? WHERE id = ?", (qty_base, pid))
+        if palier_nom:
+            lignes_ok.append(f'{format_qte(qty_selection)} x {palier_nom} de {p[0]}')
+        else:
+            lignes_ok.append(f'{format_qte(qty_base)} x {p[0]}')
     if lignes_ok:
         verifier_alertes_stock()
     return groupe_vente, lignes_ok, erreurs
@@ -1698,6 +1836,16 @@ def ajouter_entree():
         flash('❌ Erreur lors de l\'ajout de l\'entrée')
     return redirect('/admin/entrees')
 
+def _paliers_par_produit():
+    """Retourne un dict {produit_id: [{'id','nom','quantite','prix'}, ...]} pour tous
+    les paliers de prix actifs, utilisé par les pages de vente (JSON pour le JS)."""
+    rows = qall("SELECT id, produit_id, nom, quantite, prix FROM paliers_prix WHERE actif=1 ORDER BY ordre, quantite DESC")
+    result = {}
+    for r in rows:
+        result.setdefault(r[1], []).append({'id': r[0], 'nom': r[2], 'quantite': float(r[3]), 'prix': r[4]})
+    return result
+
+
 # ─── VENTES ADMIN ──────────────────────────────────────────────
 @app.route('/admin/ventes', methods=['GET','POST'])
 def admin_ventes():
@@ -1731,7 +1879,7 @@ def admin_ventes():
         cache_key = 'admin_ventes_data'
         cached_data = get_cached(cache_key, 30)
         if cached_data:
-            produits, historique, stats_vendeurs = cached_data
+            produits, historique, stats_vendeurs, paliers = cached_data
         else:
             produits = qall('''SELECT p.id, p.nom, p.prix, p.stock,
                                        COALESCE(u.symbole,'') as unite_symbole,
@@ -1748,8 +1896,10 @@ def admin_ventes():
             stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
                 FROM sorties s JOIN users u ON s.employe_id=u.id
                 WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
-            set_cached(cache_key, (produits, historique, stats_vendeurs))
-        return render_template('admin_ventes.html', produits=produits, historique=historique, stats_vendeurs=stats_vendeurs, today_iso=datetime.now().strftime('%Y-%m-%d'))
+            paliers = _paliers_par_produit()
+            set_cached(cache_key, (produits, historique, stats_vendeurs, paliers))
+        return render_template('admin_ventes.html', produits=produits, historique=historique, stats_vendeurs=stats_vendeurs,
+            paliers_json=json.dumps(paliers), today_iso=datetime.now().strftime('%Y-%m-%d'))
     except Exception as e:
         print(f"❌ Erreur admin_ventes: {e}")
         flash('Erreur lors du chargement des ventes')
@@ -1798,7 +1948,7 @@ def vente():
         cache_key = 'vente_data'
         cached_data = get_cached(cache_key, 30)
         if cached_data:
-            produits, historique, stats_vendeurs, total_general = cached_data
+            produits, historique, stats_vendeurs, total_general, paliers = cached_data
         else:
             produits = qall('''SELECT p.id, p.nom, p.prix, p.stock,
                                        COALESCE(u.symbole,'') as unite_symbole,
@@ -1823,12 +1973,14 @@ def vente():
             total_general = q1("SELECT COALESCE(SUM(total), 0), COUNT(*) FROM sorties WHERE DATE(date_sortie) = CURRENT_DATE")
             if not total_general:
                 total_general = (0, 0)
-            set_cached(cache_key, (produits, historique, stats_vendeurs, total_general))
+            paliers = _paliers_par_produit()
+            set_cached(cache_key, (produits, historique, stats_vendeurs, total_general, paliers))
         return render_template('vente.html', 
             produits=produits, 
             historique=historique,
             stats_vendeurs=stats_vendeurs, 
-            total_general=total_general)
+            total_general=total_general,
+            paliers_json=json.dumps(paliers))
     except Exception as e:
         import traceback
         traceback.print_exc()

@@ -617,6 +617,7 @@
             <div class="product-name">{{ p[1] }}</div>
             <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
             <div class="product-stock">📦 Stock: {{ p[3]|qte }} unités</div>
+            <div id="tier-wrap-{{ p[0] }}"></div>
             <button type="button" class="btn-add-cart" onclick="ajouterAuPanier({{ p[0] }})">➕ Ajouter au panier</button>
         </div>
         {% endfor %}
@@ -749,7 +750,28 @@
     // ============================================================
     // VARIABLES GLOBALES
     // ============================================================
-    let cart = {}; // { produit_id: { id, name, price, stock, qty } }
+    let cart = {}; // { produit_id: { id, name, price, stock, qty, tierId?, tierNom?, unitEquiv? } }
+    const PALIERS = {{ paliers_json|safe }}; // { produit_id: [{id, nom, quantite, prix}, ...] }
+
+    // ============================================================
+    // PALIERS DE PRIX (carton de 24, pack de 6, etc.)
+    // ============================================================
+    function initSelecteursPaliers() {
+        Object.keys(PALIERS).forEach(pid => {
+            const tiers = PALIERS[pid];
+            if (!tiers || tiers.length === 0) return;
+            const wrap = document.getElementById('tier-wrap-' + pid);
+            if (!wrap) return;
+            let options = tiers.map((t, i) =>
+                `<option value="${i}">${t.nom} — ${Math.round(t.prix).toLocaleString()} FCFA</option>`
+            ).join('');
+            wrap.innerHTML = `
+                <select id="tier-select-${pid}" style="width:100%; padding:8px; margin:8px 0; border:2px solid #e0e0e0; border-radius:8px; font-size:13px;">
+                    ${options}
+                </select>
+            `;
+        });
+    }
 
     // ============================================================
     // RECHERCHE DE PRODUITS (CORRIGÉE)
@@ -819,10 +841,48 @@
         const card = document.getElementById('card-' + id);
         if (!card) return;
         const stock = parseFloat(card.getAttribute('data-stock'));
+
+        const tiers = PALIERS[id];
+        const tierSelect = document.getElementById('tier-select-' + id);
+        if (tiers && tiers.length > 0 && tierSelect) {
+            const idx = parseInt(tierSelect.value, 10);
+            const tier = tiers[idx];
+            const equivUnites = arrondirQte(tier.quantite);
+
+            if (cart[id] && cart[id].tierId === tier.id) {
+                const nouvelleQty = cart[id].qty + 1;
+                if (arrondirQte(nouvelleQty * equivUnites) <= stock) {
+                    cart[id].qty = nouvelleQty;
+                } else {
+                    alert(`Stock insuffisant ! Il reste ${formaterQte(stock)} unités (${formaterQte(stock / equivUnites)} "${tier.nom}" possible(s))`);
+                }
+            } else {
+                if (equivUnites > stock) {
+                    alert(`Stock insuffisant pour "${tier.nom}" ! Il reste ${formaterQte(stock)} unités`);
+                    return;
+                }
+                cart[id] = {
+                    id: id,
+                    name: card.getAttribute('data-nom'),
+                    price: tier.prix,
+                    stock: stock,
+                    fractionnable: false,
+                    step: 1,
+                    qty: 1,
+                    tierId: tier.id,
+                    tierNom: tier.nom,
+                    unitEquiv: equivUnites
+                };
+            }
+            card.classList.add('in-cart');
+            renderCart();
+            return;
+        }
+
         const fractionnable = card.getAttribute('data-fractionnable') === '1';
         const step = fractionnable ? 0.5 : 1;
 
-        if (cart[id]) {
+        if (cart[id] && !cart[id].tierId) {
             const nouvelleQty = arrondirQte(cart[id].qty + step);
             if (nouvelleQty <= stock) {
                 cart[id].qty = nouvelleQty;
@@ -850,6 +910,20 @@
 
     function changerQuantitePanier(id, delta) {
         if (!cart[id]) return;
+        if (cart[id].tierId) {
+            const nouvelleQty = cart[id].qty + delta;
+            if (arrondirQte(nouvelleQty * cart[id].unitEquiv) > cart[id].stock) {
+                alert(`Stock insuffisant ! Il reste ${formaterQte(cart[id].stock)} unités`);
+                return;
+            }
+            if (nouvelleQty < 1) {
+                retirerDuPanier(id);
+                return;
+            }
+            cart[id].qty = nouvelleQty;
+            renderCart();
+            return;
+        }
         const step = cart[id].step || 1;
         const nouvelleQty = arrondirQte(cart[id].qty + delta);
         if (nouvelleQty > cart[id].stock) {
@@ -908,7 +982,13 @@
             const step = item.step || 1;
 
             let qtyControl;
-            if (item.fractionnable) {
+            if (item.tierId) {
+                qtyControl = `
+                    <button type="button" onclick="changerQuantitePanier(${id}, -1)">-</button>
+                    <span>${item.qty}</span>
+                    <button type="button" onclick="changerQuantitePanier(${id}, 1)">+</button>
+                `;
+            } else if (item.fractionnable) {
                 // Produit vendable en fraction : champ modifiable directement
                 // (0.5 = 1/2 carton, 0.25 = 1/4 carton, etc.)
                 qtyControl = `
@@ -929,7 +1009,7 @@
 
             html += `
                 <div class="cart-item">
-                    <div class="cart-item-name">${item.name}${item.fractionnable ? ' <small style="color:#856404;">➗</small>' : ''}</div>
+                    <div class="cart-item-name">${item.name}${item.tierId ? ' — <small>' + item.tierNom + '</small>' : (item.fractionnable ? ' <small style="color:#856404;">➗</small>' : '')}</div>
                     <div class="cart-item-qty">${qtyControl}</div>
                     <div class="cart-item-subtotal">${subtotal.toLocaleString()} FCFA</div>
                     <button type="button" class="cart-item-remove" onclick="retirerDuPanier(${id})">🗑️</button>
@@ -965,6 +1045,7 @@
     // ÉCOUTEURS D'ÉVÉNEMENTS
     // ============================================================
     document.addEventListener('DOMContentLoaded', function() {
+        initSelecteursPaliers();
         const btn = document.getElementById('validateSaleBtn');
         if (btn) {
             btn.addEventListener('click', validateSale);
@@ -976,7 +1057,11 @@
     // CONFIRMATION CLIENT
     // ============================================================
     function buildCartPayload() {
-        return Object.values(cart).map(item => ({ produit_id: item.id, quantite: item.qty }));
+        return Object.values(cart).map(item => {
+            const payload = { produit_id: item.id, quantite: item.qty };
+            if (item.tierId) payload.palier_id = item.tierId;
+            return payload;
+        });
     }
 
     function confirmClientName() {

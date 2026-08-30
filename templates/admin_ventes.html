@@ -554,6 +554,7 @@
             <div class="product-name">{{ p[1] }}</div>
             <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
             <div class="product-stock">📦 Stock: {{ p[3]|qte }} unités</div>
+            <div id="tier-wrap-{{ p[0] }}"></div>
             <button type="button" class="btn-add-cart" onclick="adminAjouterAuPanier({{ p[0] }})">➕ Ajouter au panier</button>
         </div>
         {% endfor %}
@@ -667,7 +668,25 @@
     // ============================================================
     // ADMIN - VARIABLES GLOBALES
     // ============================================================
-    let adminCart = {}; // { produit_id: { id, name, price, stock, qty } }
+    let adminCart = {}; // { produit_id: { id, name, price, stock, qty, tierId?, tierNom?, unitEquiv? } }
+    const PALIERS = {{ paliers_json|safe }};
+
+    function initSelecteursPaliersAdmin() {
+        Object.keys(PALIERS).forEach(pid => {
+            const tiers = PALIERS[pid];
+            if (!tiers || tiers.length === 0) return;
+            const wrap = document.getElementById('tier-wrap-' + pid);
+            if (!wrap) return;
+            let options = tiers.map((t, i) =>
+                `<option value="${i}">${t.nom} — ${Math.round(t.prix).toLocaleString()} FCFA</option>`
+            ).join('');
+            wrap.innerHTML = `
+                <select id="tier-select-${pid}" style="width:100%; padding:8px; margin:8px 0; border:2px solid #e0e0e0; border-radius:8px; font-size:13px;">
+                    ${options}
+                </select>
+            `;
+        });
+    }
 
     // ============================================================
     // ADMIN - RECHERCHE DE PRODUITS
@@ -733,10 +752,48 @@
         const card = document.getElementById('card-' + id);
         if (!card) return;
         const stock = parseFloat(card.getAttribute('data-stock'));
+
+        const tiers = PALIERS[id];
+        const tierSelect = document.getElementById('tier-select-' + id);
+        if (tiers && tiers.length > 0 && tierSelect) {
+            const idx = parseInt(tierSelect.value, 10);
+            const tier = tiers[idx];
+            const equivUnites = adminArrondirQte(tier.quantite);
+
+            if (adminCart[id] && adminCart[id].tierId === tier.id) {
+                const nouvelleQty = adminCart[id].qty + 1;
+                if (adminArrondirQte(nouvelleQty * equivUnites) <= stock) {
+                    adminCart[id].qty = nouvelleQty;
+                } else {
+                    alert(`Stock insuffisant ! Il reste ${adminFormaterQte(stock)} unités`);
+                }
+            } else {
+                if (equivUnites > stock) {
+                    alert(`Stock insuffisant pour "${tier.nom}" ! Il reste ${adminFormaterQte(stock)} unités`);
+                    return;
+                }
+                adminCart[id] = {
+                    id: id,
+                    name: card.getAttribute('data-nom'),
+                    price: tier.prix,
+                    stock: stock,
+                    fractionnable: false,
+                    step: 1,
+                    qty: 1,
+                    tierId: tier.id,
+                    tierNom: tier.nom,
+                    unitEquiv: equivUnites
+                };
+            }
+            card.classList.add('in-cart');
+            adminRenderCart();
+            return;
+        }
+
         const fractionnable = card.getAttribute('data-fractionnable') === '1';
         const step = fractionnable ? 0.5 : 1;
 
-        if (adminCart[id]) {
+        if (adminCart[id] && !adminCart[id].tierId) {
             const nouvelleQty = adminArrondirQte(adminCart[id].qty + step);
             if (nouvelleQty <= stock) {
                 adminCart[id].qty = nouvelleQty;
@@ -764,6 +821,20 @@
 
     function adminChangerQuantitePanier(id, delta) {
         if (!adminCart[id]) return;
+        if (adminCart[id].tierId) {
+            const nouvelleQty = adminCart[id].qty + delta;
+            if (adminArrondirQte(nouvelleQty * adminCart[id].unitEquiv) > adminCart[id].stock) {
+                alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminCart[id].stock)} unités`);
+                return;
+            }
+            if (nouvelleQty < 1) {
+                adminRetirerDuPanier(id);
+                return;
+            }
+            adminCart[id].qty = nouvelleQty;
+            adminRenderCart();
+            return;
+        }
         const step = adminCart[id].step || 1;
         const nouvelleQty = adminArrondirQte(adminCart[id].qty + delta);
         if (nouvelleQty > adminCart[id].stock) {
@@ -820,7 +891,13 @@
             const step = item.step || 1;
 
             let qtyControl;
-            if (item.fractionnable) {
+            if (item.tierId) {
+                qtyControl = `
+                    <button type="button" onclick="adminChangerQuantitePanier(${id}, -1)">-</button>
+                    <span>${item.qty}</span>
+                    <button type="button" onclick="adminChangerQuantitePanier(${id}, 1)">+</button>
+                `;
+            } else if (item.fractionnable) {
                 qtyControl = `
                     <button type="button" onclick="adminChangerQuantitePanier(${id}, -${step})">-</button>
                     <input type="number" class="cart-item-qty-input" value="${adminFormaterQte(item.qty)}"
@@ -839,7 +916,7 @@
 
             html += `
                 <div class="cart-item">
-                    <div class="cart-item-name">${item.name}${item.fractionnable ? ' <small style="color:#856404;">➗</small>' : ''}</div>
+                    <div class="cart-item-name">${item.name}${item.tierId ? ' — <small>' + item.tierNom + '</small>' : (item.fractionnable ? ' <small style="color:#856404;">➗</small>' : '')}</div>
                     <div class="cart-item-qty">${qtyControl}</div>
                     <div class="cart-item-subtotal">${subtotal.toLocaleString()} FCFA</div>
                     <button type="button" class="cart-item-remove" onclick="adminRetirerDuPanier(${id})">🗑️</button>
@@ -875,7 +952,11 @@
     // ADMIN - CONFIRMATION CLIENT
     // ============================================================
     function adminBuildCartPayload() {
-        return Object.values(adminCart).map(item => ({ produit_id: item.id, quantite: item.qty }));
+        return Object.values(adminCart).map(item => {
+            const payload = { produit_id: item.id, quantite: item.qty };
+            if (item.tierId) payload.palier_id = item.tierId;
+            return payload;
+        });
     }
 
     function adminConfirmClientName() {
@@ -938,5 +1019,7 @@
             }
         });
     }
+
+    initSelecteursPaliersAdmin();
 </script>
 {% endblock %}

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Paliers de prix - {{ produit[1] }} - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .produit-header {
+        background: linear-gradient(135deg, #1e3c72, #2a5298);
+        color: white;
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 25px;
+    }
+    .produit-header h2 { margin-bottom: 6px; }
+    .produit-header .prix-base { font-size: 14px; opacity: 0.9; }
+
+    .info-banner {
+        background: #eef4ff;
+        border: 1px solid #cfe0ff;
+        border-radius: 12px;
+        padding: 14px 18px;
+        font-size: 13px;
+        color: #1e3c72;
+        margin-bottom: 24px;
+    }
+
+    .form-palier {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+    }
+    .form-palier .form-row { display: flex; gap: 15px; flex-wrap: wrap; }
+    .form-palier .form-group { flex: 1; min-width: 140px; }
+    .form-palier input {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        box-sizing: border-box;
+    }
+
+    .palier-card {
+        background: white;
+        border-radius: 12px;
+        padding: 15px 18px;
+        margin-bottom: 12px;
+        border: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .palier-card.inactif { opacity: 0.5; }
+    .palier-card .infos h3 { font-size: 15px; color: #1e3c72; margin-bottom: 4px; }
+    .palier-card .infos p { font-size: 12px; color: #888; }
+    .palier-card .prix-unitaire { font-size: 11px; color: #999; margin-top: 2px; }
+    .palier-card .actions { display: flex; gap: 8px; }
+    .palier-card .actions button, .palier-card .actions a {
+        padding: 7px 12px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-size: 12px;
+        font-weight: bold;
+        border: none;
+        cursor: pointer;
+    }
+
+    .edit-form-palier {
+        display: none;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px dashed #e0e0e0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        width: 100%;
+    }
+    .edit-form-palier.visible { display: flex; }
+    .edit-form-palier input {
+        padding: 8px;
+        border: 2px solid #667eea;
+        border-radius: 6px;
+        flex: 1;
+        min-width: 100px;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}💰 Paliers de prix{% endblock %}
+{% block page_subtitle %}Formats de vente pour {{ produit[1] }}{% endblock %}
+
+{% block content %}
+
+<div class="produit-header">
+    <h2>📦 {{ produit[1] }}</h2>
+    <div class="prix-base">Prix de base (à l'unité) : {{ "{:,.0f}".format(produit[2]) }} FCFA</div>
+</div>
+
+<div class="info-banner">
+    ℹ️ Ajoute ici tous les formats dans lesquels ce produit peut être vendu — carton de 24, carton de 12,
+    pack de 6, à l'unité, etc. — chacun avec son propre prix (pas forcément proportionnel). Le stock reste
+    toujours compté dans la plus petite unité (ex: la bouteille) : vendre "1 carton de 24" retire simplement
+    24 unités du stock, que le carton soit entamé ou non.
+</div>
+
+<div class="card">
+    <h2 class="card-title">➕ Ajouter un palier</h2>
+    <form method="post" action="/admin/produits/paliers/{{ produit[0] }}/ajouter" class="form-palier">
+        <div class="form-row">
+            <div class="form-group">
+                <label>📛 Nom</label>
+                <input type="text" name="nom" placeholder="Ex: Carton de 24" required>
+            </div>
+            <div class="form-group">
+                <label>🔢 Quantité (en unités)</label>
+                <input type="number" name="quantite" step="0.001" min="0.001" placeholder="Ex: 24" required>
+            </div>
+            <div class="form-group">
+                <label>💰 Prix pour ce palier</label>
+                <input type="number" name="prix" step="1" min="1" placeholder="Ex: 7500" required>
+            </div>
+            <div class="form-group" style="display:flex; align-items:flex-end;">
+                <button type="submit" style="background:#28a745; padding:10px 25px; width:100%;">➕ Ajouter</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2 class="card-title">📋 Paliers existants</h2>
+    {% if paliers %}
+        {% for p in paliers %}
+        <div class="palier-card {% if p[5] == 0 %}inactif{% endif %}" id="card-{{ p[0] }}">
+            <div class="infos">
+                <h3>{{ p[2] }} {% if p[5] == 0 %}(inactif){% endif %}</h3>
+                <p>{{ p[3]|round(3) }} unité(s) — {{ "{:,.0f}".format(p[4]) }} FCFA</p>
+                <p class="prix-unitaire">≈ {{ "{:,.0f}".format(p[4] / p[3]) }} FCFA / unité</p>
+            </div>
+            <div class="actions">
+                <button onclick="basculerEdition({{ p[0] }})" style="background:#ffc107; color:#333;">✏️ Modifier</button>
+                <a href="/admin/produits/paliers/supprimer/{{ p[0] }}" onclick="return confirm('Supprimer ce palier ?')" style="background:#dc3545; color:white;">🗑️</a>
+            </div>
+            <form method="post" action="/admin/produits/paliers/modifier/{{ p[0] }}" class="edit-form-palier" id="edit-{{ p[0] }}">
+                <input type="text" name="nom" value="{{ p[2] }}" required>
+                <input type="number" name="quantite" step="0.001" min="0.001" value="{{ p[3] }}" required>
+                <input type="number" name="prix" step="1" min="1" value="{{ p[4] }}" required>
+                <label style="display:flex; align-items:center; gap:6px; font-size:12px; white-space:nowrap;">
+                    <input type="checkbox" name="actif" {% if p[5] == 1 %}checked{% endif %} style="width:auto;">
+                    Actif
+                </label>
+                <button type="submit" style="background:#28a745; color:white; padding:8px 14px;">✅ Valider</button>
+            </form>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align:center; color:#999; padding:40px;">
+            📭 Aucun palier défini — ce produit se vend uniquement au prix de base à l'unité.
+        </p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/admin/produits">← Retour aux produits</a>
+</div>
+
+<script>
+    function basculerEdition(id) {
+        document.getElementById('edit-' + id).classList.toggle('visible');
+    }
+</script>
+{% endblock %}
