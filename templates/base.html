@@ -779,6 +779,11 @@
                     </a>
                 </div>
                 <div class="nav-item">
+                    <a href="/admin/produits/corbeille" class="nav-link {% if request.endpoint == 'corbeille_produits' %}active{% endif %}">
+                        <span class="icon">🗑️</span><span>Corbeille produits</span>
+                    </a>
+                </div>
+                <div class="nav-item">
                     <a href="/admin/entrees" class="nav-link {% if request.endpoint == 'entrees_list' %}active{% endif %}">
                         <span class="icon">📥</span><span>Entrées de stock</span>
                     </a>
