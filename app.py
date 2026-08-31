@@ -1470,16 +1470,20 @@ def produits_list():
         filtre = request.args.get('filtre', 'actifs')
         if filtre not in ('actifs', 'inactifs', 'tous'):
             filtre = 'actifs'
-        cache_key = f'produits_list_{filtre}'
+        rupture_only = request.args.get('rupture') == '1'
+        cache_key = f'produits_list_{filtre}_{"rupture" if rupture_only else "all"}'
         cached_data = get_cached(cache_key, 120)
         if cached_data:
-            produits, unites, categories, nb_inactifs = cached_data
+            produits, unites, categories, nb_inactifs, nb_ruptures = cached_data
         else:
-            where_actif = ""
+            conditions = []
             if filtre == 'actifs':
-                where_actif = "WHERE COALESCE(p.actif, 1) = 1"
+                conditions.append("COALESCE(p.actif, 1) = 1")
             elif filtre == 'inactifs':
-                where_actif = "WHERE COALESCE(p.actif, 1) = 0"
+                conditions.append("COALESCE(p.actif, 1) = 0")
+            if rupture_only:
+                conditions.append("p.stock <= 0")
+            where_actif = ("WHERE " + " AND ".join(conditions)) if conditions else ""
             produits = qall(f'''SELECT p.id, p.nom, p.prix, p.stock, p.stock_min,
                                       COALESCE(u.symbole, '') as unite_symbole,
                                       COALESCE(u.nom, '') as unite_nom,
@@ -1500,9 +1504,11 @@ def produits_list():
             categories = qall("SELECT id, nom, icone FROM categories_produits WHERE actif = 1 ORDER BY nom")
             nb_inactifs_row = q1("SELECT COUNT(*) FROM produits WHERE COALESCE(actif,1) = 0")
             nb_inactifs = nb_inactifs_row[0] if nb_inactifs_row else 0
-            set_cached(cache_key, (produits, unites, categories, nb_inactifs))
+            nb_ruptures_row = q1("SELECT COUNT(*) FROM produits WHERE stock <= 0 AND COALESCE(actif,1) = 1")
+            nb_ruptures = nb_ruptures_row[0] if nb_ruptures_row else 0
+            set_cached(cache_key, (produits, unites, categories, nb_inactifs, nb_ruptures))
         return render_template('produits.html', produits=produits, unites=unites, categories=categories,
-            filtre_actuel=filtre, nb_inactifs=nb_inactifs)
+            filtre_actuel=filtre, nb_inactifs=nb_inactifs, rupture_only=rupture_only, nb_ruptures=nb_ruptures)
     except Exception as e:
         print(f"❌ Erreur produits_list: {e}")
         flash('Erreur lors du chargement des produits')
@@ -3380,6 +3386,60 @@ def supprimer_client(id):
         print(f"❌ Erreur supprimer_client: {e}")
         flash('❌ Erreur lors de la suppression')
     return redirect('/admin/clients')
+
+# ══════════════════════════════════════════════════════════════
+# RÉAPPROVISIONNEMENT — suggestions basées sur la vitesse de vente réelle
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/reapprovisionnement')
+def admin_reapprovisionnement():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+
+        JOURS_PERIODE = 30    # période observée pour calculer la vitesse de vente
+        JOURS_COUVERTURE = 14 # nombre de jours de vente que la suggestion doit couvrir
+        SEUIL_ALERTE = 7      # en dessous de ce nombre de jours restants → urgent
+
+        date_limite = (datetime.now() - timedelta(days=JOURS_PERIODE)).strftime('%Y-%m-%d')
+
+        produits = qall('''SELECT id, nom, stock, stock_min FROM produits
+                            WHERE COALESCE(actif,1)=1 ORDER BY nom''')
+
+        ventes_par_produit = {}
+        for row in qall('''SELECT produit_id, COALESCE(SUM(quantite),0)
+                            FROM sorties WHERE date_sortie >= ? GROUP BY produit_id''', (date_limite,)):
+            ventes_par_produit[row[0]] = float(row[1])
+
+        produits_urgents, produits_ok, produits_sans_vente = [], [], []
+
+        for p in produits:
+            pid, nom, stock, stock_min = p[0], p[1], float(p[2]), p[3]
+            total_vendu = ventes_par_produit.get(pid, 0)
+            vitesse_jour = round(total_vendu / JOURS_PERIODE, 2)
+
+            if vitesse_jour > 0:
+                jours_restants = round(stock / vitesse_jour) if vitesse_jour else 999
+                suggestion = max(0, round(vitesse_jour * JOURS_COUVERTURE - stock))
+                fiche = {'nom': nom, 'stock': format_qte(stock), 'vitesse_jour': vitesse_jour,
+                         'jours_restants': jours_restants, 'suggestion': suggestion}
+                if jours_restants <= SEUIL_ALERTE:
+                    produits_urgents.append(fiche)
+                else:
+                    produits_ok.append(fiche)
+            else:
+                produits_sans_vente.append({'nom': nom, 'stock': format_qte(stock), 'stock_min': stock_min})
+
+        produits_urgents.sort(key=lambda x: x['jours_restants'])
+        produits_ok.sort(key=lambda x: x['jours_restants'])
+
+        return render_template('reapprovisionnement.html',
+            produits_urgents=produits_urgents, produits_ok=produits_ok,
+            produits_sans_vente=produits_sans_vente,
+            jours_periode=JOURS_PERIODE, jours_couverture=JOURS_COUVERTURE, seuil_alerte=SEUIL_ALERTE)
+    except Exception as e:
+        print(f"❌ Erreur admin_reapprovisionnement: {e}")
+        flash('Erreur lors du calcul des suggestions de réapprovisionnement')
+        return redirect('/dashboard')
 
 # ══════════════════════════════════════════════════════════════
 # STATISTIQUES

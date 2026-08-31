@@ -345,9 +345,15 @@
     <div class="table-header-actions">
         <h2 class="card-title" style="margin:0;">📋 Liste des produits ({{ produits|length }})</h2>
         <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-            <a href="/admin/produits?filtre=actifs" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='actifs' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">Actifs</a>
-            <a href="/admin/produits?filtre=inactifs" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='inactifs' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">🚫 Inactifs {% if nb_inactifs %}({{ nb_inactifs }}){% endif %}</a>
-            <a href="/admin/produits?filtre=tous" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='tous' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">Tous</a>
+            <a href="/admin/produits?filtre=actifs{% if rupture_only %}&rupture=1{% endif %}" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='actifs' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">Actifs</a>
+            <a href="/admin/produits?filtre=inactifs{% if rupture_only %}&rupture=1{% endif %}" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='inactifs' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">🚫 Inactifs {% if nb_inactifs %}({{ nb_inactifs }}){% endif %}</a>
+            <a href="/admin/produits?filtre=tous{% if rupture_only %}&rupture=1{% endif %}" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='tous' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">Tous</a>
+            <span style="width:1px; height:20px; background:#e0e0e0; margin:0 2px;"></span>
+            {% if rupture_only %}
+            <a href="/admin/produits?filtre={{ filtre_actuel }}" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; background:#dc3545; color:white;">🔴 Rupture de stock ✕</a>
+            {% else %}
+            <a href="/admin/produits?filtre={{ filtre_actuel }}&rupture=1" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; background:#f0f2f5; color:#333;">🔴 Rupture de stock {% if nb_ruptures %}({{ nb_ruptures }}){% endif %}</a>
+            {% endif %}
         </div>
         <button class="btn-select-all" onclick="toggleSelectAll()" id="btn-select-all">
             ☑️ Tout sélectionner
