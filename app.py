@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, session, flash, jso
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
 import hashlib, os, random, string, io, json, uuid, socket, zipfile, calendar
+from decimal import Decimal
 import bcrypt
 import psycopg2
 import psycopg2.extras
@@ -177,7 +178,7 @@ BACKUP_TABLES = [
     'sorties', 'entrees', 'pertes', 'alertes_produits', 'notifications',
     'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_recap',
     'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
-    'ventes_annulees', 'paliers_prix',
+    'ventes_annulees', 'paliers_prix', 'produits_supprimes',
 ]
 
 def generer_backup_json():
@@ -538,6 +539,16 @@ def init_db():
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne palier_nom à ventes_annulees: {e}")
 
+        # ── MOTIF D'ANNULATION — pourquoi une vente a été annulée
+        #    (erreur de saisie, client qui change d'avis, etc.)
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='ventes_annulees' AND column_name='motif'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE ventes_annulees ADD COLUMN motif TEXT")
+                print("✅ Colonne 'motif' ajoutée à ventes_annulees")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne motif à ventes_annulees: {e}")
+
         # ── FICHE CLIENT — rattache une vente à un client (identifié
         #    par téléphone) pour retrouver son historique d'achats.
         try:
@@ -580,6 +591,29 @@ def init_db():
                 print("✅ Colonne 'code_barre' ajoutée à produits (scanner)")
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne code_barre: {e}")
+
+        # ── DÉSACTIVATION D'UN PRODUIT — pour un produit réel qu'on arrête
+        #    de vendre (rupture définitive, retiré du catalogue...) sans
+        #    jamais toucher à son historique de ventes/entrées/pertes,
+        #    contrairement à la suppression forcée.
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produits' AND column_name='actif'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE produits ADD COLUMN actif INTEGER DEFAULT 1")
+                print("✅ Colonne 'actif' ajoutée à produits (désactivation sans perte d'historique)")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne actif: {e}")
+
+        # ── CORBEILLE DE PRODUITS SUPPRIMÉS — avant toute suppression
+        #    forcée (avec historique), on sauvegarde un instantané complet
+        #    du produit ici, pour pouvoir le restaurer en cas d'erreur.
+        c.execute('''CREATE TABLE IF NOT EXISTS produits_supprimes (
+            id SERIAL PRIMARY KEY,
+            nom TEXT,
+            donnees_json TEXT,
+            nb_mouvements INTEGER DEFAULT 0,
+            date_suppression TEXT,
+            supprime_par TEXT)''')
 
         # 2) Passage des colonnes de stock/quantité en NUMERIC pour
         #    pouvoir stocker des demi-cartons, quarts, etc. Les valeurs
@@ -1433,12 +1467,20 @@ def produits_list():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        cache_key = 'produits_list'
+        filtre = request.args.get('filtre', 'actifs')
+        if filtre not in ('actifs', 'inactifs', 'tous'):
+            filtre = 'actifs'
+        cache_key = f'produits_list_{filtre}'
         cached_data = get_cached(cache_key, 120)
         if cached_data:
-            produits, unites, categories = cached_data
+            produits, unites, categories, nb_inactifs = cached_data
         else:
-            produits = qall('''SELECT p.id, p.nom, p.prix, p.stock, p.stock_min,
+            where_actif = ""
+            if filtre == 'actifs':
+                where_actif = "WHERE COALESCE(p.actif, 1) = 1"
+            elif filtre == 'inactifs':
+                where_actif = "WHERE COALESCE(p.actif, 1) = 0"
+            produits = qall(f'''SELECT p.id, p.nom, p.prix, p.stock, p.stock_min,
                                       COALESCE(u.symbole, '') as unite_symbole,
                                       COALESCE(u.nom, '') as unite_nom,
                                       p.unite_id,
@@ -1447,15 +1489,20 @@ def produits_list():
                                       p.categorie_id,
                                       p.valeur_unite,
                                       COALESCE(p.vente_fractionnable, 0) as vente_fractionnable,
-                                      COALESCE(p.code_barre, '') as code_barre
+                                      COALESCE(p.code_barre, '') as code_barre,
+                                      COALESCE(p.actif, 1) as actif
                                FROM produits p 
                                LEFT JOIN unites_mesure u ON p.unite_id = u.id 
                                LEFT JOIN categories_produits c ON p.categorie_id = c.id
+                               {where_actif}
                                ORDER BY p.nom''')
             unites = qall("SELECT id, nom, symbole FROM unites_mesure WHERE actif = 1 ORDER BY nom")
             categories = qall("SELECT id, nom, icone FROM categories_produits WHERE actif = 1 ORDER BY nom")
-            set_cached(cache_key, (produits, unites, categories))
-        return render_template('produits.html', produits=produits, unites=unites, categories=categories)
+            nb_inactifs_row = q1("SELECT COUNT(*) FROM produits WHERE COALESCE(actif,1) = 0")
+            nb_inactifs = nb_inactifs_row[0] if nb_inactifs_row else 0
+            set_cached(cache_key, (produits, unites, categories, nb_inactifs))
+        return render_template('produits.html', produits=produits, unites=unites, categories=categories,
+            filtre_actuel=filtre, nb_inactifs=nb_inactifs)
     except Exception as e:
         print(f"❌ Erreur produits_list: {e}")
         flash('Erreur lors du chargement des produits')
@@ -1548,6 +1595,95 @@ def modifier_produit(id):
         flash('❌ Erreur lors de la modification')
     return redirect('/admin/produits')
 
+def _row_to_json_safe(row):
+    """Convertit un tuple issu de la DB (avec des Decimal) en liste sérialisable en JSON."""
+    return [float(v) if isinstance(v, Decimal) else v for v in row]
+
+def _snapshot_produit_avant_suppression(id, supprime_par_id):
+    """Sauvegarde un instantané complet du produit (fiche + historique + paliers)
+    dans la corbeille produits_supprimes, juste avant une suppression forcée.
+    Permet de tout restaurer en cas d'erreur (ex: mauvais produit sélectionné)."""
+    try:
+        produit = q1('''SELECT nom, prix, stock, stock_min, unite_id, categorie_id,
+                                valeur_unite, vente_fractionnable, code_barre
+                         FROM produits WHERE id=?''', (id,))
+        if not produit:
+            return
+        sorties = qall('''SELECT quantite, prix_unitaire, total, date_sortie, client,
+                                  employe_id, groupe_vente, client_id, palier_nom
+                           FROM sorties WHERE produit_id=?''', (id,))
+        entrees = qall('''SELECT quantite, prix_unitaire, total, date_entree, fournisseur, employe_id
+                           FROM entrees WHERE produit_id=?''', (id,))
+        pertes = qall('''SELECT quantite, prix_unitaire, total, motif, date_perte, employe_id
+                          FROM pertes WHERE produit_id=?''', (id,))
+        paliers = qall('''SELECT nom, quantite, prix, actif, ordre FROM paliers_prix WHERE produit_id=?''', (id,))
+
+        snapshot = {
+            'produit': _row_to_json_safe(produit),
+            'sorties': [_row_to_json_safe(r) for r in sorties],
+            'entrees': [_row_to_json_safe(r) for r in entrees],
+            'pertes': [_row_to_json_safe(r) for r in pertes],
+            'paliers': [_row_to_json_safe(r) for r in paliers],
+        }
+        supprimeur = q1("SELECT nom FROM users WHERE id=?", (supprime_par_id,))
+        nom_supprimeur = supprimeur[0] if supprimeur else 'Inconnu'
+        nb_mouvements = len(sorties) + len(entrees) + len(pertes)
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe('''INSERT INTO produits_supprimes (nom, donnees_json, nb_mouvements, date_suppression, supprime_par)
+               VALUES (?,?,?,?,?)''',
+            (produit[0], json.dumps(snapshot), nb_mouvements, now, nom_supprimeur))
+    except Exception as e:
+        print(f"⚠️ Erreur snapshot avant suppression du produit #{id}: {e}")
+
+def _restaurer_produit_depuis_corbeille(corbeille_id):
+    """Recrée un produit (nouvel id) à partir de son instantané dans la corbeille,
+    avec tout son historique de ventes/entrées/pertes et ses paliers de prix.
+    Retourne (ok: bool, message: str)."""
+    row = q1("SELECT nom, donnees_json FROM produits_supprimes WHERE id=?", (corbeille_id,))
+    if not row:
+        return False, "❌ Entrée introuvable dans la corbeille (peut-être déjà restaurée)"
+    try:
+        data = json.loads(row[1])
+        p = data.get('produit', [])
+        nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre = (p + [None]*9)[:9]
+    except Exception as e:
+        return False, f"❌ Instantané corrompu, restauration impossible ({e})"
+
+    # Le code-barres doit rester unique : s'il a été repris par un autre
+    # produit depuis la suppression, on restaure sans code-barres plutôt
+    # que d'échouer.
+    if code_barre:
+        existant = q1("SELECT id FROM produits WHERE code_barre=?", (code_barre,))
+        if existant:
+            code_barre = None
+
+    new_id = exe('''INSERT INTO produits
+                     (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, actif)
+                     VALUES (?,?,?,?,?,?,?,?,?,1)''',
+                 (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre),
+                 returning=True)
+    if not new_id:
+        return False, "❌ Échec de la recréation du produit"
+
+    for s in data.get('sorties', []):
+        exe('''INSERT INTO sorties
+               (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id, palier_nom)
+               VALUES (?,?,?,?,?,?,?,?,?,?)''', (new_id, *s))
+    for e in data.get('entrees', []):
+        exe('''INSERT INTO entrees (produit_id, quantite, prix_unitaire, total, date_entree, fournisseur, employe_id)
+               VALUES (?,?,?,?,?,?,?)''', (new_id, *e))
+    for pe in data.get('pertes', []):
+        exe('''INSERT INTO pertes (produit_id, quantite, prix_unitaire, total, motif, date_perte, employe_id)
+               VALUES (?,?,?,?,?,?,?)''', (new_id, *pe))
+    for pal in data.get('paliers', []):
+        exe('''INSERT INTO paliers_prix (produit_id, nom, quantite, prix, actif, ordre)
+               VALUES (?,?,?,?,?,?)''', (new_id, *pal))
+
+    exe("DELETE FROM produits_supprimes WHERE id=?", (corbeille_id,))
+    nb_s, nb_e, nb_p, nb_pal = len(data.get('sorties',[])), len(data.get('entrees',[])), len(data.get('pertes',[])), len(data.get('paliers',[]))
+    return True, f'✅ "{nom}" restauré avec {nb_s} vente(s), {nb_e} entrée(s), {nb_p} perte(s) et {nb_pal} palier(s) de prix'
+
+
 @app.route('/admin/produits/supprimer/<int:id>')
 def supprimer_produit(id):
     try:
@@ -1574,13 +1710,46 @@ def supprimer_produit(id):
                 exe("DELETE FROM entrees WHERE produit_id=?", (id,))
                 exe("DELETE FROM pertes WHERE produit_id=?", (id,))
             exe("DELETE FROM alertes_produits WHERE produit_id=?", (id,))
+            _snapshot_produit_avant_suppression(id, session.get('user_id'))
             exe("DELETE FROM produits WHERE id=?", (id,))
-            flash(f'🗑️ "{p[0]}" supprimé' + (' (avec son historique)' if a_des_mouvements else ''))
+            flash(f'🗑️ "{p[0]}" supprimé' + (' (avec son historique — récupérable depuis la corbeille)' if a_des_mouvements else ''))
         else:
             flash('❌ Produit introuvable')
     except Exception as e:
         print(f"❌ Erreur supprimer_produit: {e}")
         flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/produits')
+
+@app.route('/admin/produits/desactiver/<int:id>')
+def desactiver_produit(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        p = q1("SELECT nom FROM produits WHERE id=?", (id,))
+        if p:
+            exe("UPDATE produits SET actif=0 WHERE id=?", (id,))
+            flash(f'🚫 "{p[0]}" désactivé — il n\'apparaît plus en vente, mais son historique est conservé')
+        else:
+            flash('❌ Produit introuvable')
+    except Exception as e:
+        print(f"❌ Erreur desactiver_produit: {e}")
+        flash('❌ Erreur lors de la désactivation')
+    return redirect('/admin/produits')
+
+@app.route('/admin/produits/activer/<int:id>')
+def activer_produit(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        p = q1("SELECT nom FROM produits WHERE id=?", (id,))
+        if p:
+            exe("UPDATE produits SET actif=1 WHERE id=?", (id,))
+            flash(f'✅ "{p[0]}" réactivé — de nouveau disponible en vente')
+        else:
+            flash('❌ Produit introuvable')
+    except Exception as e:
+        print(f"❌ Erreur activer_produit: {e}")
+        flash('❌ Erreur lors de la réactivation')
     return redirect('/admin/produits')
 
 @app.route('/admin/produits/supprimer_multiple', methods=['POST'])
@@ -1624,11 +1793,13 @@ def supprimer_produits_multiple():
                 exe("DELETE FROM entrees WHERE produit_id=?", (id,))
                 exe("DELETE FROM pertes WHERE produit_id=?", (id,))
             exe("DELETE FROM alertes_produits WHERE produit_id=?", (id,))
+            if force:
+                _snapshot_produit_avant_suppression(id, session.get('user_id'))
             exe("DELETE FROM produits WHERE id=?", (id,))
             supprimes.append(p[0])
 
         if supprimes:
-            flash(f'🗑️ {len(supprimes)} produit(s) supprimé(s) : {", ".join(supprimes)}')
+            flash(f'🗑️ {len(supprimes)} produit(s) supprimé(s)' + (' (récupérables depuis la corbeille) : ' if force else ' : ') + ", ".join(supprimes))
         if bloques:
             flash(f'❌ {len(bloques)} produit(s) non supprimé(s) (ont des mouvements — coche "Forcer" pour les supprimer quand même) : {", ".join(bloques)}')
         if not supprimes and not bloques:
@@ -1637,6 +1808,49 @@ def supprimer_produits_multiple():
         print(f"❌ Erreur supprimer_produits_multiple: {e}")
         flash('❌ Erreur lors de la suppression multiple')
     return redirect('/admin/produits')
+
+# ══════════════════════════════════════════════════════════════
+# CORBEILLE DES PRODUITS SUPPRIMÉS — restauration après une
+# suppression forcée (nom, prix, stock, historique, paliers).
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/produits/corbeille')
+def corbeille_produits():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        entrees = qall('''SELECT id, nom, nb_mouvements, date_suppression, supprime_par
+                           FROM produits_supprimes ORDER BY date_suppression DESC''')
+        return render_template('admin_corbeille_produits.html', entrees=entrees)
+    except Exception as e:
+        print(f"❌ Erreur corbeille_produits: {e}")
+        flash('Erreur lors du chargement de la corbeille')
+        return redirect('/admin/produits')
+
+@app.route('/admin/produits/corbeille/restaurer/<int:id>', methods=['POST'])
+def restaurer_produit(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        ok, message = _restaurer_produit_depuis_corbeille(id)
+        flash(message)
+    except Exception as e:
+        print(f"❌ Erreur restaurer_produit: {e}")
+        flash('❌ Erreur lors de la restauration')
+    return redirect('/admin/produits/corbeille')
+
+@app.route('/admin/produits/corbeille/supprimer_definitivement/<int:id>')
+def purger_corbeille_produit(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        p = q1("SELECT nom FROM produits_supprimes WHERE id=?", (id,))
+        if p:
+            exe("DELETE FROM produits_supprimes WHERE id=?", (id,))
+            flash(f'🗑️ "{p[0]}" définitivement effacé de la corbeille (plus aucune récupération possible)')
+    except Exception as e:
+        print(f"❌ Erreur purger_corbeille_produit: {e}")
+        flash('❌ Erreur lors de la suppression définitive')
+    return redirect('/admin/produits/corbeille')
 
 # ─── ENTRÉES ──────────────────────────────────────────────────
 @app.route('/admin/entrees')
@@ -1748,12 +1962,13 @@ def _traiter_vente_cart(cart, client, employe_id, telephone=None):
     return groupe_vente, lignes_ok, erreurs
 
 
-def _annuler_vente(groupe_vente, annule_par_id):
+def _annuler_vente(groupe_vente, annule_par_id, motif=None):
     """Annule une vente complète (tous les articles du même reçu / groupe_vente) :
-    restaure le stock, journalise l'annulation dans ventes_annulees, puis
-    supprime les lignes de la table sorties.
+    restaure le stock, journalise l'annulation (avec motif) dans ventes_annulees,
+    puis supprime les lignes de la table sorties.
     Impossible après minuit le jour même de la vente (règle métier).
     Retourne (ok: bool, message: str)."""
+    motif = (motif or '').strip() or 'Non précisé'
     lignes = qall('''SELECT s.id, s.produit_id, s.quantite, p.nom, DATE(s.date_sortie),
                              s.prix_unitaire, s.total, s.client, s.date_sortie, u.nom, s.palier_nom
                       FROM sorties s JOIN produits p ON s.produit_id = p.id
@@ -1775,14 +1990,14 @@ def _annuler_vente(groupe_vente, annule_par_id):
     for ligne_id, produit_id, quantite, nom_produit, _, prix_unitaire, total, client, date_sortie, vendeur, palier_nom in lignes:
         exe('''INSERT INTO ventes_annulees
                (groupe_vente, produit_nom, quantite, prix_unitaire, total, client,
-                vendeur_original, date_vente_original, date_annulation, annule_par, palier_nom)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                vendeur_original, date_vente_original, date_annulation, annule_par, palier_nom, motif)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
             (groupe_vente, nom_produit, quantite, prix_unitaire, total, client,
-             vendeur, date_sortie, now, nom_annuleur, palier_nom))
+             vendeur, date_sortie, now, nom_annuleur, palier_nom, motif))
         exe("UPDATE produits SET stock = stock + ? WHERE id = ?", (quantite, produit_id))
         exe("DELETE FROM sorties WHERE id = ?", (ligne_id,))
         noms.append(f'{format_qte(quantite)} x {palier_nom}' if palier_nom else f'{format_qte(quantite)} x {nom_produit}')
-    return True, "✅ Vente annulée, stock restauré : " + ", ".join(noms)
+    return True, f"✅ Vente annulée ({motif}), stock restauré : " + ", ".join(noms)
 
 
 def _traiter_entree(pid, qty, pu, fournisseur, employe_id):
@@ -1909,7 +2124,7 @@ def admin_ventes():
                                        COALESCE(p.code_barre, '') as code_barre
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
-                                WHERE p.stock>0 ORDER BY p.nom''')
+                                WHERE p.stock>0 AND COALESCE(p.actif,1)=1 ORDER BY p.nom''')
             historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente,s.palier_nom
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
                 ORDER BY s.date_sortie DESC LIMIT 20''')
@@ -1978,7 +2193,7 @@ def vente():
                                        COALESCE(p.code_barre, '') as code_barre
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
-                                WHERE p.stock>0 ORDER BY p.nom''')
+                                WHERE p.stock>0 AND COALESCE(p.actif,1)=1 ORDER BY p.nom''')
             historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente, s.palier_nom
                 FROM sorties s 
                 JOIN produits p ON s.produit_id = p.id 
@@ -2049,7 +2264,8 @@ def annuler_vente_employe(groupe_vente):
         if 'user_id' not in session or session.get('role') != 'employe':
             flash('❌ Accès réservé aux employés')
             return redirect('/login')
-        ok, message = _annuler_vente(groupe_vente, session.get("user_id"))
+        motif = request.form.get('motif', '')
+        ok, message = _annuler_vente(groupe_vente, session.get("user_id"), motif)
         flash(message)
     except Exception as e:
         print(f"❌ Erreur annuler_vente_employe: {e}")
@@ -2062,7 +2278,8 @@ def annuler_vente_admin(groupe_vente):
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        ok, message = _annuler_vente(groupe_vente, session.get("user_id"))
+        motif = request.form.get('motif', '')
+        ok, message = _annuler_vente(groupe_vente, session.get("user_id"), motif)
         flash(message)
     except Exception as e:
         print(f"❌ Erreur annuler_vente_admin: {e}")
@@ -2860,7 +3077,7 @@ def ventes_annulees_list():
         if session.get('role') != 'admin':
             return redirect('/login')
         annulations = qall('''SELECT id, groupe_vente, produit_nom, quantite, total, client,
-                                      vendeur_original, date_vente_original, date_annulation, annule_par
+                                      vendeur_original, date_vente_original, date_annulation, annule_par, palier_nom, motif
                                FROM ventes_annulees
                                ORDER BY date_annulation DESC LIMIT 300''')
         total_annule = q1("SELECT COALESCE(SUM(total),0), COUNT(DISTINCT groupe_vente) FROM ventes_annulees")

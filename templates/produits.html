@@ -344,6 +344,11 @@
 <div class="card" style="margin-top:20px;">
     <div class="table-header-actions">
         <h2 class="card-title" style="margin:0;">📋 Liste des produits ({{ produits|length }})</h2>
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <a href="/admin/produits?filtre=actifs" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='actifs' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">Actifs</a>
+            <a href="/admin/produits?filtre=inactifs" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='inactifs' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">🚫 Inactifs {% if nb_inactifs %}({{ nb_inactifs }}){% endif %}</a>
+            <a href="/admin/produits?filtre=tous" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='tous' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">Tous</a>
+        </div>
         <button class="btn-select-all" onclick="toggleSelectAll()" id="btn-select-all">
             ☑️ Tout sélectionner
         </button>
@@ -396,13 +401,13 @@
                 </thead>
                 <tbody id="produits-tbody">
                     {% for p in produits %}
-                    <tr id="row-{{ p[0] }}" data-nom="{{ p[1]|lower }}">
+                    <tr id="row-{{ p[0] }}" data-nom="{{ p[1]|lower }}" {% if p[14] == 0 %}style="opacity:0.55; background:#f8f9fa;"{% endif %}>
                         <td class="checkbox-cell">
                             <input type="checkbox" class="product-checkbox"
                                    value="{{ p[0] }}" data-nom="{{ p[1] }}"
                                    onchange="onCheckboxChange(this)">
                         </td>
-                        <td><strong>{{ p[1] }}</strong></td>
+                        <td><strong>{{ p[1] }}</strong>{% if p[14] == 0 %} <span style="background:#e2e3e5;color:#383d41;padding:2px 8px;border-radius:10px;font-size:10px;">🚫 Inactif</span>{% endif %}</td>
                         <td>
                             {% if p[8] %}
                                 <span class="unite-badge">{{ p[9] }} {{ p[8] }}</span>
@@ -432,6 +437,18 @@
                                style="background:#28a745;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
                                 💰 Paliers
                             </a>
+                            {% if p[14] == 1 %}
+                            <a href="/admin/produits/desactiver/{{ p[0] }}"
+                               onclick="return confirm('Désactiver {{ p[1] }} ? Il n\'apparaîtra plus en vente, mais son historique reste intact.')"
+                               style="background:#6c757d;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
+                                🚫 Désactiver
+                            </a>
+                            {% else %}
+                            <a href="/admin/produits/activer/{{ p[0] }}"
+                               style="background:#17a2b8;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
+                                ✅ Réactiver
+                            </a>
+                            {% endif %}
                             <!-- Supprimer seul -->
                             <a href="/admin/produits/supprimer/{{ p[0] }}"
                                onclick="return confirm('Supprimer {{ p[1] }} ?')"
@@ -449,13 +466,14 @@
     <!-- ── VERSION MOBILE (cartes) ───────────── -->
     <div class="produits-cards-mobile" id="produits-cards-mobile">
         {% for p in produits %}
-        <div class="produit-card" id="card-{{ p[0] }}" data-nom="{{ p[1]|lower }}">
+        <div class="produit-card" id="card-{{ p[0] }}" data-nom="{{ p[1]|lower }}" {% if p[14] == 0 %}style="opacity:0.55; background:#f8f9fa;"{% endif %}>
             <div class="card-header">
                 <input type="checkbox" class="product-checkbox"
                        value="{{ p[0] }}" data-nom="{{ p[1] }}"
                        onchange="onCheckboxChange(this)"
                        style="width:20px;height:20px;accent-color:#dc3545;cursor:pointer;flex-shrink:0;">
                 <span class="card-nom">{{ p[1] }}</span>
+                {% if p[14] == 0 %}<span style="background:#e2e3e5;color:#383d41;padding:2px 8px;border-radius:10px;font-size:10px;">🚫 Inactif</span>{% endif %}
             </div>
             <div class="card-row">
                 <label>Catégorie</label>
@@ -485,6 +503,14 @@
                     ✏️ Modifier
                 </button>
                 <a href="/admin/produits/paliers/{{ p[0] }}" class="card-btn-save" style="background:#28a745; text-decoration:none; text-align:center;">💰 Paliers</a>
+                {% if p[14] == 1 %}
+                <a href="/admin/produits/desactiver/{{ p[0] }}"
+                   onclick="return confirm('Désactiver {{ p[1] }} ? Il n\'apparaîtra plus en vente, mais son historique reste intact.')"
+                   class="card-btn-save" style="background:#6c757d; text-decoration:none; text-align:center;">🚫 Désactiver</a>
+                {% else %}
+                <a href="/admin/produits/activer/{{ p[0] }}"
+                   class="card-btn-save" style="background:#17a2b8; text-decoration:none; text-align:center;">✅ Réactiver</a>
+                {% endif %}
                 <a href="/admin/produits/supprimer/{{ p[0] }}"
                    onclick="return confirm('Supprimer {{ p[1] }} ?')"
                    class="card-btn-delete">🗑️</a>
@@ -498,6 +524,7 @@
     <a href="/dashboard">← Retour au Dashboard</a>
     <a href="/admin/unites">📏 Gérer les unités de mesure</a>
     <a href="/admin/categories">🗂️ Gérer les catégories</a>
+    <a href="/admin/produits/corbeille">🗑️ Corbeille des produits supprimés</a>
 </div>
 
 <!-- ══ MODAL MODIFICATION ════════════════════════════════════ -->

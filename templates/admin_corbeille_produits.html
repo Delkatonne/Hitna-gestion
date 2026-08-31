@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Corbeille produits - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .info-banner {
+        background: #eef4ff;
+        border: 1px solid #cfe0ff;
+        border-radius: 12px;
+        padding: 14px 18px;
+        font-size: 13px;
+        color: #1e3c72;
+        margin-bottom: 24px;
+    }
+    .corbeille-item {
+        background: white;
+        border-radius: 12px;
+        padding: 15px 18px;
+        margin-bottom: 10px;
+        border: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .corbeille-item .infos h3 { font-size: 15px; color: #1e3c72; margin-bottom: 4px; }
+    .corbeille-item .infos p { font-size: 12px; color: #888; }
+    .corbeille-item .actions { display: flex; gap: 8px; }
+    .corbeille-item .actions button, .corbeille-item .actions a {
+        padding: 8px 14px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: bold;
+        border: none;
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}🗑️ Corbeille des produits{% endblock %}
+{% block page_subtitle %}Produits supprimés avec "Forcer" — restaurables avec tout leur historique{% endblock %}
+
+{% block content %}
+
+<div class="info-banner">
+    ℹ️ Chaque suppression forcée d'un produit (avec son historique) est sauvegardée ici automatiquement.
+    Restaurer un produit le recrée (nouveau numéro interne) avec le même nom, prix, stock, ses ventes,
+    entrées, pertes et paliers de prix d'origine.
+</div>
+
+<div class="card">
+    {% if entrees %}
+        {% for e in entrees %}
+        <div class="corbeille-item">
+            <div class="infos">
+                <h3>📦 {{ e[1] }}</h3>
+                <p>{{ e[2] }} mouvement(s) sauvegardé(s) · supprimé le {{ e[3] }} par {{ e[4] }}</p>
+            </div>
+            <div class="actions">
+                <form method="post" action="/admin/produits/corbeille/restaurer/{{ e[0] }}" style="display:inline;"
+                      onsubmit="return confirm('Restaurer \'{{ e[1] }}\' avec tout son historique ?')">
+                    <button type="submit" style="background:#28a745; color:white;">♻️ Restaurer</button>
+                </form>
+                <a href="/admin/produits/corbeille/supprimer_definitivement/{{ e[0] }}"
+                   onclick="return confirm('Effacer définitivement \'{{ e[1] }}\' de la corbeille ? Cette fois, ce sera irréversible.')"
+                   style="background:#dc3545; color:white;">🗑️ Effacer définitivement</a>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align:center; color:#999; padding:40px;">
+            📭 La corbeille est vide — aucun produit n'a été supprimé avec historique récemment.
+        </p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/admin/produits">← Retour aux produits</a>
+</div>
+{% endblock %}

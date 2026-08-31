@@ -629,10 +629,7 @@
                     </td>
                     <td>
                         {% if v[7] and v[4] and v[4].split(' ')[0] == today_iso %}
-                        <form method="post" action="/admin/ventes/annuler/{{ v[7] }}" style="display:inline;"
-                              onsubmit="return confirm('Annuler cette vente ? Le stock sera restauré. Cette action est irréversible.')">
-                            <button type="submit" class="btn-small" style="background:#dc3545; color:white;">❌ Annuler</button>
-                        </form>
+                        <button type="button" onclick="demanderMotifAnnulation('/admin/ventes/annuler/{{ v[7] }}')" class="btn-small" style="background:#dc3545; color:white;">❌ Annuler</button>
                         {% else %}
                         —
                         {% endif %}

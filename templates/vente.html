@@ -698,10 +698,7 @@
                     </td>
                     <td>
                         {% if v[8] %}
-                        <form method="post" action="/vente/annuler/{{ v[8] }}" style="display:inline;"
-                              onsubmit="return confirm('Annuler cette vente ? Le stock sera restauré. Cette action est irréversible.')">
-                            <button type="submit" class="btn-small" style="background:#dc3545; color:white;">❌ Annuler</button>
-                        </form>
+                        <button type="button" onclick="demanderMotifAnnulation('/vente/annuler/{{ v[8] }}')" class="btn-small" style="background:#dc3545; color:white;">❌ Annuler</button>
                         {% endif %}
                     </td>
                 </tr>
