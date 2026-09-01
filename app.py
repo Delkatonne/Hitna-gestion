@@ -177,6 +177,7 @@ BACKUP_TABLES = [
     'users', 'produits', 'categories_produits', 'unites_mesure', 'fournisseurs',
     'sorties', 'entrees', 'pertes', 'alertes_produits', 'notifications',
     'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_recap',
+    'archive_ventes_annulees',
     'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
     'ventes_annulees', 'paliers_prix', 'produits_supprimes',
 ]
@@ -372,6 +373,16 @@ def init_db():
             prix_unitaire INTEGER, total INTEGER, motif TEXT,
             date_perte TEXT, employe_id INTEGER, archive_date TEXT,
             semaine INTEGER, annee INTEGER, produit_nom TEXT, employe_nom TEXT)''')
+
+        # ── Archive des ventes annulées — même principe que les 3 archives
+        #    ci-dessus : ventes_annulees est un journal qui grossit sans fin,
+        #    on en bascule les vieilles lignes ici lors de l'archivage hebdo.
+        c.execute('''CREATE TABLE IF NOT EXISTS archive_ventes_annulees (
+            id INTEGER, groupe_vente TEXT, produit_nom TEXT, quantite NUMERIC(10,3),
+            prix_unitaire INTEGER, total INTEGER, client TEXT, vendeur_original TEXT,
+            date_vente_original TEXT, date_annulation TEXT, annule_par TEXT,
+            palier_nom TEXT, motif TEXT, archive_date TEXT,
+            semaine INTEGER, annee INTEGER)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS archive_recap (
             id SERIAL PRIMARY KEY, semaine INTEGER, annee INTEGER,
@@ -755,6 +766,18 @@ def archiver_hebdomadaire():
             cm.execute('''INSERT INTO archive_pertes VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
                        (p[0],p[1],p[2],p[3],p[4],p[5],p[6],p[7],now_s,sem,annee,p[8],p[9]))
             cm.execute("DELETE FROM pertes WHERE id=%s",(p[0],))
+
+        cm.execute('''SELECT id, groupe_vente, produit_nom, quantite, prix_unitaire, total,
+                             client, vendeur_original, date_vente_original, date_annulation,
+                             annule_par, palier_nom, motif
+                      FROM ventes_annulees
+                      WHERE DATE(date_annulation)>=%s AND DATE(date_annulation)<=%s''',
+                   (debut.strftime('%Y-%m-%d'), fin.strftime('%Y-%m-%d')))
+        annulations = cm.fetchall()
+        for a in annulations:
+            cm.execute('''INSERT INTO archive_ventes_annulees VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                       (a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[7],a[8],a[9],a[10],a[11],a[12],now_s,sem,annee))
+            cm.execute("DELETE FROM ventes_annulees WHERE id=%s",(a[0],))
 
         tv = sum(v[4] for v in ventes) if ventes else 0
         ta = sum(e[4] for e in entrees) if entrees else 0
@@ -3661,79 +3684,79 @@ def admin_archives():
         tri = request.args.get('tri', 'date_desc')
         order = 'DESC' if 'desc' in tri else 'ASC'
 
-        rows = []
-        if type_arch == 'entrees':
-            conditions = []
-            params = []
+        # NOTE : les 4 onglets (Ventes / Entrées / Pertes / Ventes annulées) sont
+        # commutés côté client en JavaScript (switchTab), sans rechargement de
+        # page. Il faut donc TOUJOURS charger les 4 jeux de données ici — avant,
+        # seul le type sélectionné dans l'URL était rempli et les 3 autres
+        # onglets restaient vides tant qu'aucune recherche n'était lancée.
+        def _filtre(colonne_date, colonne_produit='produit_nom'):
+            conditions, params = [], []
             if date_debut:
-                conditions.append("date_entree >= %s")
+                conditions.append(f"{colonne_date} >= %s")
                 params.append(date_debut)
             if date_fin:
-                conditions.append("date_entree <= %s")
+                conditions.append(f"{colonne_date} <= %s")
                 params.append(date_fin + " 23:59:59")
             if produit_filtre:
-                conditions.append("LOWER(produit_nom) LIKE LOWER(%s)")
+                conditions.append(f"LOWER({colonne_produit}) LIKE LOWER(%s)")
                 params.append(f'%{produit_filtre}%')
             where_sql = (" AND " + " AND ".join(conditions)) if conditions else ""
-            rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_entree,fournisseur,employe_nom,archive_date
-                FROM archive_entrees WHERE 1=1{where_sql}
-                ORDER BY date_entree {order} LIMIT 200''', tuple(params))
-        elif type_arch == 'pertes':
-            conditions = []
-            params = []
-            if date_debut:
-                conditions.append("date_perte >= %s")
-                params.append(date_debut)
-            if date_fin:
-                conditions.append("date_perte <= %s")
-                params.append(date_fin + " 23:59:59")
-            if produit_filtre:
-                conditions.append("LOWER(produit_nom) LIKE LOWER(%s)")
-                params.append(f'%{produit_filtre}%')
-            where_sql = (" AND " + " AND ".join(conditions)) if conditions else ""
-            rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,motif,date_perte,employe_nom,archive_date
-                FROM archive_pertes WHERE 1=1{where_sql}
-                ORDER BY date_perte {order} LIMIT 200''', tuple(params))
-        else:
-            conditions = []
-            params = []
-            if date_debut:
-                conditions.append("date_vente >= %s")
-                params.append(date_debut)
-            if date_fin:
-                conditions.append("date_vente <= %s")
-                params.append(date_fin + " 23:59:59")
-            if produit_filtre:
-                conditions.append("LOWER(produit_nom) LIKE LOWER(%s)")
-                params.append(f'%{produit_filtre}%')
-            where_sql = (" AND " + " AND ".join(conditions)) if conditions else ""
-            rows = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_vente,client,employe_nom,archive_date
-                FROM archive_ventes WHERE 1=1{where_sql}
-                ORDER BY date_vente {order} LIMIT 200''', tuple(params))
+            return where_sql, tuple(params)
+
+        where_sql, params = _filtre('date_entree')
+        entrees_archive = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_entree,fournisseur,employe_nom,archive_date
+            FROM archive_entrees WHERE 1=1{where_sql}
+            ORDER BY date_entree {order} LIMIT 200''', params)
+
+        where_sql, params = _filtre('date_perte')
+        pertes_archive = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,motif,date_perte,employe_nom,archive_date
+            FROM archive_pertes WHERE 1=1{where_sql}
+            ORDER BY date_perte {order} LIMIT 200''', params)
+
+        where_sql, params = _filtre('date_vente')
+        ventes_archive = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_vente,client,employe_nom,archive_date
+            FROM archive_ventes WHERE 1=1{where_sql}
+            ORDER BY date_vente {order} LIMIT 200''', params)
+
+        where_sql, params = _filtre('date_annulation')
+        annulees_archive = qall(f'''SELECT id,groupe_vente,produit_nom,quantite,prix_unitaire,total,client,
+                   vendeur_original,date_vente_original,date_annulation,annule_par,motif,archive_date
+            FROM archive_ventes_annulees WHERE 1=1{where_sql}
+            ORDER BY date_annulation {order} LIMIT 200''', params)
+
+        rows_par_type = {'ventes': ventes_archive, 'entrees': entrees_archive,
+                          'pertes': pertes_archive, 'annulees': annulees_archive}
+        rows = rows_par_type.get(type_arch, ventes_archive)
 
         nb_ventes_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_ventes") or (0,0)
         nb_entrees_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_entrees") or (0,0)
         nb_pertes_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_pertes") or (0,0)
+        nb_annulees_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_ventes_annulees") or (0,0)
 
         total_ca_archive = nb_ventes_arch[1] if nb_ventes_arch else 0
         total_achats_archive = nb_entrees_arch[1] if nb_entrees_arch else 0
         total_pertes_ca = nb_pertes_arch[1] if nb_pertes_arch else 0
+        total_annule_ca = nb_annulees_arch[1] if nb_annulees_arch else 0
 
         return render_template('archives.html', 
             archives=rows, 
             type_archive=type_arch,
-            ventes_archive=rows if type_arch=='ventes' else [],
-            entrees_archive=rows if type_arch=='entrees' else [],
-            pertes_archive=rows if type_arch=='pertes' else [],
+            ventes_archive=ventes_archive,
+            entrees_archive=entrees_archive,
+            pertes_archive=pertes_archive,
+            annulees_archive=annulees_archive,
             nb_ventes_arch=nb_ventes_arch[0] if nb_ventes_arch else 0,
             nb_entrees_arch=nb_entrees_arch[0] if nb_entrees_arch else 0,
             nb_pertes_arch=nb_pertes_arch[0] if nb_pertes_arch else 0,
+            nb_annulees_arch=nb_annulees_arch[0] if nb_annulees_arch else 0,
             total_ventes_archive=nb_ventes_arch[0] if nb_ventes_arch else 0,
             total_entrees_archive=nb_entrees_arch[0] if nb_entrees_arch else 0,
             total_pertes_archive=nb_pertes_arch[0] if nb_pertes_arch else 0,
+            total_annulees_archive=nb_annulees_arch[0] if nb_annulees_arch else 0,
             total_ca_archive=total_ca_archive,
             total_achats_archive=total_achats_archive,
             total_pertes_ca=total_pertes_ca,
+            total_annule_ca=total_annule_ca,
             date_debut=date_debut, 
             date_fin=date_fin, 
             produit_filtre=produit_filtre, 
@@ -3749,15 +3772,19 @@ def admin_archives():
             ventes_archive=[],
             entrees_archive=[],
             pertes_archive=[],
+            annulees_archive=[],
             nb_ventes_arch=0,
             nb_entrees_arch=0,
             nb_pertes_arch=0,
+            nb_annulees_arch=0,
             total_ventes_archive=0,
             total_entrees_archive=0,
             total_pertes_archive=0,
+            total_annulees_archive=0,
             total_ca_archive=0,
             total_achats_archive=0,
             total_pertes_ca=0,
+            total_annule_ca=0,
             date_debut=date_debut,
             date_fin=date_fin,
             produit_filtre=produit_filtre,
