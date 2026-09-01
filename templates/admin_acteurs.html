@@ -262,12 +262,12 @@
 </style>
 {% endblock %}
 
-{% block page_title %}👥 Gestion des acteurs{% endblock %}
+{% block page_title %}<i class="bi bi-people-fill"></i> Gestion des acteurs{% endblock %}
 {% block page_subtitle %}Ajouter, modifier et gérer les permissions{% endblock %}
 
 {% block content %}
 <div class="card">
-    <h2 class="card-title">➕ Ajouter un nouvel acteur</h2>
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Ajouter un nouvel acteur</h2>
     
     <form method="post" action="/admin/acteurs/ajouter" class="form-add-acteur" style="background: #f8f9fa; padding: 20px; border-radius: 15px;">
         <div style="display: flex; gap: 15px; flex-wrap: wrap;">
@@ -286,8 +286,8 @@
             <div style="flex: 1; min-width: 130px;">
                 <label style="display: block; font-size: 12px; margin-bottom: 5px; color: #666;">Rôle de base</label>
                 <select name="role_base" required style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
-                    <option value="employe">👤 Employé (base)</option>
-                    <option value="admin">👑 Administrateur (base)</option>
+                    <option value="employe"><i class="bi bi-person"></i> Employé (base)</option>
+                    <option value="admin"><i class="bi bi-award-fill"></i> Administrateur (base)</option>
                 </select>
             </div>
             <div style="flex: 2; min-width: 150px;">
@@ -299,17 +299,17 @@
                 <input type="text" name="mot_de_passe" placeholder="Mot de passe" required style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
             </div>
             <div style="display: flex; align-items: flex-end;">
-                <button type="submit" style="background: #28a745; padding: 10px 25px;">➕ Ajouter</button>
+                <button type="submit" style="background: #28a745; padding: 10px 25px;"><i class="bi bi-plus-lg"></i> Ajouter</button>
             </div>
         </div>
         <p style="font-size: 12px; color: #666; margin-top: 10px;">
-            ℹ️ Le rôle personnalisé remplace l'affichage standard.
+            ℹ Le rôle personnalisé remplace l'affichage standard.
         </p>
     </form>
 </div>
 
 <div class="card">
-    <h2 class="card-title">📋 Liste des acteurs</h2>
+    <h2 class="card-title"><i class="bi bi-clipboard-check"></i> Liste des acteurs</h2>
     
     {% if acteurs %}
     <div class="table-container">
@@ -340,22 +340,22 @@
                         <form method="post" action="/admin/acteurs/modifier/{{ a[0] }}" style="display: flex; gap: 10px;">
                             <input type="text" name="nom" value="{{ a[1] }}" style="padding: 5px; width: 120px;">
                             <input type="hidden" name="role" value="{{ a[2] }}">
-                            <button type="submit" class="btn-small" style="background:#ffc107;">✏️ Modifier</button>
+                            <button type="submit" class="btn-small" style="background:#ffc107;"><i class="bi bi-pencil-square"></i> Modifier</button>
                         </form>
                     </td>
                     <td style="vertical-align: middle;">
                         <div style="display: flex; gap: 5px; align-items: center; flex-wrap: wrap;">
                             {% if a[8] %}
-                                <span class="email-badge">✉️ {{ a[8] }}</span>
+                                <span class="email-badge"><i class="bi bi-envelope"></i> {{ a[8] }}</span>
                                 <form method="post" action="/admin/acteurs/modifier_email/{{ a[0] }}" style="display: flex; gap: 5px;">
                                     <input type="email" name="email" value="{{ a[8] }}" style="padding: 4px 8px; font-size: 11px; width: 150px;">
-                                    <button type="submit" class="btn-small" style="background:#17a2b8;">💾 Modifier</button>
+                                    <button type="submit" class="btn-small" style="background:#17a2b8;"><i class="bi bi-save"></i> Modifier</button>
                                 </form>
                             {% else %}
-                                <span class="email-badge email-missing">⚠️ Email non défini</span>
+                                <span class="email-badge email-missing"><i class="bi bi-exclamation-triangle-fill"></i> Email non défini</span>
                                 <form method="post" action="/admin/acteurs/modifier_email/{{ a[0] }}" style="display: flex; gap: 5px;">
                                     <input type="email" name="email" placeholder="exemple@email.com" style="padding: 4px 8px; font-size: 11px; width: 150px;">
-                                    <button type="submit" class="btn-small" style="background:#28a745;">➕ Ajouter</button>
+                                    <button type="submit" class="btn-small" style="background:#28a745;"><i class="bi bi-plus-lg"></i> Ajouter</button>
                                 </form>
                             {% endif %}
                         </div>
@@ -364,39 +364,39 @@
                         <div style="display: flex; gap: 5px; align-items: center; flex-wrap: wrap;">
                             <span class="role-badge role-badge-{{ a[2] }}">
                                 {% if a[3] %}
-                                    🏷️ {{ a[3] }}
+                                    <i class="bi bi-tag-fill"></i> {{ a[3] }}
                                 {% else %}
-                                    {% if a[2] == 'admin' %}👑 Administrateur{% else %}👤 Employé{% endif %}
+                                    {% if a[2] == 'admin' %}<i class="bi bi-award-fill"></i> Administrateur{% else %}<i class="bi bi-person"></i> Employé{% endif %}
                                 {% endif %}
                             </span>
                             <form method="post" action="/admin/acteurs/modifier_role/{{ a[0] }}" style="display: flex; gap: 5px;">
                                 <input type="text" name="role_personnalise" value="{{ a[3] }}" placeholder="Rôle personnalisé" style="padding: 4px 8px; font-size: 11px; width: 120px;">
-                                <button type="submit" class="btn-small" style="background:#17a2b8;">💾 Sauvegarder</button>
+                                <button type="submit" class="btn-small" style="background:#17a2b8;"><i class="bi bi-save"></i> Sauvegarder</button>
                             </form>
                         </div>
                     </td>
                     <td style="vertical-align: middle;">
                         {% if a[5] == 1 %}
-                            <span class="status-badge status-active">✅ Actif</span>
+                            <span class="status-badge status-active"><i class="bi bi-check-circle-fill"></i> Actif</span>
                         {% else %}
-                            <span class="status-badge status-inactive">⭕ Désactivé</span>
+                            <span class="status-badge status-inactive"><i class="bi bi-circle"></i> Désactivé</span>
                         {% endif %}
                     </td>
                     <td style="vertical-align: middle;">
                         <div style="display: flex; flex-wrap: wrap; gap: 5px;">
                             {% set perms = a[7].split(',') if a[7] else ['vente'] %}
-                            {% if 'vente' in perms %}<span class="permission-badge perm-vente">🛒 Vente</span>{% endif %}
-                            {% if 'entrees' in perms %}<span class="permission-badge perm-entrees">📥 Entrées</span>{% endif %}
-                            {% if a[2] == 'admin' %}<span class="permission-badge perm-all">👑 Admin (total)</span>{% endif %}
+                            {% if 'vente' in perms %}<span class="permission-badge perm-vente"><i class="bi bi-cart3"></i> Vente</span>{% endif %}
+                            {% if 'entrees' in perms %}<span class="permission-badge perm-entrees"><i class="bi bi-box-arrow-in-down"></i> Entrées</span>{% endif %}
+                            {% if a[2] == 'admin' %}<span class="permission-badge perm-all"><i class="bi bi-award-fill"></i> Admin (total)</span>{% endif %}
                             
                             {% if a[2] != 'admin' and a[0] != session.user_id %}
-                            <button onclick="openPermModal({{ a[0] }}, '{{ a[1] }}', '{{ a[7] }}')" class="btn-small" style="background:#17a2b8; color:white;">🔧 Permissions</button>
+                            <button onclick="openPermModal({{ a[0] }}, '{{ a[1] }}', '{{ a[7] }}')" class="btn-small" style="background:#17a2b8; color:white;"><i class="bi bi-wrench-adjustable"></i> Permissions</button>
                             {% endif %}
                         </div>
                     </td>
                     <td style="vertical-align: middle;">
                         {% if a[6] %}
-                            <span title="{{ a[6] }}" style="cursor: help;">📝 {{ a[6][:20] }}{% if a[6]|length > 20 %}...{% endif %}</span>
+                            <span title="{{ a[6] }}" style="cursor: help;"><i class="bi bi-pencil-square"></i> {{ a[6][:20] }}{% if a[6]|length > 20 %}...{% endif %}</span>
                         {% else %}
                             —
                         {% endif %}
@@ -405,11 +405,11 @@
                         <div class="action-buttons">
                             {% if a[0] != session.user_id %}
                                 {% if a[5] == 1 %}
-                                    <button onclick="openDesactiverModal({{ a[0] }}, '{{ a[1] }}')" class="btn-small" style="background:#ffc107;">🚫 Désactiver</button>
+                                    <button onclick="openDesactiverModal({{ a[0] }}, '{{ a[1] }}')" class="btn-small" style="background:#ffc107;"><i class="bi bi-slash-circle"></i> Désactiver</button>
                                 {% else %}
-                                    <a href="/admin/acteurs/reactiver/{{ a[0] }}" class="btn-small" style="background:#28a745; color:white;">✅ Réactiver</a>
+                                    <a href="/admin/acteurs/reactiver/{{ a[0] }}" class="btn-small" style="background:#28a745; color:white;"><i class="bi bi-check-circle-fill"></i> Réactiver</a>
                                 {% endif %}
-                                <a href="/admin/acteurs/supprimer/{{ a[0] }}" onclick="return confirm('Supprimer définitivement ?')" class="btn-small" style="background:#dc3545; color:white;">🗑️ Supprimer</a>
+                                <a href="/admin/acteurs/supprimer/{{ a[0] }}" onclick="return confirm('Supprimer définitivement ?')" class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i> Supprimer</a>
                             {% else %}
                                 <span style="color:#999;">—</span>
                             {% endif %}
@@ -419,7 +419,7 @@
                         {% if a[0] != session.user_id %}
                             <button onclick="openResetMdpModal({{ a[0] }}, '{{ a[1] }}')" 
                                     class="btn-small" style="background:#dc3545; color:white;">
-                                🔑 Réinitialiser MDP
+                                <i class="bi bi-key-fill"></i> Réinitialiser MDP
                             </button>
                         {% else %}
                             <span style="color:#999;">—</span>
@@ -442,17 +442,17 @@
                     {% if a[0] == session.user_id %}<span class="vous-badge">Vous</span>{% endif %}
                 </div>
                 <span class="status-badge {% if a[5] == 1 %}status-active{% else %}status-inactive{% endif %}">
-                    {% if a[5] == 1 %}✅ Actif{% else %}⭕ Désactivé{% endif %}
+                    {% if a[5] == 1 %}<i class="bi bi-check-circle-fill"></i> Actif{% else %}<i class="bi bi-circle"></i> Désactivé{% endif %}
                 </span>
             </div>
 
             <div class="acteur-row">
-                <span class="label">📧 Email</span>
+                <span class="label"><i class="bi bi-envelope-fill"></i> Email</span>
                 <div class="value">
                     <form method="post" action="/admin/acteurs/modifier_email/{{ a[0] }}" class="card-form-row">
                         <input type="email" name="email" value="{{ a[8] }}" placeholder="exemple@email.com">
                         <button type="submit" class="btn-small" style="background:#17a2b8; color:white;">
-                            {% if a[8] %}💾 Modifier{% else %}➕ Ajouter{% endif %}
+                            {% if a[8] %}<i class="bi bi-save"></i> Modifier{% else %}<i class="bi bi-plus-lg"></i> Ajouter{% endif %}
                         </button>
                     </form>
                 </div>
@@ -462,7 +462,7 @@
                 <span class="label">Rôle</span>
                 <div class="value">
                     <span class="role-badge role-badge-{{ a[2] }}">
-                        {% if a[3] %}🏷️ {{ a[3] }}{% elif a[2] == 'admin' %}👑 Administrateur{% else %}👤 Employé{% endif %}
+                        {% if a[3] %}<i class="bi bi-tag-fill"></i> {{ a[3] }}{% elif a[2] == 'admin' %}<i class="bi bi-award-fill"></i> Administrateur{% else %}<i class="bi bi-person"></i> Employé{% endif %}
                     </span>
                 </div>
             </div>
@@ -473,7 +473,7 @@
                     <form method="post" action="/admin/acteurs/modifier/{{ a[0] }}" class="card-form-row">
                         <input type="text" name="nom" value="{{ a[1] }}">
                         <input type="hidden" name="role" value="{{ a[2] }}">
-                        <button type="submit" class="btn-small" style="background:#ffc107; color:#333;">✏️ OK</button>
+                        <button type="submit" class="btn-small" style="background:#ffc107; color:#333;"><i class="bi bi-pencil-square"></i> OK</button>
                     </form>
                 </div>
             </div>
@@ -483,7 +483,7 @@
                 <div class="value">
                     <form method="post" action="/admin/acteurs/modifier_role/{{ a[0] }}" class="card-form-row">
                         <input type="text" name="role_personnalise" value="{{ a[3] }}" placeholder="Rôle perso">
-                        <button type="submit" class="btn-small" style="background:#17a2b8; color:white;">💾 OK</button>
+                        <button type="submit" class="btn-small" style="background:#17a2b8; color:white;"><i class="bi bi-save"></i> OK</button>
                     </form>
                 </div>
             </div>
@@ -492,31 +492,31 @@
                 <span class="label">Permissions</span>
                 <div class="value" style="display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-end;">
                     {% set perms = a[7].split(',') if a[7] else ['vente'] %}
-                    {% if 'vente' in perms %}<span class="permission-badge perm-vente">🛒 Vente</span>{% endif %}
-                    {% if 'entrees' in perms %}<span class="permission-badge perm-entrees">📥 Entrées</span>{% endif %}
-                    {% if a[2] == 'admin' %}<span class="permission-badge perm-all">👑 Admin</span>{% endif %}
+                    {% if 'vente' in perms %}<span class="permission-badge perm-vente"><i class="bi bi-cart3"></i> Vente</span>{% endif %}
+                    {% if 'entrees' in perms %}<span class="permission-badge perm-entrees"><i class="bi bi-box-arrow-in-down"></i> Entrées</span>{% endif %}
+                    {% if a[2] == 'admin' %}<span class="permission-badge perm-all"><i class="bi bi-award-fill"></i> Admin</span>{% endif %}
                 </div>
             </div>
 
             {% if a[6] %}
             <div class="acteur-row">
                 <span class="label">Motif</span>
-                <span class="value" style="font-size:12px; color:#666;">📝 {{ a[6] }}</span>
+                <span class="value" style="font-size:12px; color:#666;"><i class="bi bi-pencil-square"></i> {{ a[6] }}</span>
             </div>
             {% endif %}
 
             <div class="acteur-card-actions">
                 {% if a[2] != 'admin' and a[0] != session.user_id %}
-                <button onclick="openPermModal({{ a[0] }}, '{{ a[1] }}', '{{ a[7] }}')" class="btn-small" style="background:#17a2b8; color:white;">🔧 Permissions</button>
+                <button onclick="openPermModal({{ a[0] }}, '{{ a[1] }}', '{{ a[7] }}')" class="btn-small" style="background:#17a2b8; color:white;"><i class="bi bi-wrench-adjustable"></i> Permissions</button>
                 {% endif %}
                 {% if a[0] != session.user_id %}
                     {% if a[5] == 1 %}
-                    <button onclick="openDesactiverModal({{ a[0] }}, '{{ a[1] }}')" class="btn-small" style="background:#ffc107; color:#333;">🚫 Désactiver</button>
+                    <button onclick="openDesactiverModal({{ a[0] }}, '{{ a[1] }}')" class="btn-small" style="background:#ffc107; color:#333;"><i class="bi bi-slash-circle"></i> Désactiver</button>
                     {% else %}
-                    <a href="/admin/acteurs/reactiver/{{ a[0] }}" class="btn-small" style="background:#28a745; color:white;">✅ Réactiver</a>
+                    <a href="/admin/acteurs/reactiver/{{ a[0] }}" class="btn-small" style="background:#28a745; color:white;"><i class="bi bi-check-circle-fill"></i> Réactiver</a>
                     {% endif %}
-                    <a href="/admin/acteurs/supprimer/{{ a[0] }}" onclick="return confirm('Supprimer définitivement ?')" class="btn-small" style="background:#dc3545; color:white;">🗑️ Supprimer</a>
-                    <button onclick="openResetMdpModal({{ a[0] }}, '{{ a[1] }}')" class="btn-small" style="background:#dc3545; color:white;">🔑 Réinitialiser MDP</button>
+                    <a href="/admin/acteurs/supprimer/{{ a[0] }}" onclick="return confirm('Supprimer définitivement ?')" class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i> Supprimer</a>
+                    <button onclick="openResetMdpModal({{ a[0] }}, '{{ a[1] }}')" class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-key-fill"></i> Réinitialiser MDP</button>
                 {% endif %}
             </div>
 
@@ -530,19 +530,19 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 
 <!-- Modal de vérification du mot de passe admin -->
 <div id="verifyPasswordModal" class="modal">
     <div class="modal-content">
-        <h3>🔐 Vérification administrateur</h3>
+        <h3><i class="bi bi-shield-lock-fill"></i> Vérification administrateur</h3>
         <p style="margin-bottom: 15px; color: #666;">Pour modifier les permissions, veuillez entrer votre mot de passe.</p>
         <input type="password" id="adminPassword" class="password-input" placeholder="Votre mot de passe" autocomplete="off">
-        <div id="passwordError" class="error-message">❌ Mot de passe incorrect</div>
+        <div id="passwordError" class="error-message"><i class="bi bi-x-circle-fill"></i> Mot de passe incorrect</div>
         <div style="display: flex; gap: 10px; justify-content: center;">
-            <button id="verifyPasswordBtn" style="background: #28a745;">✅ Vérifier</button>
-            <button onclick="closeVerifyModal()" style="background: #6c757d;">❌ Annuler</button>
+            <button id="verifyPasswordBtn" style="background: #28a745;"><i class="bi bi-check-circle-fill"></i> Vérifier</button>
+            <button onclick="closeVerifyModal()" style="background: #6c757d;"><i class="bi bi-x-circle-fill"></i> Annuler</button>
         </div>
     </div>
 </div>
@@ -550,31 +550,31 @@
 <!-- Modal Permissions -->
 <div id="permModal" class="modal">
     <div class="modal-content">
-        <h3>🔧 Gérer les permissions</h3>
+        <h3><i class="bi bi-wrench-adjustable"></i> Gérer les permissions</h3>
         <p id="permNom" style="margin-bottom: 15px;"></p>
         <form id="permForm" method="post">
             <div class="checkbox-group">
                 <label>
                     <input type="checkbox" name="permissions" value="vente" checked disabled>
-                    🛒 Vente (obligatoire)
+                    <i class="bi bi-cart3"></i> Vente (obligatoire)
                 </label>
                 <label>
                     <input type="checkbox" name="permissions" value="entrees" id="permEntrees">
-                    📥 Entrées de stock
+                    <i class="bi bi-box-arrow-in-down"></i> Entrées de stock
                 </label>
                 <!-- Dans le modal Permissions, ajoutez : -->
                 <label>
                     <input type="checkbox" name="permissions" value="pertes" id="permPertes">
-                    🗑 Pertes
+                    <i class="bi bi-trash"></i> Pertes
                 </label>
                 <label>
                     <input type="checkbox" name="permissions" value="commandes" id="permCommandes">
-                    🛍️ Commandes (site web)
+                    <i class="bi bi-bag-fill"></i> Commandes (site web)
                 </label>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button type="submit" style="background: #28a745;">✅ Enregistrer</button>
-                <button type="button" onclick="closePermModal()" style="background: #6c757d;">❌ Annuler</button>
+                <button type="submit" style="background: #28a745;"><i class="bi bi-check-circle-fill"></i> Enregistrer</button>
+                <button type="button" onclick="closePermModal()" style="background: #6c757d;"><i class="bi bi-x-circle-fill"></i> Annuler</button>
             </div>
         </form>
     </div>
@@ -583,21 +583,21 @@
 <!-- Modal Désactivation -->
 <div id="desactiverModal" class="modal">
     <div class="modal-content">
-        <h3>🚫 Désactiver le compte</h3>
+        <h3><i class="bi bi-slash-circle"></i> Désactiver le compte</h3>
         <p id="desactiverNom"></p>
         <form id="desactiverForm" method="post">
             <select name="motif" required style="width:100%; padding:10px; margin:10px 0;">
                 <option value="">-- Motif --</option>
-                <option value="Congé">🏖️ Congé</option>
-                <option value="Congé maladie">🤒 Congé maladie</option>
-                <option value="Formation">📚 Formation</option>
+                <option value="Congé"><i class="bi bi-calendar2-week"></i> Congé</option>
+                <option value="Congé maladie"><i class="bi bi-bandaid-fill"></i> Congé maladie</option>
+                <option value="Formation"><i class="bi bi-journals"></i> Formation</option>
                 <option value="Repos">Repos</option>
-                <option value="Autre">📝 Autre</option>
+                <option value="Autre"><i class="bi bi-pencil-square"></i> Autre</option>
             </select>
             <input type="text" name="motif_autre" placeholder="Précisez..." style="display:none; width:100%; padding:8px;">
             <div style="display: flex; gap: 10px;">
-                <button type="submit" style="background:#dc3545;">✅ Confirmer</button>
-                <button type="button" onclick="closeDesactiverModal()" style="background:#6c757d;">❌ Annuler</button>
+                <button type="submit" style="background:#dc3545;"><i class="bi bi-check-circle-fill"></i> Confirmer</button>
+                <button type="button" onclick="closeDesactiverModal()" style="background:#6c757d;"><i class="bi bi-x-circle-fill"></i> Annuler</button>
             </div>
         </form>
     </div>
@@ -606,7 +606,7 @@
 <!-- Modal Réinitialisation Mot de passe -->
 <div id="resetMdpModal" class="modal">
     <div class="modal-content">
-        <h3>🔑 Réinitialiser le mot de passe</h3>
+        <h3><i class="bi bi-key-fill"></i> Réinitialiser le mot de passe</h3>
         <p id="resetMdpNom" style="margin-bottom: 15px;"></p>
         <form id="resetMdpForm" method="post">
             <div style="margin-bottom: 15px;">
@@ -621,8 +621,8 @@
             </div>
             <div id="mdpError" style="color: #dc3545; font-size: 12px; margin-bottom: 10px; display: none;"></div>
             <div style="display: flex; gap: 10px; justify-content: center;">
-                <button type="submit" style="background:#dc3545;">✅ Réinitialiser</button>
-                <button type="button" onclick="closeResetMdpModal()" style="background:#6c757d;">❌ Annuler</button>
+                <button type="submit" style="background:#dc3545;"><i class="bi bi-check-circle-fill"></i> Réinitialiser</button>
+                <button type="button" onclick="closeResetMdpModal()" style="background:#6c757d;"><i class="bi bi-x-circle-fill"></i> Annuler</button>
             </div>
         </form>
     </div>
@@ -736,14 +736,14 @@
         
         if (newMdp !== confirmMdp) {
             e.preventDefault();
-            errorDiv.innerHTML = '❌ Les mots de passe ne correspondent pas';
+            errorDiv.innerHTML = ' Les mots de passe ne correspondent pas';
             errorDiv.style.display = 'block';
             return false;
         }
         
         if (newMdp.length < 4) {
             e.preventDefault();
-            errorDiv.innerHTML = '❌ Le mot de passe doit contenir au moins 4 caractères';
+            errorDiv.innerHTML = ' Le mot de passe doit contenir au moins 4 caractères';
             errorDiv.style.display = 'block';
             return false;
         }

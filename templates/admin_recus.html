@@ -67,36 +67,36 @@
 </style>
 {% endblock %}
 
-{% block page_title %}🧾 Recherche de reçus{% endblock %}
+{% block page_title %}<i class="bi bi-receipt"></i> Recherche de reçus{% endblock %}
 {% block page_subtitle %}Retrouvez et réimprimez le reçu d'un client{% endblock %}
 
 {% block content %}
 <div class="card">
     <form method="get" class="form-recherche">
         <div class="form-group">
-            <label>📅 Date</label>
+            <label><i class="bi bi-calendar-event"></i> Date</label>
             <input type="date" name="date" value="{{ date_filtre }}">
         </div>
         <div class="form-group">
-            <label>🙋 Nom du client</label>
+            <label><i class="bi bi-hand-index-thumb"></i> Nom du client</label>
             <input type="text" name="client" placeholder="Ex: Denise" value="{{ client_filtre }}">
         </div>
         <div class="form-group">
-            <label>💳 Paiement</label>
+            <label><i class="bi bi-credit-card-fill"></i> Paiement</label>
             <select name="paiement" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
                 <option value="" {% if not paiement_filtre %}selected{% endif %}>Tous</option>
-                <option value="Espèces" {% if paiement_filtre == 'Espèces' %}selected{% endif %}>💵 Espèces</option>
-                <option value="MTN MobileMoney" {% if paiement_filtre == 'MTN MobileMoney' %}selected{% endif %}>📱 MTN MobileMoney</option>
-                <option value="Moov MoovMoney" {% if paiement_filtre == 'Moov MoovMoney' %}selected{% endif %}>📱 Moov MoovMoney</option>
-                <option value="Celtiis CeltiisCash" {% if paiement_filtre == 'Celtiis CeltiisCash' %}selected{% endif %}>📱 Celtiis CeltiisCash</option>
+                <option value="Espèces" {% if paiement_filtre == 'Espèces' %}selected{% endif %}><i class="bi bi-cash"></i> Espèces</option>
+                <option value="MTN MobileMoney" {% if paiement_filtre == 'MTN MobileMoney' %}selected{% endif %}><i class="bi bi-phone-fill"></i> MTN MobileMoney</option>
+                <option value="Moov MoovMoney" {% if paiement_filtre == 'Moov MoovMoney' %}selected{% endif %}><i class="bi bi-phone-fill"></i> Moov MoovMoney</option>
+                <option value="Celtiis CeltiisCash" {% if paiement_filtre == 'Celtiis CeltiisCash' %}selected{% endif %}><i class="bi bi-phone-fill"></i> Celtiis CeltiisCash</option>
             </select>
         </div>
         <div class="form-group" style="flex: 0 0 auto;">
-            <button type="submit" style="background:#1e3c72; color:white; padding:10px 25px;">🔍 Rechercher</button>
+            <button type="submit" style="background:#1e3c72; color:white; padding:10px 25px;"><i class="bi bi-search"></i> Rechercher</button>
         </div>
         {% if date_filtre or client_filtre or paiement_filtre %}
         <div class="form-group" style="flex: 0 0 auto;">
-            <a href="/admin/recus" style="display:inline-block; background:#6c757d; color:white; padding:10px 20px; border-radius:8px; text-decoration:none;">✕ Effacer</a>
+            <a href="/admin/recus" style="display:inline-block; background:#6c757d; color:white; padding:10px 20px; border-radius:8px; text-decoration:none;"><i class="bi bi-x-lg"></i> Effacer</a>
         </div>
         {% endif %}
     </form>
@@ -108,27 +108,27 @@
                 <h3>{{ r[1] or 'Client non renseigné' }}
                     {% if r[5] %}<span class="badge-archive">archivé</span>{% endif %}
                 </h3>
-                <p>📅 {{ r[2] }} · {{ r[4] }} article(s) · 💰 {{ "{:,.0f}".format(r[3]) }} FCFA · 💳 {{ r[6] or 'Espèces' }}</p>
+                <p><i class="bi bi-calendar-event"></i> {{ r[2] }} · {{ r[4] }} article(s) · <i class="bi bi-cash-coin"></i> {{ "{:,.0f}".format(r[3]) }} FCFA · <i class="bi bi-credit-card-fill"></i> {{ r[6] or 'Espèces' }}</p>
             </div>
             <div class="actions">
-                <a href="/vente/recu/{{ r[0] }}" target="_blank" style="background:#17a2b8; color:white;">👁️ Voir</a>
-                <a href="/export/pdf_recu/{{ r[0] }}" style="background:#28a745; color:white;">⬇️ PDF</a>
+                <a href="/vente/recu/{{ r[0] }}" target="_blank" style="background:#17a2b8; color:white;"><i class="bi bi-eye-fill"></i> Voir</a>
+                <a href="/export/pdf_recu/{{ r[0] }}" style="background:#28a745; color:white;"><i class="bi bi-arrow-down"></i> PDF</a>
             </div>
         </div>
         {% endfor %}
     {% else %}
         <p style="text-align:center; color:#999; padding:40px;">
             {% if date_filtre or client_filtre or paiement_filtre %}
-                📭 Aucun reçu trouvé pour cette recherche
+                <i class="bi bi-inbox"></i> Aucun reçu trouvé pour cette recherche
             {% else %}
-                📭 Aucun reçu enregistré pour le moment
+                <i class="bi bi-inbox"></i> Aucun reçu enregistré pour le moment
             {% endif %}
         </p>
     {% endif %}
 </div>
 
 <div class="nav-links">
-    <a href="/admin/archives">📚 Archives</a>
-    <a href="/dashboard">🏠 Dashboard</a>
+    <a href="/admin/archives"><i class="bi bi-journals"></i> Archives</a>
+    <a href="/dashboard"><i class="bi bi-house-door-fill"></i> Dashboard</a>
 </div>
 {% endblock %}

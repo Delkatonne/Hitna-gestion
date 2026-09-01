@@ -512,7 +512,7 @@
 </style>
 {% endblock %}
 
-{% block page_title %}📊 Ventes - Administrateur{% endblock %}
+{% block page_title %}<i class="bi bi-bar-chart-line"></i> Ventes - Administrateur{% endblock %}
 {% block page_subtitle %}Enregistrer des ventes et suivre l'activité{% endblock %}
 
 {% block content %}
@@ -521,7 +521,7 @@
 <div class="stats-vendeurs">
     {% for v in stats_vendeurs %}
     <div class="stat-vendeur">
-        <div class="role-icon">{% if v[1] == 'admin' %}👑{% else %}👤{% endif %}</div>
+        <div class="role-icon">{% if v[1] == 'admin' %}<i class="bi bi-award-fill"></i>{% else %}<i class="bi bi-person"></i>{% endif %}</div>
         <div class="name">{{ v[0] }}</div>
         <div class="nb-ventes">{{ v[2] }} ventes</div>
         <div class="total">{{ "{:,.0f}".format(v[3]) }} FCFA</div>
@@ -535,40 +535,40 @@
 
 <!-- Barre de recherche -->
 <div class="card">
-    <h2 class="card-title">🔍 Rechercher un produit</h2>
+    <h2 class="card-title"><i class="bi bi-search"></i> Rechercher un produit</h2>
     <div class="search-container" style="display:flex; gap:10px;">
         <input type="text" id="searchInput" class="search-box" placeholder="Tapez le nom du produit..." autocomplete="off" style="flex:1;">
         <button type="button" onclick="ouvrirScannerCodeBarre(adminRechercherParCodeBarre)"
-                style="background:#1e3c72; color:white; border:none; border-radius:10px; padding:0 18px; cursor:pointer; font-size:15px; white-space:nowrap;">📷 Scanner</button>
+                style="background:#1e3c72; color:white; border:none; border-radius:10px; padding:0 18px; cursor:pointer; font-size:15px; white-space:nowrap;"><i class="bi bi-camera-fill"></i> Scanner</button>
     </div>
 </div>
 
 <!-- Produits disponibles -->
 <div class="card">
-    <h2 class="card-title">📦 Produits disponibles</h2>
+    <h2 class="card-title"><i class="bi bi-box-seam"></i> Produits disponibles</h2>
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
         <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-fractionnable="{{ p[7] }}" data-barcode="{{ p[8] }}">
-            {% if p[4] %}<div class="unite-badge-vente">📏 {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
-            {% if p[7] %}<div class="unite-badge-vente" style="background:#fff3cd; color:#856404;">➗ Vendable en 1/2, 1/4...</div>{% endif %}
+            {% if p[4] %}<div class="unite-badge-vente"><i class="bi bi-rulers"></i> {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
+            {% if p[7] %}<div class="unite-badge-vente" style="background:#fff3cd; color:#856404;"><i class="bi bi-calculator"></i> Vendable en 1/2, 1/4...</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
             <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
-            <div class="product-stock">📦 Stock: {{ p[3]|qte }} unités</div>
+            <div class="product-stock"><i class="bi bi-box-seam"></i> Stock: {{ p[3]|qte }} unités</div>
             <div id="tier-wrap-{{ p[0] }}"></div>
-            <button type="button" class="btn-add-cart" onclick="adminAjouterAuPanier({{ p[0] }})">➕ Ajouter au panier</button>
+            <button type="button" class="btn-add-cart" onclick="adminAjouterAuPanier({{ p[0] }})"><i class="bi bi-plus-lg"></i> Ajouter au panier</button>
         </div>
         {% endfor %}
     </div>
     <div id="noResults" class="no-results" style="display: none;">
-        🔍 Aucun produit trouvé
+        <i class="bi bi-search"></i> Aucun produit trouvé
     </div>
 </div>
 
 <!-- Panier de vente -->
 <div class="sale-form-container">
-    <h3>🛒 Panier de vente</h3>
+    <h3><i class="bi bi-cart3"></i> Panier de vente</h3>
     <div class="cart-list" id="adminCartList">
-        <div class="cart-empty" id="adminCartEmpty">👆 Ajoutez des produits depuis la liste ci-dessus</div>
+        <div class="cart-empty" id="adminCartEmpty"><i class="bi bi-hand-index-fill"></i> Ajoutez des produits depuis la liste ci-dessus</div>
     </div>
 
     <form method="post" id="adminSaleForm" action="/admin/ventes">
@@ -583,14 +583,14 @@
         </div>
 
         <button type="button" id="adminValidateSaleBtn" class="btn-sale" style="display: none;" onclick="adminValidateSale()">
-            💵 Valider la vente
+            <i class="bi bi-cash"></i> Valider la vente
         </button>
     </form>
 </div>
 
 <!-- Historique des ventes -->
 <div class="card">
-    <h2 class="card-title">📜 Historique complet des ventes</h2>
+    <h2 class="card-title"><i class="bi bi-scroll"></i> Historique complet des ventes</h2>
     <div class="table-container">
         <table class="table">
             <thead>
@@ -609,11 +609,11 @@
                 {% for v in historique %}
                 <tr>
                     <td>{{ v[4] }}</td>
-                    <td><strong>{{ v[1] }}</strong>{% if v[8] %}<br><small style="color:#856404;">📦 {{ v[8] }}</small>{% endif %}</td>
+                    <td><strong>{{ v[1] }}</strong>{% if v[8] %}<br><small style="color:#856404;"><i class="bi bi-box-seam"></i> {{ v[8] }}</small>{% endif %}</td>
                     <td>{{ v[2]|qte }}</td>
                     <td style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(v[3]) }} FCFA</td>
                     <td>
-                        {% if '👑' in v[5] %}
+                        {% if '<i class="bi bi-award-fill"></i>' in v[5] %}
                             <span class="vendeur-admin">{{ v[5] }}</span>
                         {% else %}
                             <span class="vendeur-employe">{{ v[5] }}</span>
@@ -622,14 +622,14 @@
                     <td>{{ v[6] or '-' }}</td>
                     <td>
                         {% if v[7] %}
-                            <a href="/vente/recu/{{ v[7] }}" target="_blank" class="btn-small" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;">🧾 Voir</a>
+                            <a href="/vente/recu/{{ v[7] }}" target="_blank" class="btn-small" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;"><i class="bi bi-receipt"></i> Voir</a>
                         {% else %}
                             —
                         {% endif %}
                     </td>
                     <td>
                         {% if v[7] and v[4] and v[4].split(' ')[0] == today_iso %}
-                        <button type="button" onclick="demanderMotifAnnulation('/admin/ventes/annuler/{{ v[7] }}')" class="btn-small" style="background:#dc3545; color:white;">❌ Annuler</button>
+                        <button type="button" onclick="demanderMotifAnnulation('/admin/ventes/annuler/{{ v[7] }}')" class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-x-circle-fill"></i> Annuler</button>
                         {% else %}
                         —
                         {% endif %}
@@ -642,21 +642,21 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
-    <a href="/admin/archives">📚 Archives</a>
-    <a href="/admin/stats">📊 Statistiques</a>
-    <a href="/admin/ventes-annulees">🚫 Ventes annulées</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+    <a href="/admin/archives"><i class="bi bi-journals"></i> Archives</a>
+    <a href="/admin/stats"><i class="bi bi-bar-chart-line"></i> Statistiques</a>
+    <a href="/admin/ventes-annulees"><i class="bi bi-slash-circle"></i> Ventes annulées</a>
 </div>
 
 <!-- Modal client -->
 <div id="adminClientModal" class="modal">
     <div class="modal-content">
-        <h3>👤 Informations client</h3>
+        <h3><i class="bi bi-person"></i> Informations client</h3>
         <input type="text" id="adminClientNameInput" placeholder="Nom du client" autocomplete="off">
-        <input type="tel" id="adminClientPhoneInput" placeholder="📞 Téléphone (pour la fiche client)" autocomplete="off" style="margin-top:10px;">
+        <input type="tel" id="adminClientPhoneInput" placeholder="<i class="bi bi-telephone-fill"></i> Téléphone (pour la fiche client)" autocomplete="off" style="margin-top:10px;">
         <div class="btn-group">
-            <button class="btn-confirm" onclick="adminConfirmClientName()">✅ Confirmer</button>
-            <button class="btn-skip" onclick="adminSkipClientName()">⏭️ Passer</button>
+            <button class="btn-confirm" onclick="adminConfirmClientName()"><i class="bi bi-check-circle-fill"></i> Confirmer</button>
+            <button class="btn-skip" onclick="adminSkipClientName()"><i class="bi bi-skip-forward-fill"></i> Passer</button>
         </div>
     </div>
 </div>
@@ -742,7 +742,7 @@
                 return;
             }
         }
-        alert(`❌ Aucun produit trouvé pour le code "${code}".\nVous pouvez l'associer depuis la fiche du produit.`);
+        alert(` Aucun produit trouvé pour le code "${code}".\nVous pouvez l'associer depuis la fiche du produit.`);
     }
 
     function adminAjouterAuPanier(id) {
@@ -873,7 +873,7 @@
         const ids = Object.keys(adminCart);
 
         if (ids.length === 0) {
-            cartList.innerHTML = '<div class="cart-empty" id="adminCartEmpty">👆 Ajoutez des produits depuis la liste ci-dessus</div>';
+            cartList.innerHTML = '<div class="cart-empty" id="adminCartEmpty"> Ajoutez des produits depuis la liste ci-dessus</div>';
             document.getElementById('adminTotalDisplay').style.display = 'none';
             document.getElementById('adminValidateSaleBtn').style.display = 'none';
             return;
@@ -913,10 +913,10 @@
 
             html += `
                 <div class="cart-item">
-                    <div class="cart-item-name">${item.name}${item.tierId ? ' — <small>' + item.tierNom + '</small>' : (item.fractionnable ? ' <small style="color:#856404;">➗</small>' : '')}</div>
+                    <div class="cart-item-name">${item.name}${item.tierId ? ' — <small>' + item.tierNom + '</small>' : (item.fractionnable ? ' <small style="color:#856404;"></small>' : '')}</div>
                     <div class="cart-item-qty">${qtyControl}</div>
                     <div class="cart-item-subtotal">${subtotal.toLocaleString()} FCFA</div>
-                    <button type="button" class="cart-item-remove" onclick="adminRetirerDuPanier(${id})">🗑️</button>
+                    <button type="button" class="cart-item-remove" onclick="adminRetirerDuPanier(${id})"></button>
                 </div>
             `;
         });
@@ -940,7 +940,7 @@
             document.getElementById('adminClientModal').style.display = 'flex';
             document.getElementById('adminClientNameInput').focus();
         } catch (error) {
-            console.error('❌ Erreur validation vente admin:', error);
+            console.error(' Erreur validation vente admin:', error);
             alert('Erreur: ' + error.message);
         }
     }
@@ -972,7 +972,7 @@
                 alert('Erreur: formulaire non trouvé');
             }
         } catch (error) {
-            console.error('❌ Erreur adminConfirmClientName:', error);
+            console.error(' Erreur adminConfirmClientName:', error);
             alert('Erreur: ' + error.message);
         }
     }
@@ -991,7 +991,7 @@
                 alert('Erreur: formulaire non trouvé');
             }
         } catch (error) {
-            console.error('❌ Erreur adminSkipClientName:', error);
+            console.error(' Erreur adminSkipClientName:', error);
             alert('Erreur: ' + error.message);
         }
     }

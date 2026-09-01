@@ -382,7 +382,7 @@
 </style>
 {% endblock %}
 
-{% block page_title %}📚 Archives HITNA{% endblock %}
+{% block page_title %}<i class="bi bi-journals"></i> Archives HITNA{% endblock %}
 {% block page_subtitle %}Consultez l'historique des ventes, entrées et pertes archivées{% endblock %}
 
 {% block content %}
@@ -406,14 +406,14 @@
 </div>
 <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-        <label for="date_export" style="font-weight: 600; color: #1e3c72;">📅 Exporter le point du jour :</label>
+        <label for="date_export" style="font-weight: 600; color: #1e3c72;"><i class="bi bi-calendar-event"></i> Exporter le point du jour :</label>
         <input type="date" id="date_export" value="{{ date_actuelle.split('/')[2] }}-{{ date_actuelle.split('/')[1] }}-{{ date_actuelle.split('/')[0] }}" 
                style="padding: 8px 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
         <a href="#" id="exportPdfBtn" class="btn" style="background: #dc3545; text-decoration: none; color: white; padding: 8px 20px; border-radius: 8px;">
-            📄 Exporter PDF
+            <i class="bi bi-file-earmark-text"></i> Exporter PDF
         </a>
         <button onclick="setToday()" style="background: #17a2b8; padding: 8px 15px; border: none; border-radius: 8px; color: white; cursor: pointer;">
-            📍 Aujourd'hui
+            <i class="bi bi-geo-alt-fill"></i> Aujourd'hui
         </button>
     </div>
 </div>
@@ -421,13 +421,13 @@
 <!-- Onglets -->
 <div class="tabs">
     <button class="tab-btn {% if type_data == 'ventes' %}active{% endif %}" onclick="switchTab('ventes')">
-        📊 Ventes archivées
+        <i class="bi bi-bar-chart-line"></i> Ventes archivées
     </button>
     <button class="tab-btn {% if type_data == 'entrees' %}active{% endif %}" onclick="switchTab('entrees')">
-        📥 Entrées archivées
+        <i class="bi bi-box-arrow-in-down"></i> Entrées archivées
     </button>
     <button class="tab-btn {% if type_data == 'pertes' %}active{% endif %}" onclick="switchTab('pertes')">
-        ⚠️ Pertes archivées
+        <i class="bi bi-exclamation-triangle-fill"></i> Pertes archivées
     </button>
 </div>
 
@@ -435,29 +435,29 @@
 <div id="tab-ventes" class="tab-content {% if type_data == 'ventes' %}active{% endif %}">
     <div class="filters-container">
         <div class="filter-group">
-            <label>📅 Date de début</label>
+            <label><i class="bi bi-calendar-event"></i> Date de début</label>
             <input type="date" id="date_debut_ventes" value="{{ date_debut|default('') }}">
         </div>
         <div class="filter-group">
-            <label>📅 Date de fin</label>
+            <label><i class="bi bi-calendar-event"></i> Date de fin</label>
             <input type="date" id="date_fin_ventes" value="{{ date_fin|default('') }}">
         </div>
         <div class="filter-group">
-            <label>🔍 Nom du produit</label>
+            <label><i class="bi bi-search"></i> Nom du produit</label>
             <input type="text" id="produit_nom_ventes" placeholder="Rechercher un produit..." value="{{ produit_filtre|default('') }}">
         </div>
         <div class="filter-group">
-            <label>🔄 Trier par</label>
+            <label><i class="bi bi-arrow-repeat"></i> Trier par</label>
             <select id="tri_select_ventes" class="tri-select" onchange="rechercherAvecFiltres('ventes')">
-                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
-                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
+                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}><i class="bi bi-calendar-event"></i> Plus récent d'abord</option>
+                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}><i class="bi bi-calendar-event"></i> Moins récent d'abord</option>
             </select>
         </div>
         <div class="filter-group">
-            <button class="search-btn" onclick="rechercherAvecFiltres('ventes')">🔍 Rechercher</button>
+            <button class="search-btn" onclick="rechercherAvecFiltres('ventes')"><i class="bi bi-search"></i> Rechercher</button>
         </div>
         <div class="filter-group">
-            <button class="reset-btn" onclick="resetRecherche('ventes')">🔄 Réinitialiser</button>
+            <button class="reset-btn" onclick="resetRecherche('ventes')"><i class="bi bi-arrow-repeat"></i> Réinitialiser</button>
         </div>
     </div>
     
@@ -476,7 +476,7 @@
                                 </tbody>
                             </table>
                             <div class="day-total-footer">
-                                📊 Total du {{ current_day }} : 
+                                <i class="bi bi-bar-chart-line"></i> Total du {{ current_day }} : 
                                 <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
                                 ({{ day_count }} ventes)
                             </div>
@@ -485,10 +485,10 @@
                 
                 <div class="day-separator">
                     <div class="day-date">
-                        📅 {{ v_date }}
+                        <i class="bi bi-calendar-event"></i> {{ v_date }}
                         <span class="day-name">
                             {% if v_date == date_actuelle.split(' ')[0] %}
-                                📍 AUJOURD'HUI
+                                <i class="bi bi-geo-alt-fill"></i> AUJOURD'HUI
                             {% else %}
                                 {{ v_date }}
                             {% endif %}
@@ -529,9 +529,9 @@
                     <td>{{ v[6] or '-' }}</td>
                     <td>
                         {% if v[7] %}
-                            <span class="vendeur-employe">👤 {{ v[7] }}</span>
+                            <span class="vendeur-employe"><i class="bi bi-person"></i> {{ v[7] }}</span>
                         {% else %}
-                            <span class="vendeur-admin">👑 Inconnu</span>
+                            <span class="vendeur-admin"><i class="bi bi-award-fill"></i> Inconnu</span>
                         {% endif %}
                     </td>
                 </tr>
@@ -544,7 +544,7 @@
                         </tbody>
                     </table>
                     <div class="day-total-footer">
-                        📊 Total du {{ current_day }} : 
+                        <i class="bi bi-bar-chart-line"></i> Total du {{ current_day }} : 
                         <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
                         ({{ day_count }} ventes)
                     </div>
@@ -552,7 +552,7 @@
         {% endif %}
     {% else %}
         <div class="empty-archive">
-            <div class="icon">📭</div>
+            <div class="icon"><i class="bi bi-inbox"></i></div>
             <h3>Aucune vente trouvée</h3>
             <p>Essayez avec d'autres critères de recherche</p>
         </div>
@@ -563,29 +563,29 @@
 <div id="tab-entrees" class="tab-content {% if type_data == 'entrees' %}active{% endif %}">
     <div class="filters-container">
         <div class="filter-group">
-            <label>📅 Date de début</label>
+            <label><i class="bi bi-calendar-event"></i> Date de début</label>
             <input type="date" id="date_debut_entrees" value="{{ date_debut|default('') }}">
         </div>
         <div class="filter-group">
-            <label>📅 Date de fin</label>
+            <label><i class="bi bi-calendar-event"></i> Date de fin</label>
             <input type="date" id="date_fin_entrees" value="{{ date_fin|default('') }}">
         </div>
         <div class="filter-group">
-            <label>🔍 Nom du produit</label>
+            <label><i class="bi bi-search"></i> Nom du produit</label>
             <input type="text" id="produit_nom_entrees" placeholder="Rechercher un produit..." value="{{ produit_filtre|default('') }}">
         </div>
         <div class="filter-group">
-            <label>🔄 Trier par</label>
+            <label><i class="bi bi-arrow-repeat"></i> Trier par</label>
             <select id="tri_select_entrees" class="tri-select" onchange="rechercherAvecFiltres('entrees')">
-                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
-                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
+                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}><i class="bi bi-calendar-event"></i> Plus récent d'abord</option>
+                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}><i class="bi bi-calendar-event"></i> Moins récent d'abord</option>
             </select>
         </div>
         <div class="filter-group">
-            <button class="search-btn" onclick="rechercherAvecFiltres('entrees')">🔍 Rechercher</button>
+            <button class="search-btn" onclick="rechercherAvecFiltres('entrees')"><i class="bi bi-search"></i> Rechercher</button>
         </div>
         <div class="filter-group">
-            <button class="reset-btn" onclick="resetRecherche('entrees')">🔄 Réinitialiser</button>
+            <button class="reset-btn" onclick="resetRecherche('entrees')"><i class="bi bi-arrow-repeat"></i> Réinitialiser</button>
         </div>
     </div>
     
@@ -605,7 +605,7 @@
                                 </tbody>
                             </table>
                             <div class="day-total-footer">
-                                📊 Total du {{ current_day }} : 
+                                <i class="bi bi-bar-chart-line"></i> Total du {{ current_day }} : 
                                 <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
                                 ({{ day_count }} entrées, {{ day_quantite }} unités)
                             </div>
@@ -614,10 +614,10 @@
                 
                 <div class="day-separator">
                     <div class="day-date">
-                        📅 {{ e_date }}
+                        <i class="bi bi-calendar-event"></i> {{ e_date }}
                         <span class="day-name">
                             {% if e_date == date_actuelle.split(' ')[0] %}
-                                📍 AUJOURD'HUI
+                                <i class="bi bi-geo-alt-fill"></i> AUJOURD'HUI
                             {% else %}
                                 {{ e_date }}
                             {% endif %}
@@ -657,7 +657,7 @@
                     <td>{{ e[3] }} FCFA</td>
                     <td style="font-weight: bold; color: #28a745;">{{ e[4] }} FCFA</td>
                     <td>{{ e[6] or '-' }}</td>
-                    <td>{% if e[7] %}👤 {{ e[7] }}{% else %}Inconnu{% endif %}</td>
+                    <td>{% if e[7] %}<i class="bi bi-person"></i> {{ e[7] }}{% else %}Inconnu{% endif %}</td>
                 </tr>
                 {% set day_total = day_total + e[4] %}
                 {% set day_count = day_count + 1 %}
@@ -669,7 +669,7 @@
                         </tbody>
                     </table>
                     <div class="day-total-footer">
-                        📊 Total du {{ current_day }} : 
+                        <i class="bi bi-bar-chart-line"></i> Total du {{ current_day }} : 
                         <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
                         ({{ day_count }} entrées, {{ day_quantite }} unités)
                     </div>
@@ -677,7 +677,7 @@
         {% endif %}
     {% else %}
         <div class="empty-archive">
-            <div class="icon">📭</div>
+            <div class="icon"><i class="bi bi-inbox"></i></div>
             <h3>Aucune entrée trouvée</h3>
             <p>Essayez avec d'autres critères de recherche</p>
         </div>
@@ -688,29 +688,29 @@
 <div id="tab-pertes" class="tab-content {% if type_data == 'pertes' %}active{% endif %}">
     <div class="filters-container">
         <div class="filter-group">
-            <label>📅 Date de début</label>
+            <label><i class="bi bi-calendar-event"></i> Date de début</label>
             <input type="date" id="date_debut_pertes" value="{{ date_debut|default('') }}">
         </div>
         <div class="filter-group">
-            <label>📅 Date de fin</label>
+            <label><i class="bi bi-calendar-event"></i> Date de fin</label>
             <input type="date" id="date_fin_pertes" value="{{ date_fin|default('') }}">
         </div>
         <div class="filter-group">
-            <label>🔍 Nom du produit</label>
+            <label><i class="bi bi-search"></i> Nom du produit</label>
             <input type="text" id="produit_nom_pertes" placeholder="Rechercher un produit..." value="{{ produit_filtre|default('') }}">
         </div>
         <div class="filter-group">
-            <label>🔄 Trier par</label>
+            <label><i class="bi bi-arrow-repeat"></i> Trier par</label>
             <select id="tri_select_pertes" class="tri-select" onchange="rechercherAvecFiltres('pertes')">
-                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
-                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
+                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}><i class="bi bi-calendar-event"></i> Plus récent d'abord</option>
+                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}><i class="bi bi-calendar-event"></i> Moins récent d'abord</option>
             </select>
         </div>
         <div class="filter-group">
-            <button class="search-btn" onclick="rechercherAvecFiltres('pertes')">🔍 Rechercher</button>
+            <button class="search-btn" onclick="rechercherAvecFiltres('pertes')"><i class="bi bi-search"></i> Rechercher</button>
         </div>
         <div class="filter-group">
-            <button class="reset-btn" onclick="resetRecherche('pertes')">🔄 Réinitialiser</button>
+            <button class="reset-btn" onclick="resetRecherche('pertes')"><i class="bi bi-arrow-repeat"></i> Réinitialiser</button>
         </div>
     </div>
     
@@ -730,7 +730,7 @@
                                 </tbody>
                             </table>
                             <div class="day-total-footer">
-                                📊 Total du {{ current_day }} : 
+                                <i class="bi bi-bar-chart-line"></i> Total du {{ current_day }} : 
                                 <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
                                 ({{ day_count }} pertes, {{ day_quantite }} unités)
                             </div>
@@ -739,10 +739,10 @@
                 
                 <div class="day-separator">
                     <div class="day-date">
-                        📅 {{ p_date }}
+                        <i class="bi bi-calendar-event"></i> {{ p_date }}
                         <span class="day-name">
                             {% if p_date == date_actuelle.split(' ')[0] %}
-                                📍 AUJOURD'HUI
+                                <i class="bi bi-geo-alt-fill"></i> AUJOURD'HUI
                             {% else %}
                                 {{ p_date }}
                             {% endif %}
@@ -783,14 +783,14 @@
                     <td style="font-weight: bold; color: #dc3545;">{{ p[4] }} FCFA</td>
                     <td>
                         <span class="motif-badge motif-{{ p[5]|lower|replace(' ', '-') }}">
-                            {% if p[5] == 'Casse' %}🔨 Casse
-                            {% elif p[5] == 'Vol' %}👤 Vol
-                            {% elif p[5] == 'Péremption' %}📅 Péremption
-                            {% elif p[5] == 'Erreur de stock' %}📊 Erreur de stock
-                            {% else %}📝 {{ p[5] }}{% endif %}
+                            {% if p[5] == 'Casse' %}<i class="bi bi-hammer"></i> Casse
+                            {% elif p[5] == 'Vol' %}<i class="bi bi-person"></i> Vol
+                            {% elif p[5] == 'Péremption' %}<i class="bi bi-calendar-event"></i> Péremption
+                            {% elif p[5] == 'Erreur de stock' %}<i class="bi bi-bar-chart-line"></i> Erreur de stock
+                            {% else %}<i class="bi bi-pencil-square"></i> {{ p[5] }}{% endif %}
                         </span>
                     </td>
-                    <td>{% if p[7] %}👤 {{ p[7] }}{% else %}Inconnu{% endif %}</td>
+                    <td>{% if p[7] %}<i class="bi bi-person"></i> {{ p[7] }}{% else %}Inconnu{% endif %}</td>
                 </tr>
                 {% set day_total = day_total + p[4] %}
                 {% set day_count = day_count + 1 %}
@@ -802,7 +802,7 @@
                         </tbody>
                     </table>
                     <div class="day-total-footer">
-                        📊 Total du {{ current_day }} : 
+                        <i class="bi bi-bar-chart-line"></i> Total du {{ current_day }} : 
                         <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
                         ({{ day_count }} pertes, {{ day_quantite }} unités)
                     </div>
@@ -810,7 +810,7 @@
         {% endif %}
     {% else %}
         <div class="empty-archive">
-            <div class="icon">📭</div>
+            <div class="icon"><i class="bi bi-inbox"></i></div>
             <h3>Aucune perte trouvée</h3>
             <p>Essayez avec d'autres critères de recherche</p>
         </div>
@@ -818,7 +818,7 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 
 <script>

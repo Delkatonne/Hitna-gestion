@@ -77,13 +77,13 @@
 </style>
 {% endblock %}
 
-{% block page_title %}🛍️ Commandes{% endblock %}
+{% block page_title %}<i class="bi bi-bag-fill"></i> Commandes{% endblock %}
 {% block page_subtitle %}Commandes reçues via le site web HITNA{% endblock %}
 
 {% block content %}
 <div class="card">
     <h2 class="card-title">
-        📋 Liste des commandes
+        <i class="bi bi-clipboard-check"></i> Liste des commandes
         {% if nb_nouvelles %}<span class="statut-badge nouvelle">{{ nb_nouvelles }} nouvelle(s)</span>{% endif %}
     </h2>
 
@@ -91,21 +91,21 @@
         {% for c in commandes %}
         <div class="commande-card statut-{{ c[6] }}">
             <div class="header">
-                <h3>🙋 {{ c[1] }}</h3>
+                <h3><i class="bi bi-hand-index-thumb"></i> {{ c[1] }}</h3>
                 <span class="date">{{ c[7] }}</span>
             </div>
             <div class="contact-info">
-                <span>📞 {{ c[2] }}</span>
-                {% if c[3] %}<span>📧 {{ c[3] }}</span>{% endif %}
-                {% if c[4] %}<span>📍 {{ c[4] }}</span>{% endif %}
+                <span><i class="bi bi-telephone-fill"></i> {{ c[2] }}</span>
+                {% if c[3] %}<span><i class="bi bi-envelope-fill"></i> {{ c[3] }}</span>{% endif %}
+                {% if c[4] %}<span><i class="bi bi-geo-alt-fill"></i> {{ c[4] }}</span>{% endif %}
             </div>
             <div class="details">{{ c[5] }}</div>
             <div class="actions">
                 <span class="statut-badge {{ c[6] }}">
-                    {% if c[6] == 'nouvelle' %}🆕 Nouvelle
-                    {% elif c[6] == 'en_cours' %}⏳ En cours
-                    {% elif c[6] == 'traitee' %}✅ Traitée
-                    {% else %}❌ Annulée{% endif %}
+                    {% if c[6] == 'nouvelle' %}<i class="bi bi-stars"></i> Nouvelle
+                    {% elif c[6] == 'en_cours' %}<i class="bi bi-hourglass-split"></i> En cours
+                    {% elif c[6] == 'traitee' %}<i class="bi bi-check-circle-fill"></i> Traitée
+                    {% else %}<i class="bi bi-x-circle-fill"></i> Annulée{% endif %}
                 </span>
                 <form method="post" action="/admin/commandes/statut/{{ c[0] }}" style="display:inline-flex; gap:6px;">
                     <select name="statut" onchange="this.form.submit()">
@@ -117,13 +117,13 @@
                 </form>
                 <a href="/admin/commandes/supprimer/{{ c[0] }}"
                    onclick="return confirm('Supprimer cette commande ?')"
-                   class="btn-small" style="background:#dc3545; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;">🗑️</a>
+                   class="btn-small" style="background:#dc3545; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;"><i class="bi bi-trash"></i></a>
             </div>
         </div>
         {% endfor %}
     {% else %}
         <div style="text-align:center; color:#999; padding:40px;">
-            <div style="font-size:48px; margin-bottom:15px;">📭</div>
+            <div style="font-size:48px; margin-bottom:15px;"><i class="bi bi-inbox"></i></div>
             <h3>Aucune commande pour le moment</h3>
             <p style="font-size:13px; margin-top:8px;">Les commandes passées depuis le site web HITNA apparaîtront ici.</p>
         </div>
@@ -131,6 +131,6 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 {% endblock %}

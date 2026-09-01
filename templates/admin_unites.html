@@ -88,42 +88,42 @@
 </style>
 {% endblock %}
 
-{% block page_title %}📏 Unités de mesure{% endblock %}
+{% block page_title %}<i class="bi bi-rulers"></i> Unités de mesure{% endblock %}
 {% block page_subtitle %}Gérez les unités de mesure pour vos produits{% endblock %}
 
 {% block content %}
 
 <!-- Formulaire d'ajout -->
 <div class="card">
-    <h2 class="card-title">➕ Ajouter une unité de mesure</h2>
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Ajouter une unité de mesure</h2>
     
     <form method="post" action="/admin/unites/ajouter" class="form-unite">
         <div class="form-row">
             <div class="form-group">
-                <label>📛 Nom</label>
+                <label><i class="bi bi-person-vcard"></i> Nom</label>
                 <input type="text" name="nom" placeholder="Ex: Litre" required>
             </div>
             <div class="form-group">
-                <label>🔣 Symbole</label>
+                <label><i class="bi bi-fonts"></i> Symbole</label>
                 <input type="text" name="symbole" placeholder="Ex: L, kg, g, ml" required>
             </div>
             <div class="form-group">
-                <label>📝 Description</label>
+                <label><i class="bi bi-pencil-square"></i> Description</label>
                 <input type="text" name="description" placeholder="Ex: Litre (1L)">
             </div>
             <div class="form-group" style="display: flex; align-items: flex-end;">
-                <button type="submit" style="background: #28a745; padding: 10px 25px; width: 100%;">➕ Ajouter</button>
+                <button type="submit" style="background: #28a745; padding: 10px 25px; width: 100%;"><i class="bi bi-plus-lg"></i> Ajouter</button>
             </div>
         </div>
         <div style="margin-top: 10px; font-size: 12px; color: #666;">
-            💡 Exemples d'unités : Litre (L), Kilogramme (kg), Gramme (g), Millilitre (ml), Pièce (pc), etc.
+            <i class="bi bi-lightbulb-fill"></i> Exemples d'unités : Litre (L), Kilogramme (kg), Gramme (g), Millilitre (ml), Pièce (pc), etc.
         </div>
     </form>
 </div>
 
 <!-- Liste des unités -->
 <div class="card">
-    <h2 class="card-title">📋 Liste des unités de mesure</h2>
+    <h2 class="card-title"><i class="bi bi-clipboard-check"></i> Liste des unités de mesure</h2>
     
     <!-- Version desktop -->
     <div class="unites-table-desktop">
@@ -148,14 +148,14 @@
                         <td id="desc-{{ u[0] }}">{{ u[3] or '-' }}</td>
                         <td>
                             <span class="unite-badge {% if u[4] == 1 %}active{% else %}inactive{% endif %}">
-                                {% if u[4] == 1 %}✅ Actif{% else %}⭕ Inactif{% endif %}
+                                {% if u[4] == 1 %}<i class="bi bi-check-circle-fill"></i> Actif{% else %}<i class="bi bi-circle"></i> Inactif{% endif %}
                             </span>
                         </td>
                         <td>
-                            <button onclick="activerEdition({{ u[0] }})" class="btn-small" style="background:#ffc107;">✏️ Modifier</button>
+                            <button onclick="activerEdition({{ u[0] }})" class="btn-small" style="background:#ffc107;"><i class="bi bi-pencil-square"></i> Modifier</button>
                             <a href="/admin/unites/supprimer/{{ u[0] }}" 
                                onclick="return confirm('Supprimer cette unité ?')"
-                               class="btn-small" style="background:#dc3545; color:white;">🗑️</a>
+                               class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i></a>
                         </td>
                     </tr>
                     <tr id="edit-{{ u[0] }}" style="display:none; background:#f0f7ff;">
@@ -172,16 +172,16 @@
                                     <input type="checkbox" name="actif" {% if u[4] == 1 %}checked{% endif %}>
                                     Actif
                                 </label>
-                                <button type="submit" style="background:#28a745; padding:8px 14px;">✅ Valider</button>
+                                <button type="submit" style="background:#28a745; padding:8px 14px;"><i class="bi bi-check-circle-fill"></i> Valider</button>
                                 <button type="button" onclick="annulerEdition({{ u[0] }})" 
-                                        style="background:#6c757d; padding:8px 14px;">❌ Annuler</button>
+                                        style="background:#6c757d; padding:8px 14px;"><i class="bi bi-x-circle-fill"></i> Annuler</button>
                             </form>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
                         <td colspan="6" style="text-align:center; color:#999; padding:30px;">
-                            📭 Aucune unité de mesure enregistrée
+                            <i class="bi bi-inbox"></i> Aucune unité de mesure enregistrée
                         </td>
                     </tr>
                     {% endfor %}
@@ -199,35 +199,35 @@
                 <span class="value">#{{ u[0] }}</span>
             </div>
             <div class="card-row">
-                <span class="label">📛 Nom</span>
+                <span class="label"><i class="bi bi-person-vcard"></i> Nom</span>
                 <span class="value">{{ u[1] }}</span>
             </div>
             <div class="card-row">
-                <span class="label">🔣 Symbole</span>
+                <span class="label"><i class="bi bi-fonts"></i> Symbole</span>
                 <span class="value">{{ u[2] }}</span>
             </div>
             <div class="card-row">
-                <span class="label">📝 Description</span>
+                <span class="label"><i class="bi bi-pencil-square"></i> Description</span>
                 <span class="value">{{ u[3] or '-' }}</span>
             </div>
             <div class="card-row">
                 <span class="label">Statut</span>
                 <span class="value">
                     <span class="unite-badge {% if u[4] == 1 %}active{% else %}inactive{% endif %}">
-                        {% if u[4] == 1 %}✅ Actif{% else %}⭕ Inactif{% endif %}
+                        {% if u[4] == 1 %}<i class="bi bi-check-circle-fill"></i> Actif{% else %}<i class="bi bi-circle"></i> Inactif{% endif %}
                     </span>
                 </span>
             </div>
             <div style="display:flex; gap:8px; margin-top:10px;">
-                <button onclick="activerEditionMobile({{ u[0] }})" class="btn-small" style="background:#ffc107; flex:1;">✏️ Modifier</button>
+                <button onclick="activerEditionMobile({{ u[0] }})" class="btn-small" style="background:#ffc107; flex:1;"><i class="bi bi-pencil-square"></i> Modifier</button>
                 <a href="/admin/unites/supprimer/{{ u[0] }}" 
                    onclick="return confirm('Supprimer cette unité ?')"
-                   class="btn-small" style="background:#dc3545; color:white; flex:0.5; text-align:center;">🗑️</a>
+                   class="btn-small" style="background:#dc3545; color:white; flex:0.5; text-align:center;"><i class="bi bi-trash"></i></a>
             </div>
         </div>
         <div id="card-edit-{{ u[0] }}" style="display:none; margin-bottom:15px;">
             <div class="unite-card" style="background:#f0f7ff; border:2px solid #667eea;">
-                <h3 style="font-size:14px; margin-bottom:10px;">✏️ Modifier {{ u[1] }}</h3>
+                <h3 style="font-size:14px; margin-bottom:10px;"><i class="bi bi-pencil-square"></i> Modifier {{ u[1] }}</h3>
                 <form method="post" action="/admin/unites/modifier/{{ u[0] }}" style="display:flex; flex-direction:column; gap:8px;">
                     <input type="text" name="nom" value="{{ u[1] }}" placeholder="Nom" required style="padding:8px; border:2px solid #667eea; border-radius:6px;">
                     <input type="text" name="symbole" value="{{ u[2] }}" placeholder="Symbole" style="padding:8px; border:2px solid #667eea; border-radius:6px;">
@@ -237,16 +237,16 @@
                         Actif
                     </label>
                     <div style="display:flex; gap:8px;">
-                        <button type="submit" style="background:#28a745; padding:8px; flex:1;">✅ Valider</button>
+                        <button type="submit" style="background:#28a745; padding:8px; flex:1;"><i class="bi bi-check-circle-fill"></i> Valider</button>
                         <button type="button" onclick="annulerEditionMobile({{ u[0] }})" 
-                                style="background:#6c757d; padding:8px; flex:1;">❌ Annuler</button>
+                                style="background:#6c757d; padding:8px; flex:1;"><i class="bi bi-x-circle-fill"></i> Annuler</button>
                     </div>
                 </form>
             </div>
         </div>
         {% else %}
         <div style="text-align:center; color:#999; padding:40px;">
-            <div style="font-size:48px; margin-bottom:15px;">📭</div>
+            <div style="font-size:48px; margin-bottom:15px;"><i class="bi bi-inbox"></i></div>
             <h3>Aucune unité de mesure</h3>
         </div>
         {% endfor %}
@@ -254,7 +254,7 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 
 <script>

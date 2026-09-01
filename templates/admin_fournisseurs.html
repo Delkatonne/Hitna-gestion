@@ -139,7 +139,7 @@
 
 {% block content %}
 <div class="card">
-    <h2 class="card-title">🏢 Gestion des fournisseurs</h2>
+    <h2 class="card-title"><i class="bi bi-building"></i> Gestion des fournisseurs</h2>
 
     <!-- Formulaire d'ajout -->
     <form method="post" action="/admin/fournisseurs/ajouter"
@@ -155,12 +155,12 @@
                 style="flex:1; min-width:130px; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
             <input type="text" name="adresse" placeholder="Adresse"
                 style="flex:2; min-width:150px; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
-            <button type="submit" style="background:#28a745; white-space:nowrap;">➕ Ajouter</button>
+            <button type="submit" style="background:#28a745; white-space:nowrap;"><i class="bi bi-plus-lg"></i> Ajouter</button>
         </div>
     </form>
 
     <!-- Liste des fournisseurs -->
-    <h3 style="margin-bottom:15px; color:#1e3c72;">📋 Liste des fournisseurs</h3>
+    <h3 style="margin-bottom:15px; color:#1e3c72;"><i class="bi bi-clipboard-check"></i> Liste des fournisseurs</h3>
 
     <!-- VERSION DESKTOP: Tableau -->
     <div class="table-container">
@@ -186,10 +186,10 @@
                     <td id="email-{{ f[0] }}">{{ f[4] or '-' }}</td>
                     <td id="adr-{{ f[0] }}">{{ f[5] or '-' }}</td>
                     <td style="white-space:nowrap;">
-                        <button onclick="activerEdition({{ f[0] }})" class="btn-small" style="background:#ffc107; color:#333;">✏️ Modifier</button>
+                        <button onclick="activerEdition({{ f[0] }})" class="btn-small" style="background:#ffc107; color:#333;"><i class="bi bi-pencil-square"></i> Modifier</button>
                         <a href="/admin/fournisseurs/supprimer/{{ f[0] }}"
                             onclick="return confirm('Supprimer ce fournisseur ?')"
-                            style="background:#dc3545; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-size:13px;">🗑️ Supprimer</a>
+                            style="background:#dc3545; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-size:13px;"><i class="bi bi-trash"></i> Supprimer</a>
                     </td>
                 </tr>
                 <tr id="edit-{{ f[0] }}" style="display:none; background:#f0f7ff;">
@@ -206,16 +206,16 @@
                                 style="flex:1; min-width:110px; padding:8px; border:2px solid #667eea; border-radius:6px;">
                             <input type="text" name="adresse" value="{{ f[5] or '' }}" placeholder="Adresse"
                                 style="flex:2; min-width:120px; padding:8px; border:2px solid #667eea; border-radius:6px;">
-                            <button type="submit" style="background:#28a745; padding:8px 14px;">✅ Valider</button>
+                            <button type="submit" style="background:#28a745; padding:8px 14px;"><i class="bi bi-check-circle-fill"></i> Valider</button>
                             <button type="button" onclick="annulerEdition({{ f[0] }})"
-                                style="background:#6c757d; padding:8px 14px;">❌ Annuler</button>
+                                style="background:#6c757d; padding:8px 14px;"><i class="bi bi-x-circle-fill"></i> Annuler</button>
                         </form>
                     </td>
                 </tr>
                 {% else %}
                 <tr>
                     <td colspan="7" style="text-align:center; color:#999; padding:30px;">
-                        📭 Aucun fournisseur enregistré
+                        <i class="bi bi-inbox"></i> Aucun fournisseur enregistré
                     </td>
                 </tr>
                 {% endfor %}
@@ -233,32 +233,32 @@
             </div>
 
             <div class="info-row">
-                <span class="label">📦 Produits</span>
+                <span class="label"><i class="bi bi-box-seam"></i> Produits</span>
                 <span class="value">{{ f[2] or 'Non spécifié' }}</span>
             </div>
             <div class="info-row">
-                <span class="label">📞 Téléphone</span>
+                <span class="label"><i class="bi bi-telephone-fill"></i> Téléphone</span>
                 <span class="value">{{ f[3] or 'Non renseigné' }}</span>
             </div>
             <div class="info-row">
-                <span class="label">📧 Email</span>
+                <span class="label"><i class="bi bi-envelope-fill"></i> Email</span>
                 <span class="value">{{ f[4] or 'Non renseigné' }}</span>
             </div>
             <div class="info-row">
-                <span class="label">📍 Adresse</span>
+                <span class="label"><i class="bi bi-geo-alt-fill"></i> Adresse</span>
                 <span class="value">{{ f[5] or 'Non renseignée' }}</span>
             </div>
 
             <div class="card-actions">
-                <button onclick="activerEditionMobile({{ f[0] }})" style="background:#ffc107; color:#333;">✏️ Modifier</button>
-                <a href="/admin/fournisseurs/supprimer/{{ f[0] }}" onclick="return confirm('Supprimer ce fournisseur ?')" style="background:#dc3545; color:white;">🗑️ Supprimer</a>
+                <button onclick="activerEditionMobile({{ f[0] }})" style="background:#ffc107; color:#333;"><i class="bi bi-pencil-square"></i> Modifier</button>
+                <a href="/admin/fournisseurs/supprimer/{{ f[0] }}" onclick="return confirm('Supprimer ce fournisseur ?')" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i> Supprimer</a>
             </div>
         </div>
 
         <!-- Mode édition mobile -->
         <div id="card-edit-{{ f[0] }}" style="display:none; margin-bottom:15px;">
             <div class="fournisseur-card" style="background:#f0f7ff; border:2px solid #667eea;">
-                <h3 style="color:#1e3c72; margin-bottom:15px;">✏️ Modifier {{ f[1] }}</h3>
+                <h3 style="color:#1e3c72; margin-bottom:15px;"><i class="bi bi-pencil-square"></i> Modifier {{ f[1] }}</h3>
                 <form method="post" action="/admin/fournisseurs/modifier/{{ f[0] }}" class="edit-form-mobile">
                     <input type="text" name="nom" value="{{ f[1] }}" placeholder="Nom *" required>
                     <input type="text" name="produits" value="{{ f[2] or '' }}" placeholder="Produits fournis">
@@ -266,15 +266,15 @@
                     <input type="email" name="email" value="{{ f[4] or '' }}" placeholder="Email">
                     <input type="text" name="adresse" value="{{ f[5] or '' }}" placeholder="Adresse">
                     <div class="btn-group">
-                        <button type="submit" style="background:#28a745; color:white;">✅ Valider</button>
-                        <button type="button" onclick="annulerEditionMobile({{ f[0] }})" style="background:#6c757d; color:white;">❌ Annuler</button>
+                        <button type="submit" style="background:#28a745; color:white;"><i class="bi bi-check-circle-fill"></i> Valider</button>
+                        <button type="button" onclick="annulerEditionMobile({{ f[0] }})" style="background:#6c757d; color:white;"><i class="bi bi-x-circle-fill"></i> Annuler</button>
                     </div>
                 </form>
             </div>
         </div>
         {% else %}
         <div style="text-align:center; color:#999; padding:40px;">
-            <div style="font-size:48px; margin-bottom:15px;">📭</div>
+            <div style="font-size:48px; margin-bottom:15px;"><i class="bi bi-inbox"></i></div>
             <h3>Aucun fournisseur enregistré</h3>
         </div>
         {% endfor %}
@@ -282,8 +282,8 @@
 </div>
 
 <div class="nav-links">
-    <a href="/admin/commandes-fournisseurs">📦 Commandes fournisseurs</a>
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/admin/commandes-fournisseurs"><i class="bi bi-box-seam"></i> Commandes fournisseurs</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 
 <script>

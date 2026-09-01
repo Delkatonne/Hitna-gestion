@@ -40,13 +40,13 @@
 </style>
 {% endblock %}
 
-{% block page_title %}🗑️ Corbeille des produits{% endblock %}
+{% block page_title %}<i class="bi bi-trash"></i> Corbeille des produits{% endblock %}
 {% block page_subtitle %}Produits supprimés avec "Forcer" — restaurables avec tout leur historique{% endblock %}
 
 {% block content %}
 
 <div class="info-banner">
-    ℹ️ Chaque suppression forcée d'un produit (avec son historique) est sauvegardée ici automatiquement.
+    ℹ Chaque suppression forcée d'un produit (avec son historique) est sauvegardée ici automatiquement.
     Restaurer un produit le recrée (nouveau numéro interne) avec le même nom, prix, stock, ses ventes,
     entrées, pertes et paliers de prix d'origine.
 </div>
@@ -56,28 +56,28 @@
         {% for e in entrees %}
         <div class="corbeille-item">
             <div class="infos">
-                <h3>📦 {{ e[1] }}</h3>
+                <h3><i class="bi bi-box-seam"></i> {{ e[1] }}</h3>
                 <p>{{ e[2] }} mouvement(s) sauvegardé(s) · supprimé le {{ e[3] }} par {{ e[4] }}</p>
             </div>
             <div class="actions">
                 <form method="post" action="/admin/produits/corbeille/restaurer/{{ e[0] }}" style="display:inline;"
                       onsubmit="return confirm('Restaurer \'{{ e[1] }}\' avec tout son historique ?')">
-                    <button type="submit" style="background:#28a745; color:white;">♻️ Restaurer</button>
+                    <button type="submit" style="background:#28a745; color:white;"><i class="bi bi-recycle"></i> Restaurer</button>
                 </form>
                 <a href="/admin/produits/corbeille/supprimer_definitivement/{{ e[0] }}"
                    onclick="return confirm('Effacer définitivement \'{{ e[1] }}\' de la corbeille ? Cette fois, ce sera irréversible.')"
-                   style="background:#dc3545; color:white;">🗑️ Effacer définitivement</a>
+                   style="background:#dc3545; color:white;"><i class="bi bi-trash"></i> Effacer définitivement</a>
             </div>
         </div>
         {% endfor %}
     {% else %}
         <p style="text-align:center; color:#999; padding:40px;">
-            📭 La corbeille est vide — aucun produit n'a été supprimé avec historique récemment.
+            <i class="bi bi-inbox"></i> La corbeille est vide — aucun produit n'a été supprimé avec historique récemment.
         </p>
     {% endif %}
 </div>
 
 <div class="nav-links">
-    <a href="/admin/produits">← Retour aux produits</a>
+    <a href="/admin/produits"><i class="bi bi-arrow-left"></i> Retour aux produits</a>
 </div>
 {% endblock %}

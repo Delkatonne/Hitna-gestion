@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Produits - HITNA{% endblock %}
-{% block page_title %}📦 Gestion des produits{% endblock %}
+{% block page_title %}<i class="bi bi-box-seam"></i> Gestion des produits{% endblock %}
 {% block page_subtitle %}Ajoutez, modifiez ou supprimez vos produits{% endblock %}
 
 {% block content %}
@@ -285,34 +285,34 @@
 
 <!-- ══ SECTION AJOUT ════════════════════════════════════════ -->
 <div class="card">
-    <h2 class="card-title">➕ Ajouter un produit</h2>
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Ajouter un produit</h2>
     <form method="post" action="/admin/produits/ajouter">
         <div class="form-grid">
             <div class="form-group">
-                <label>📦 Nom du produit</label>
+                <label><i class="bi bi-box-seam"></i> Nom du produit</label>
                 <input type="text" name="nom" placeholder="Ex: Jus de bissap" required>
             </div>
             <div class="form-group">
-                <label>💰 Prix de vente (FCFA)</label>
+                <label><i class="bi bi-cash-coin"></i> Prix de vente (FCFA)</label>
                 <input type="number" name="prix" placeholder="Ex: 500" min="0" required>
             </div>
             <div class="form-group">
-                <label>📊 Stock initial</label>
+                <label><i class="bi bi-bar-chart-line"></i> Stock initial</label>
                 <input type="number" name="stock" placeholder="Ex: 20" min="0" step="0.01" value="0">
             </div>
             <div class="form-group">
-                <label>⚠️ Stock minimum (alerte)</label>
+                <label><i class="bi bi-exclamation-triangle-fill"></i> Stock minimum (alerte)</label>
                 <input type="number" name="stock_min" placeholder="Ex: 5" min="0" value="5">
             </div>
             <div class="form-group">
-                <label>📦➗ Vente en fraction</label>
+                <label><i class="bi bi-box-seam"></i><i class="bi bi-calculator"></i> Vente en fraction</label>
                 <label style="display:flex; align-items:center; gap:8px; font-weight:normal; padding-top:8px;">
                     <input type="checkbox" name="vente_fractionnable" style="width:18px; height:18px;">
                     Autoriser la vente en 1/2, 1/4... (ex: carton, pack)
                 </label>
             </div>
             <div class="form-group">
-                <label>📏 Unité de mesure</label>
+                <label><i class="bi bi-rulers"></i> Unité de mesure</label>
                 <div style="display:flex; gap:8px;">
                     <input type="number" name="valeur_unite" step="0.01" min="0" placeholder="Ex: 7" style="flex:1;">
                     <select name="unite_id" style="flex:1.4;">
@@ -325,7 +325,7 @@
                 <div style="font-size:11px; color:#888; margin-top:4px;">Ex: 7 + g = "7 g" — 1.5 + L = "1.5 L"</div>
             </div>
             <div class="form-group">
-                <label>🗂️ Catégorie</label>
+                <label><i class="bi bi-folder2-open"></i> Catégorie</label>
                 <select name="categorie_id">
                     <option value="">-- Aucune catégorie --</option>
                     {% for cat in categories %}
@@ -335,7 +335,7 @@
             </div>
         </div>
         <button type="submit" class="btn" style="background:#1e3c72;color:white;padding:11px 28px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
-            ➕ Ajouter le produit
+            <i class="bi bi-plus-lg"></i> Ajouter le produit
         </button>
     </form>
 </div>
@@ -343,29 +343,29 @@
 <!-- ══ SECTION LISTE ════════════════════════════════════════ -->
 <div class="card" style="margin-top:20px;">
     <div class="table-header-actions">
-        <h2 class="card-title" style="margin:0;">📋 Liste des produits ({{ produits|length }})</h2>
+        <h2 class="card-title" style="margin:0;"><i class="bi bi-clipboard-check"></i> Liste des produits ({{ produits|length }})</h2>
         <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
             <a href="/admin/produits?filtre=actifs{% if rupture_only %}&rupture=1{% endif %}" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='actifs' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">Actifs</a>
-            <a href="/admin/produits?filtre=inactifs{% if rupture_only %}&rupture=1{% endif %}" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='inactifs' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">🚫 Inactifs {% if nb_inactifs %}({{ nb_inactifs }}){% endif %}</a>
+            <a href="/admin/produits?filtre=inactifs{% if rupture_only %}&rupture=1{% endif %}" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='inactifs' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}"><i class="bi bi-slash-circle"></i> Inactifs {% if nb_inactifs %}({{ nb_inactifs }}){% endif %}</a>
             <a href="/admin/produits?filtre=tous{% if rupture_only %}&rupture=1{% endif %}" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; {% if filtre_actuel=='tous' %}background:#1e3c72; color:white;{% else %}background:#f0f2f5; color:#333;{% endif %}">Tous</a>
             <span style="width:1px; height:20px; background:#e0e0e0; margin:0 2px;"></span>
             {% if rupture_only %}
-            <a href="/admin/produits?filtre={{ filtre_actuel }}" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; background:#dc3545; color:white;">🔴 Rupture de stock ✕</a>
+            <a href="/admin/produits?filtre={{ filtre_actuel }}" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; background:#dc3545; color:white;"><i class="bi bi-circle-fill"></i> Rupture de stock <i class="bi bi-x-lg"></i></a>
             {% else %}
-            <a href="/admin/produits?filtre={{ filtre_actuel }}&rupture=1" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; background:#f0f2f5; color:#333;">🔴 Rupture de stock {% if nb_ruptures %}({{ nb_ruptures }}){% endif %}</a>
+            <a href="/admin/produits?filtre={{ filtre_actuel }}&rupture=1" style="padding:6px 12px; border-radius:20px; font-size:12px; text-decoration:none; background:#f0f2f5; color:#333;"><i class="bi bi-circle-fill"></i> Rupture de stock {% if nb_ruptures %}({{ nb_ruptures }}){% endif %}</a>
             {% endif %}
         </div>
         <button class="btn-select-all" onclick="toggleSelectAll()" id="btn-select-all">
-            ☑️ Tout sélectionner
+            <i class="bi bi-check-square-fill"></i> Tout sélectionner
         </button>
     </div>
 
     <!-- ══ BARRE DE RECHERCHE ══ -->
     <div class="search-bar">
-        <span class="search-icon">🔍</span>
+        <span class="search-icon"><i class="bi bi-search"></i></span>
         <input type="text" id="searchInput" placeholder="Rechercher un produit par nom..." autocomplete="off">
         <span class="result-count" id="resultCount"></span>
-        <button class="clear-search" id="clearSearch" onclick="clearSearch()">✕ Effacer</button>
+        <button class="clear-search" id="clearSearch" onclick="clearSearch()"><i class="bi bi-x-lg"></i> Effacer</button>
     </div>
 
     <!-- Barre d'actions groupées -->
@@ -377,14 +377,14 @@
             <input type="hidden" name="force" id="force-input" value="0">
             <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#dc3545; margin-right:8px;">
                 <input type="checkbox" id="force-checkbox" onchange="toggleForceDelete(this)" style="width:16px; height:16px;">
-                🚨 Forcer (supprime aussi l'historique ventes/entrées/pertes)
+                <i class="bi bi-exclamation-octagon-fill"></i> Forcer (supprime aussi l'historique ventes/entrées/pertes)
             </label>
             <input type="password" id="force-password" name="admin_password" placeholder="Mot de passe admin"
                    autocomplete="current-password"
                    style="display:none; padding:6px 10px; border:2px solid #dc3545; border-radius:6px; font-size:12px; margin-right:8px;">
-            <button type="submit" class="btn-bulk-delete">🗑️ Supprimer la sélection</button>
+            <button type="submit" class="btn-bulk-delete"><i class="bi bi-trash"></i> Supprimer la sélection</button>
         </form>
-        <button class="btn-bulk-cancel" onclick="deselectionnerTout()">✕ Annuler</button>
+        <button class="btn-bulk-cancel" onclick="deselectionnerTout()"><i class="bi bi-x-lg"></i> Annuler</button>
     </div>
 
     <!-- ── VERSION DESKTOP ───────────────────── -->
@@ -413,7 +413,7 @@
                                    value="{{ p[0] }}" data-nom="{{ p[1] }}"
                                    onchange="onCheckboxChange(this)">
                         </td>
-                        <td><strong>{{ p[1] }}</strong>{% if p[14] == 0 %} <span style="background:#e2e3e5;color:#383d41;padding:2px 8px;border-radius:10px;font-size:10px;">🚫 Inactif</span>{% endif %}</td>
+                        <td><strong>{{ p[1] }}</strong>{% if p[14] == 0 %} <span style="background:#e2e3e5;color:#383d41;padding:2px 8px;border-radius:10px;font-size:10px;"><i class="bi bi-slash-circle"></i> Inactif</span>{% endif %}</td>
                         <td>
                             {% if p[8] %}
                                 <span class="unite-badge">{{ p[9] }} {{ p[8] }}</span>
@@ -437,29 +437,29 @@
                             <!-- Modifier -->
                             <button onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[12] }})"
                                     style="background:#1e3c72;color:white;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;">
-                                ✏️ Modifier
+                                <i class="bi bi-pencil-square"></i> Modifier
                             </button>
                             <a href="/admin/produits/paliers/{{ p[0] }}"
                                style="background:#28a745;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
-                                💰 Paliers
+                                <i class="bi bi-cash-coin"></i> Paliers
                             </a>
                             {% if p[14] == 1 %}
                             <a href="/admin/produits/desactiver/{{ p[0] }}"
                                onclick="return confirm('Désactiver {{ p[1] }} ? Il n\'apparaîtra plus en vente, mais son historique reste intact.')"
                                style="background:#6c757d;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
-                                🚫 Désactiver
+                                <i class="bi bi-slash-circle"></i> Désactiver
                             </a>
                             {% else %}
                             <a href="/admin/produits/activer/{{ p[0] }}"
                                style="background:#17a2b8;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
-                                ✅ Réactiver
+                                <i class="bi bi-check-circle-fill"></i> Réactiver
                             </a>
                             {% endif %}
                             <!-- Supprimer seul -->
                             <a href="/admin/produits/supprimer/{{ p[0] }}"
                                onclick="return confirm('Supprimer {{ p[1] }} ?')"
                                style="background:#dc3545;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
-                                🗑️
+                                <i class="bi bi-trash"></i>
                             </a>
                         </td>
                     </tr>
@@ -479,7 +479,7 @@
                        onchange="onCheckboxChange(this)"
                        style="width:20px;height:20px;accent-color:#dc3545;cursor:pointer;flex-shrink:0;">
                 <span class="card-nom">{{ p[1] }}</span>
-                {% if p[14] == 0 %}<span style="background:#e2e3e5;color:#383d41;padding:2px 8px;border-radius:10px;font-size:10px;">🚫 Inactif</span>{% endif %}
+                {% if p[14] == 0 %}<span style="background:#e2e3e5;color:#383d41;padding:2px 8px;border-radius:10px;font-size:10px;"><i class="bi bi-slash-circle"></i> Inactif</span>{% endif %}
             </div>
             <div class="card-row">
                 <label>Catégorie</label>
@@ -506,20 +506,20 @@
             <div class="card-actions">
                 <button class="card-btn-save"
                         onclick="ouvrirModal({{ p[0] }}, '{{ p[1]|replace("'", "\\'") }}', {{ p[2] }}, {{ p[3] }}, {{ p[4] }}, {{ p[7] if p[7] is not none else 'null' }}, {{ p[10] if p[10] is not none else 'null' }}, {{ p[11] if p[11] is not none else 'null' }}, {{ p[12] }})">
-                    ✏️ Modifier
+                    <i class="bi bi-pencil-square"></i> Modifier
                 </button>
-                <a href="/admin/produits/paliers/{{ p[0] }}" class="card-btn-save" style="background:#28a745; text-decoration:none; text-align:center;">💰 Paliers</a>
+                <a href="/admin/produits/paliers/{{ p[0] }}" class="card-btn-save" style="background:#28a745; text-decoration:none; text-align:center;"><i class="bi bi-cash-coin"></i> Paliers</a>
                 {% if p[14] == 1 %}
                 <a href="/admin/produits/desactiver/{{ p[0] }}"
                    onclick="return confirm('Désactiver {{ p[1] }} ? Il n\'apparaîtra plus en vente, mais son historique reste intact.')"
-                   class="card-btn-save" style="background:#6c757d; text-decoration:none; text-align:center;">🚫 Désactiver</a>
+                   class="card-btn-save" style="background:#6c757d; text-decoration:none; text-align:center;"><i class="bi bi-slash-circle"></i> Désactiver</a>
                 {% else %}
                 <a href="/admin/produits/activer/{{ p[0] }}"
-                   class="card-btn-save" style="background:#17a2b8; text-decoration:none; text-align:center;">✅ Réactiver</a>
+                   class="card-btn-save" style="background:#17a2b8; text-decoration:none; text-align:center;"><i class="bi bi-check-circle-fill"></i> Réactiver</a>
                 {% endif %}
                 <a href="/admin/produits/supprimer/{{ p[0] }}"
                    onclick="return confirm('Supprimer {{ p[1] }} ?')"
-                   class="card-btn-delete">🗑️</a>
+                   class="card-btn-delete"><i class="bi bi-trash"></i></a>
             </div>
         </div>
         {% endfor %}
@@ -527,16 +527,16 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
-    <a href="/admin/unites">📏 Gérer les unités de mesure</a>
-    <a href="/admin/categories">🗂️ Gérer les catégories</a>
-    <a href="/admin/produits/corbeille">🗑️ Corbeille des produits supprimés</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+    <a href="/admin/unites"><i class="bi bi-rulers"></i> Gérer les unités de mesure</a>
+    <a href="/admin/categories"><i class="bi bi-folder2-open"></i> Gérer les catégories</a>
+    <a href="/admin/produits/corbeille"><i class="bi bi-trash"></i> Corbeille des produits supprimés</a>
 </div>
 
 <!-- ══ MODAL MODIFICATION ════════════════════════════════════ -->
 <div id="modal-modifier" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:15px;">
     <div style="background:white;border-radius:14px;padding:24px;width:100%;max-width:420px;box-sizing:border-box;">
-        <h3 style="margin:0 0 18px;color:#1e3c72;">✏️ Modifier le produit</h3>
+        <h3 style="margin:0 0 18px;color:#1e3c72;"><i class="bi bi-pencil-square"></i> Modifier le produit</h3>
         <form method="post" id="form-modifier">
             <div class="form-group" style="margin-bottom:12px;">
                 <label>Nom</label>
@@ -547,17 +547,17 @@
                 <input type="number" name="prix" id="modal-prix" min="0" required style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
             </div>
             <div class="form-group" style="margin-bottom:12px;">
-                <label>📊 Stock actuel</label>
+                <label><i class="bi bi-bar-chart-line"></i> Stock actuel</label>
                 <input type="number" name="stock" id="modal-stock" min="0" step="0.01" required style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
             </div>
             <div class="form-group" style="margin-bottom:12px;">
                 <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
                     <input type="checkbox" name="vente_fractionnable" id="modal-fractionnable" style="width:18px; height:18px;">
-                    📦➗ Autoriser la vente en 1/2, 1/4... (carton, pack)
+                    <i class="bi bi-box-seam"></i><i class="bi bi-calculator"></i> Autoriser la vente en 1/2, 1/4... (carton, pack)
                 </label>
             </div>
             <div class="form-group" style="margin-bottom:12px;">
-                <label>📏 Unité de mesure</label>
+                <label><i class="bi bi-rulers"></i> Unité de mesure</label>
                 <div style="display:flex; gap:8px;">
                     <input type="number" name="valeur_unite" id="modal-valeur-unite" step="0.01" min="0" placeholder="Ex: 7" style="flex:1;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
                     <select name="unite_id" id="modal-unite" style="flex:1.4;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
@@ -569,7 +569,7 @@
                 </div>
             </div>
             <div class="form-group" style="margin-bottom:12px;">
-                <label>🗂️ Catégorie</label>
+                <label><i class="bi bi-folder2-open"></i> Catégorie</label>
                 <select name="categorie_id" id="modal-categorie" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
                     <option value="">-- Aucune catégorie --</option>
                     {% for cat in categories %}
@@ -582,15 +582,15 @@
                 <input type="number" name="stock_min" id="modal-stock-min" min="0" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">
             </div>
             <div class="form-group" style="margin-bottom:20px;">
-                <label style="color:#dc3545;">🔒 Mot de passe admin (confirmation)</label>
+                <label style="color:#dc3545;"><i class="bi bi-lock-fill"></i> Mot de passe admin (confirmation)</label>
                 <input type="password" name="admin_password" required autocomplete="current-password" placeholder="Confirmez votre mot de passe" style="width:100%;padding:10px;border:2px solid #dc3545;border-radius:8px;box-sizing:border-box;">
             </div>
             <div style="display:flex;gap:10px;">
                 <button type="submit" style="flex:1;background:#28a745;color:white;border:none;padding:11px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
-                    💾 Enregistrer
+                    <i class="bi bi-save"></i> Enregistrer
                 </button>
                 <button type="button" onclick="fermerModal()" style="background:#6c757d;color:white;border:none;padding:11px 18px;border-radius:8px;cursor:pointer;">
-                    ✕
+                    <i class="bi bi-x-lg"></i>
                 </button>
             </div>
         </form>
@@ -691,12 +691,12 @@ function confirmSuppressionMultiple() {
     const force = document.getElementById('force-checkbox').checked;
     if (force) {
         if (!document.getElementById('force-password').value) {
-            alert('⚠️ Le mot de passe admin est requis pour forcer la suppression.');
+            alert(' Le mot de passe admin est requis pour forcer la suppression.');
             return false;
         }
-        return confirm(`🚨 SUPPRESSION FORCÉE : ${n} produit(s) seront supprimés AVEC leur historique complet de ventes, entrées et pertes.\nCette action est irréversible et affectera vos statistiques passées.\nConfirmer ?`);
+        return confirm(` SUPPRESSION FORCÉE : ${n} produit(s) seront supprimés AVEC leur historique complet de ventes, entrées et pertes.\nCette action est irréversible et affectera vos statistiques passées.\nConfirmer ?`);
     }
-    return confirm(`⚠️ Voulez-vous vraiment supprimer ${n} produit(s) ?\nCette action est irréversible.`);
+    return confirm(` Voulez-vous vraiment supprimer ${n} produit(s) ?\nCette action est irréversible.`);
 }
 
 // ── Modal modification ─────────────────────────

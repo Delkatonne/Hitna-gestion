@@ -44,13 +44,13 @@
 </style>
 {% endblock %}
 
-{% block page_title %}📊 Export comptable{% endblock %}
+{% block page_title %}<i class="bi bi-bar-chart-line"></i> Export comptable{% endblock %}
 {% block page_subtitle %}Télécharge un rapport Excel formaté pour ta comptabilité{% endblock %}
 
 {% block content %}
 
 <div class="export-info">
-    ℹ️ Le fichier Excel généré contient :
+    ℹ Le fichier Excel généré contient :
     <ul>
         <li><strong>Résumé</strong> — chiffre d'affaires, achats, marge brute, charges et bénéfice net du mois</li>
         <li><strong>Ventes</strong> — détail de chaque vente (date, produit, montant, client, vendeur)</li>
@@ -61,7 +61,7 @@
 </div>
 
 <div class="card">
-    <h2 class="card-title">📅 Choisir la période</h2>
+    <h2 class="card-title"><i class="bi bi-calendar-event"></i> Choisir la période</h2>
     <form method="get" action="/export/excel_comptable" class="form-export">
         <div class="form-row">
             <div class="form-group">
@@ -81,12 +81,12 @@
                 </select>
             </div>
         </div>
-        <button type="submit" style="background:#28a745; width:100%; padding:12px; font-size:15px;">⬇️ Télécharger le rapport Excel</button>
+        <button type="submit" style="background:#28a745; width:100%; padding:12px; font-size:15px;"><i class="bi bi-arrow-down"></i> Télécharger le rapport Excel</button>
     </form>
 </div>
 
 <div class="nav-links">
-    <a href="/admin/charges">💸 Voir les charges</a>
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/admin/charges"><i class="bi bi-cash-stack"></i> Voir les charges</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 {% endblock %}

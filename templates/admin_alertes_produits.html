@@ -2,7 +2,7 @@
 
 {% block title %}Alertes produits - HITNA{% endblock %}
 
-{% block page_title %}⚠️ Seuils d'alerte des produits{% endblock %}
+{% block page_title %}<i class="bi bi-exclamation-triangle-fill"></i> Seuils d'alerte des produits{% endblock %}
 {% block page_subtitle %}Définissez le seuil de stock pour recevoir des notifications{% endblock %}
 
 {% block content %}
@@ -136,7 +136,7 @@
 </style>
 
 <div class="card">
-    <h2 class="card-title">📊 Configuration des alertes stock</h2>
+    <h2 class="card-title"><i class="bi bi-bar-chart-line"></i> Configuration des alertes stock</h2>
     <p style="margin-bottom: 20px; color: #666;">
         Définissez pour chaque produit le seuil de stock à partir duquel vous recevrez une notification.
     </p>
@@ -169,7 +169,7 @@
                             <input type="checkbox" name="actif" {% if p[5] is not defined or p[5] == 1 %}checked{% endif %}>
                         </td>
                         <td>
-                            <button type="submit" class="btn-small" style="background: #28a745;">💾 Enregistrer</button>
+                            <button type="submit" class="btn-small" style="background: #28a745;"><i class="bi bi-save"></i> Enregistrer</button>
                         </td>
                     </tr>
                 </form>
@@ -200,7 +200,7 @@
                     <label>Alerte active</label>
                     <input type="checkbox" name="actif" {% if p[5] is not defined or p[5] == 1 %}checked{% endif %}>
                 </div>
-                <button type="submit" class="btn-save">💾 Enregistrer</button>
+                <button type="submit" class="btn-save"><i class="bi bi-save"></i> Enregistrer</button>
             </div>
         </form>
         {% endfor %}
@@ -208,7 +208,7 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 
 {% endblock %}

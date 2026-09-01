@@ -110,29 +110,29 @@
 </style>
 {% endblock %}
 
-{% block page_title %}📦 Commandes fournisseurs{% endblock %}
+{% block page_title %}<i class="bi bi-box-seam"></i> Commandes fournisseurs{% endblock %}
 {% block page_subtitle %}Suivi des réapprovisionnements : commandé, livraison prévue, livré{% endblock %}
 
 {% block content %}
 
 <div class="stats-cf">
     <div class="stat-cf attente">
-        <h3>⏳ En attente de livraison</h3>
+        <h3><i class="bi bi-hourglass-split"></i> En attente de livraison</h3>
         <div class="number">{{ nb_en_attente }}</div>
     </div>
     <div class="stat-cf retard">
-        <h3>🚨 En retard</h3>
+        <h3><i class="bi bi-exclamation-octagon-fill"></i> En retard</h3>
         <div class="number">{{ nb_en_retard }}</div>
     </div>
 </div>
 
 <!-- Formulaire d'ajout -->
 <div class="card">
-    <h2 class="card-title">➕ Passer une commande</h2>
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Passer une commande</h2>
     <form method="post" action="/admin/commandes-fournisseurs/ajouter" class="form-cf">
         <div class="form-row">
             <div class="form-group">
-                <label>🏢 Fournisseur</label>
+                <label><i class="bi bi-building"></i> Fournisseur</label>
                 <select name="fournisseur_id" required>
                     <option value="">-- Choisir --</option>
                     {% for f in fournisseurs %}
@@ -141,7 +141,7 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>📦 Produit</label>
+                <label><i class="bi bi-box-seam"></i> Produit</label>
                 <select name="produit_id" required>
                     <option value="">-- Choisir --</option>
                     {% for p in produits %}
@@ -150,29 +150,29 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>🔢 Quantité</label>
+                <label><i class="bi bi-123"></i> Quantité</label>
                 <input type="number" name="quantite" min="0.01" step="0.01" required>
             </div>
             <div class="form-group">
-                <label>💰 Prix d'achat unitaire estimé (FCFA)</label>
+                <label><i class="bi bi-cash-coin"></i> Prix d'achat unitaire estimé (FCFA)</label>
                 <input type="number" name="prix_unitaire" min="0" step="1">
             </div>
         </div>
         <div class="form-row">
             <div class="form-group">
-                <label>📅 Date de commande</label>
+                <label><i class="bi bi-calendar-event"></i> Date de commande</label>
                 <input type="date" name="date_commande" value="{{ today_iso }}">
             </div>
             <div class="form-group">
-                <label>🚚 Livraison prévue le</label>
+                <label><i class="bi bi-truck"></i> Livraison prévue le</label>
                 <input type="date" name="date_livraison_prevue">
             </div>
             <div class="form-group" style="flex:2;">
-                <label>📝 Notes (optionnel)</label>
+                <label><i class="bi bi-pencil-square"></i> Notes (optionnel)</label>
                 <input type="text" name="notes" placeholder="Ex: confirmé par téléphone">
             </div>
             <div class="form-group" style="display:flex; align-items:flex-end;">
-                <button type="submit" style="background:#28a745; width:100%;">💾 Enregistrer la commande</button>
+                <button type="submit" style="background:#28a745; width:100%;"><i class="bi bi-save"></i> Enregistrer la commande</button>
             </div>
         </div>
     </form>
@@ -180,12 +180,12 @@
 
 <!-- Liste -->
 <div class="card">
-    <h2 class="card-title">📋 Commandes</h2>
+    <h2 class="card-title"><i class="bi bi-clipboard-check"></i> Commandes</h2>
     <div class="nav-links" style="margin-bottom:15px;">
         <a href="/admin/commandes-fournisseurs" style="{% if not filtre_statut %}font-weight:bold; text-decoration:underline;{% endif %}">Toutes</a>
-        <a href="/admin/commandes-fournisseurs?statut=commandé" style="{% if filtre_statut=='commandé' %}font-weight:bold; text-decoration:underline;{% endif %}">⏳ En attente</a>
-        <a href="/admin/commandes-fournisseurs?statut=livré" style="{% if filtre_statut=='livré' %}font-weight:bold; text-decoration:underline;{% endif %}">✅ Livrées</a>
-        <a href="/admin/commandes-fournisseurs?statut=annulée" style="{% if filtre_statut=='annulée' %}font-weight:bold; text-decoration:underline;{% endif %}">🚫 Annulées</a>
+        <a href="/admin/commandes-fournisseurs?statut=commandé" style="{% if filtre_statut=='commandé' %}font-weight:bold; text-decoration:underline;{% endif %}"><i class="bi bi-hourglass-split"></i> En attente</a>
+        <a href="/admin/commandes-fournisseurs?statut=livré" style="{% if filtre_statut=='livré' %}font-weight:bold; text-decoration:underline;{% endif %}"><i class="bi bi-check-circle-fill"></i> Livrées</a>
+        <a href="/admin/commandes-fournisseurs?statut=annulée" style="{% if filtre_statut=='annulée' %}font-weight:bold; text-decoration:underline;{% endif %}"><i class="bi bi-slash-circle"></i> Annulées</a>
     </div>
 
     {% if commandes %}
@@ -193,45 +193,45 @@
         {% set en_retard = (c[8] == 'commandé' and c[6] and c[6] < today_iso) %}
         <div class="cf-card {{ c[8] }} {% if en_retard %}en-retard{% endif %}">
             <div class="header">
-                <h3>📦 {{ c[3]|qte }} × {{ c[2] or 'Produit supprimé' }} — {{ c[1] or 'Fournisseur supprimé' }}</h3>
+                <h3><i class="bi bi-box-seam"></i> {{ c[3]|qte }} × {{ c[2] or 'Produit supprimé' }} — {{ c[1] or 'Fournisseur supprimé' }}</h3>
                 <span class="statut-badge {% if en_retard %}retard{% else %}{{ c[8] }}{% endif %}">
-                    {% if en_retard %}🚨 En retard
-                    {% elif c[8] == 'commandé' %}⏳ Commandé
-                    {% elif c[8] == 'livré' %}✅ Livré
-                    {% else %}🚫 Annulée{% endif %}
+                    {% if en_retard %}<i class="bi bi-exclamation-octagon-fill"></i> En retard
+                    {% elif c[8] == 'commandé' %}<i class="bi bi-hourglass-split"></i> Commandé
+                    {% elif c[8] == 'livré' %}<i class="bi bi-check-circle-fill"></i> Livré
+                    {% else %}<i class="bi bi-slash-circle"></i> Annulée{% endif %}
                 </span>
             </div>
             <div class="dates">
-                <span>📅 Commandé le <strong>{{ c[5] or '-' }}</strong></span>
-                <span>🚚 Livraison prévue <strong>{{ c[6] or 'non précisée' }}</strong></span>
-                {% if c[7] %}<span>✅ Livré le <strong>{{ c[7].split(' ')[0] }}</strong></span>{% endif %}
-                {% if c[4] %}<span>💰 {{ "{:,.0f}".format(c[4]) }} FCFA/unité</span>{% endif %}
+                <span><i class="bi bi-calendar-event"></i> Commandé le <strong>{{ c[5] or '-' }}</strong></span>
+                <span><i class="bi bi-truck"></i> Livraison prévue <strong>{{ c[6] or 'non précisée' }}</strong></span>
+                {% if c[7] %}<span><i class="bi bi-check-circle-fill"></i> Livré le <strong>{{ c[7].split(' ')[0] }}</strong></span>{% endif %}
+                {% if c[4] %}<span><i class="bi bi-cash-coin"></i> {{ "{:,.0f}".format(c[4]) }} FCFA/unité</span>{% endif %}
             </div>
-            {% if c[9] %}<p style="font-size:12px; color:#888; margin-bottom:10px;">📝 {{ c[9] }}</p>{% endif %}
+            {% if c[9] %}<p style="font-size:12px; color:#888; margin-bottom:10px;"><i class="bi bi-pencil-square"></i> {{ c[9] }}</p>{% endif %}
             <div class="actions">
                 {% if c[8] == 'commandé' %}
                 <form method="post" action="/admin/commandes-fournisseurs/livrer/{{ c[0] }}" class="livrer-form"
                       onsubmit="return confirm('Confirmer la livraison ? {{ c[3]|qte }} × {{ c[2] }} seront ajoutés au stock.')">
                     <input type="number" name="prix_unitaire" placeholder="Prix réel" min="0" step="1" value="{{ c[4] or '' }}">
-                    <button type="submit" class="btn-small" style="background:#28a745; color:white;">✅ Marquer livré</button>
+                    <button type="submit" class="btn-small" style="background:#28a745; color:white;"><i class="bi bi-check-circle-fill"></i> Marquer livré</button>
                 </form>
                 <a href="/admin/commandes-fournisseurs/annuler/{{ c[0] }}"
                    onclick="return confirm('Annuler cette commande ?')"
-                   class="btn-small" style="background:#6c757d; color:white;">🚫 Annuler</a>
+                   class="btn-small" style="background:#6c757d; color:white;"><i class="bi bi-slash-circle"></i> Annuler</a>
                 {% endif %}
                 <a href="/admin/commandes-fournisseurs/supprimer/{{ c[0] }}"
                    onclick="return confirm('Supprimer définitivement cette commande de l\'historique ?')"
-                   class="btn-small" style="background:#dc3545; color:white;">🗑️</a>
+                   class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i></a>
             </div>
         </div>
         {% endfor %}
     {% else %}
-        <p style="text-align:center; color:#999; padding:40px;">📭 Aucune commande fournisseur enregistrée</p>
+        <p style="text-align:center; color:#999; padding:40px;"><i class="bi bi-inbox"></i> Aucune commande fournisseur enregistrée</p>
     {% endif %}
 </div>
 
 <div class="nav-links">
-    <a href="/admin/fournisseurs">🏢 Gérer les fournisseurs</a>
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/admin/fournisseurs"><i class="bi bi-building"></i> Gérer les fournisseurs</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 {% endblock %}

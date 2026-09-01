@@ -126,15 +126,15 @@
         <div class="recu-card">
             <div class="recu-header">
                 <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="HITNA" onerror="this.style.display='none'">
-                <h1>🏪 HITNA Superette</h1>
+                <h1><i class="bi bi-shop"></i> HITNA Superette</h1>
                 <p>Reçu de vente</p>
             </div>
 
             <div class="recu-meta">
-                <div><span>📅 Date</span><span>{{ date_vente }}</span></div>
-                <div><span>👤 Vendeur</span><span>{{ vendeur }}</span></div>
-                <div><span>🙋 Client</span><span>{{ client if client else 'Non renseigné' }}</span></div>
-                <div><span>🔖 N° reçu</span><span>{{ groupe_vente }}</span></div>
+                <div><span><i class="bi bi-calendar-event"></i> Date</span><span>{{ date_vente }}</span></div>
+                <div><span><i class="bi bi-person"></i> Vendeur</span><span>{{ vendeur }}</span></div>
+                <div><span><i class="bi bi-hand-index-thumb"></i> Client</span><span>{{ client if client else 'Non renseigné' }}</span></div>
+                <div><span><i class="bi bi-bookmark-fill"></i> N° reçu</span><span>{{ groupe_vente }}</span></div>
             </div>
 
             <table>
@@ -164,16 +164,16 @@
             </div>
 
             <div class="recu-footer">
-                Merci pour votre achat ! 🙏<br>
+                Merci pour votre achat ! <i class="bi bi-hand-thumbs-up-fill"></i><br>
                 À bientôt chez HITNA
             </div>
 
             <div class="btn-actions">
-                <button class="btn-print" onclick="window.print()">🖨️ Imprimer</button>
-                <a href="/export/pdf_recu/{{ groupe_vente }}" class="btn-print" style="background:#28a745;">⬇️ PDF</a>
+                <button class="btn-print" onclick="window.print()"><i class="bi bi-printer-fill"></i> Imprimer</button>
+                <a href="/export/pdf_recu/{{ groupe_vente }}" class="btn-print" style="background:#28a745;"><i class="bi bi-arrow-down"></i> PDF</a>
             </div>
             <div class="btn-actions">
-                <a href="/vente" class="btn-back" style="flex:1;">← Retour</a>
+                <a href="/vente" class="btn-back" style="flex:1;"><i class="bi bi-arrow-left"></i> Retour</a>
             </div>
         </div>
     </div>

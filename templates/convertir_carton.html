@@ -2,7 +2,7 @@
 
 {% block title %}Convertir en vente au détail - HITNA{% endblock %}
 
-{% block page_title %}📦 Convertir en vente au détail{% endblock %}
+{% block page_title %}<i class="bi bi-box-seam"></i> Convertir en vente au détail{% endblock %}
 {% block page_subtitle %}{{ produit[1] }}{% endblock %}
 
 {% block content %}
@@ -10,7 +10,7 @@
 <div class="card" style="max-width: 640px; margin: 0 auto;">
 
     <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:16px; margin-bottom:24px; font-size:14px; color:#664d03;">
-        ⚠️ <strong>Action à ne faire qu'une seule fois par produit.</strong>
+        <i class="bi bi-exclamation-triangle-fill"></i> <strong>Action à ne faire qu'une seule fois par produit.</strong>
         Elle transforme le sens du stock et du prix : le stock passera d'un comptage
         en <strong>cartons</strong> à un comptage en <strong>unités individuelles</strong>,
         et le prix passera d'un prix par carton à un prix par unité. Cela permettra
@@ -29,7 +29,7 @@
     <form method="post" id="conversionForm" style="margin-top:24px;">
         <div class="field" style="margin-bottom:20px;">
             <label style="display:block; font-weight:600; margin-bottom:8px;">
-                📦 Combien d'unités individuelles dans un carton ?
+                <i class="bi bi-box-seam"></i> Combien d'unités individuelles dans un carton ?
             </label>
             <input type="number" name="unites_par_carton" id="unitesParCarton" min="2" step="1" required
                    placeholder="Ex : 24" oninput="mettreAJourApercu()"
@@ -47,7 +47,7 @@
                 <strong id="apercuPrix">-</strong>
             </div>
             <div id="apercuArrondi" style="font-size:12px; color:#856404; margin-top:8px; display:none;">
-                ⚠️ Le prix par carton ne se divise pas exactement — le prix unitaire a été arrondi.
+                <i class="bi bi-exclamation-triangle-fill"></i> Le prix par carton ne se divise pas exactement — le prix unitaire a été arrondi.
                 Vérifiez que le total (prix unitaire × unités/carton) reste cohérent avec votre marge.
             </div>
         </div>
@@ -62,7 +62,7 @@
 
         <div style="display:flex; gap:12px;">
             <button type="submit" style="flex:1; background:#dc3545; color:white; padding:14px; border:none; border-radius:8px; font-weight:bold; font-size:15px; cursor:pointer;">
-                ✅ Convertir définitivement
+                <i class="bi bi-check-circle-fill"></i> Convertir définitivement
             </button>
             <a href="/admin/produits" style="flex:1; text-align:center; background:#f0f2f5; color:#333; padding:14px; border-radius:8px; text-decoration:none; font-weight:bold;">
                 Annuler

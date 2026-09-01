@@ -165,15 +165,15 @@
 <!-- Statistiques -->
 <div class="stats-grid">
     <div class="stat-card">
-        <h3>💰 Ventes aujourd'hui</h3>
+        <h3><i class="bi bi-cash-coin"></i> Ventes aujourd'hui</h3>
         <div class="number">{{ "{:,.0f}".format(total_jour) }} FCFA</div>
     </div>
     <div class="stat-card">
-        <h3>📦 Produits</h3>
+        <h3><i class="bi bi-box-seam"></i> Produits</h3>
         <div class="number">{{ nb_produits }}</div>
     </div>
     <div class="stat-card">
-        <h3>📊 Stock total</h3>
+        <h3><i class="bi bi-bar-chart-line"></i> Stock total</h3>
         <div class="number">{{ stock_total }}</div>
     </div>
 </div>
@@ -181,13 +181,13 @@
 <!-- Graphiques -->
 <div class="charts-container">
     <div class="chart-card">
-        <h3>📈 Évolution des ventes (7 derniers jours)</h3>
+        <h3><i class="bi bi-graph-up-arrow"></i> Évolution des ventes (7 derniers jours)</h3>
         <div class="chart-container">
             <canvas id="ventesChart"></canvas>
         </div>
     </div>
     <div class="chart-card">
-        <h3>⏰ Ventes par heure (aujourd'hui)</h3>
+        <h3><i class="bi bi-alarm-fill"></i> Ventes par heure (aujourd'hui)</h3>
         <div class="chart-container">
             <canvas id="ventesHeureChart"></canvas>
         </div>
@@ -197,11 +197,11 @@
 <!-- Statistiques des vendeurs du jour -->
 {% if stats_vendeurs %}
 <div class="card">
-    <h2 class="card-title">👥 Ventes par vendeur (aujourd'hui)</h2>
+    <h2 class="card-title"><i class="bi bi-people-fill"></i> Ventes par vendeur (aujourd'hui)</h2>
     <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
         {% for v in stats_vendeurs %}
         <div class="stat-card" style="background: linear-gradient(135deg, #1e3c72, #2a5298);">
-            <h3>{% if v[1] == 'admin' %}👑 {{ v[0] }}{% else %}👤 {{ v[0] }}{% endif %}</h3>
+            <h3>{% if v[1] == 'admin' %}<i class="bi bi-award-fill"></i> {{ v[0] }}{% else %}<i class="bi bi-person"></i> {{ v[0] }}{% endif %}</h3>
             <div class="number">{{ v[2] }} ventes</div>
             <p style="font-size: 14px; margin-top: 5px;">{{ "{:,.0f}".format(v[3]) }} FCFA</p>
         </div>
@@ -213,7 +213,7 @@
 <!-- Alertes stock bas -->
 {% if stock_bas %}
 <div class="alert-card">
-    <h3>⚠️ Alertes stock bas</h3>
+    <h3><i class="bi bi-exclamation-triangle-fill"></i> Alertes stock bas</h3>
     <ul>
         {% for p in stock_bas %}
         <li><strong>{{ p[0] }}</strong> : {{ p[1] }} unités restantes (min: {{ p[2] }})</li>
@@ -224,7 +224,7 @@
 
 <!-- Top produits -->
 <div class="card">
-    <h2 class="card-title">🏆 Top 5 des produits les plus vendus</h2>
+    <h2 class="card-title"><i class="bi bi-trophy-fill"></i> Top 5 des produits les plus vendus</h2>
     {% if top_produits %}
     <ul class="top-list">
         {% for p in top_produits %}
@@ -242,26 +242,26 @@
 
 <!-- Historique déplacé vers Rapport journalier -->
 <div class="card">
-    <h2 class="card-title">📅 Historique des opérations</h2>
+    <h2 class="card-title"><i class="bi bi-calendar-event"></i> Historique des opérations</h2>
     <p style="color:#666; margin-bottom:16px;">
         Consultez le détail jour par jour des ventes, entrées et pertes de la semaine dans le Rapport journalier.
     </p>
     <a href="/rapport-journalier" class="btn-small" style="display:inline-block; background:#1e3c72; color:white; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold;">
-        📅 Voir le rapport journalier →
+        <i class="bi bi-calendar-event"></i> Voir le rapport journalier <i class="bi bi-arrow-right"></i>
     </a>
 </div>
 
 <div class="nav-links">
-    <a href="/admin/produits">📦 Gérer les produits</a>
-    <a href="/admin/entrees">📥 Entrées de stock</a>
-    <a href="/admin/ventes">🛒 Ventes</a>
-    <a href="/admin/archives">📚 Archives</a>
-    <a href="/changer_mdp">🔑 Changer mot de passe</a>
-    <a href="/logout">🚪 Déconnexion</a>
+    <a href="/admin/produits"><i class="bi bi-box-seam"></i> Gérer les produits</a>
+    <a href="/admin/entrees"><i class="bi bi-box-arrow-in-down"></i> Entrées de stock</a>
+    <a href="/admin/ventes"><i class="bi bi-cart3"></i> Ventes</a>
+    <a href="/admin/archives"><i class="bi bi-journals"></i> Archives</a>
+    <a href="/changer_mdp"><i class="bi bi-key-fill"></i> Changer mot de passe</a>
+    <a href="/logout"><i class="bi bi-door-open-fill"></i> Déconnexion</a>
 </div>
 
 <!-- Bouton flottant : Exporter le point du jour -->
-<button type="button" class="btn-export-float" onclick="exportToday()" title="Exporter le point du jour">📄</button>
+<button type="button" class="btn-export-float" onclick="exportToday()" title="Exporter le point du jour"><i class="bi bi-file-earmark-text"></i></button>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {

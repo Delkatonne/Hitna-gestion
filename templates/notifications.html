@@ -2,14 +2,14 @@
 
 {% block title %}Notifications - HITNA{% endblock %}
 
-{% block page_title %}🔔 Notifications{% endblock %}
+{% block page_title %}<i class="bi bi-bell-fill"></i> Notifications{% endblock %}
 {% block page_subtitle %}Historique de toutes vos alertes et messages{% endblock %}
 
 {% block content %}
 <div class="card">
     <div class="notifications-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h2 class="card-title" style="margin-bottom: 0;">📋 Toutes les notifications</h2>
-        <button id="markAllReadBtn" class="btn" style="background: #17a2b8;">✅ Tout marquer comme lu</button>
+        <h2 class="card-title" style="margin-bottom: 0;"><i class="bi bi-clipboard-check"></i> Toutes les notifications</h2>
+        <button id="markAllReadBtn" class="btn" style="background: #17a2b8;"><i class="bi bi-check-circle-fill"></i> Tout marquer comme lu</button>
     </div>
     
     {% if notifications %}
@@ -18,13 +18,13 @@
         <div class="notification-item {% if not n[6] %}unread{% endif %}" data-id="{{ n[0] }}" onclick="markAsRead(this, {{ n[0] }}, '{{ n[4] or '' }}')">
             <div class="notification-icon">
                 {% if n[1] == 'stock_bas' %}
-                    ⚠️
+                    <i class="bi bi-exclamation-triangle-fill"></i>
                 {% elif n[1] == 'vente' %}
-                    🛒
+                    <i class="bi bi-cart3"></i>
                 {% elif n[1] == 'entree' %}
-                    📥
+                    <i class="bi bi-box-arrow-in-down"></i>
                 {% else %}
-                    ℹ️
+                    ℹ
                 {% endif %}
             </div>
             <div class="notification-content">
@@ -40,7 +40,7 @@
     </div>
     {% else %}
     <div class="empty-state">
-        <div class="icon">🔔</div>
+        <div class="icon"><i class="bi bi-bell-fill"></i></div>
         <h3>Aucune notification</h3>
         <p>Vous n'avez pas encore reçu de notifications</p>
     </div>
@@ -48,7 +48,7 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 
 <style>

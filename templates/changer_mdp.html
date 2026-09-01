@@ -4,18 +4,18 @@
 
 {% block content %}
 <div class="card" style="max-width: 500px; margin: 50px auto;">
-    <h2 class="card-title">🔑 Changer mon mot de passe</h2>
+    <h2 class="card-title"><i class="bi bi-key-fill"></i> Changer mon mot de passe</h2>
     
     <form method="post" style="display: flex; flex-direction: column; gap: 20px;">
         <div>
             <label style="display: block; margin-bottom: 8px; font-weight: 600;">Nouveau mot de passe</label>
             <input type="password" name="new_password" required style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
         </div>
-        <button type="submit" style="width: 100%; padding: 12px;">✅ Changer le mot de passe</button>
+        <button type="submit" style="width: 100%; padding: 12px;"><i class="bi bi-check-circle-fill"></i> Changer le mot de passe</button>
     </form>
     
     <div class="nav-links" style="justify-content: center; margin-top: 30px;">
-        <a href="/dashboard">← Retour</a>
+        <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour</a>
     </div>
 </div>
 {% endblock %}

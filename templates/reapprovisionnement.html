@@ -54,13 +54,13 @@
 </style>
 {% endblock %}
 
-{% block page_title %}📈 Réapprovisionnement{% endblock %}
+{% block page_title %}<i class="bi bi-graph-up-arrow"></i> Réapprovisionnement{% endblock %}
 {% block page_subtitle %}Suggestions basées sur la vitesse de vente réelle{% endblock %}
 
 {% block content %}
 
 <div class="info-banner">
-    ℹ️ Calculé à partir des ventes des {{ jours_periode }} derniers jours. La quantité suggérée vise à couvrir
+    ℹ Calculé à partir des ventes des {{ jours_periode }} derniers jours. La quantité suggérée vise à couvrir
     {{ jours_couverture }} jours de vente au rythme actuel. Les produits avec moins de {{ seuil_alerte }} jours
     de stock restant sont classés "à commander bientôt".
 </div>
@@ -68,7 +68,7 @@
 <!-- Produits urgents -->
 <div class="card">
     <div class="section-title">
-        <h2 class="card-title" style="margin:0;">🔴 À commander bientôt</h2>
+        <h2 class="card-title" style="margin:0;"><i class="bi bi-circle-fill"></i> À commander bientôt</h2>
         <span class="section-count badge-urgent">{{ produits_urgents|length }}</span>
     </div>
     {% if produits_urgents %}
@@ -101,14 +101,14 @@
         </table>
     </div>
     {% else %}
-    <p style="text-align:center; color:#999; padding:30px;">✅ Aucun produit urgent — tout va bien pour le moment</p>
+    <p style="text-align:center; color:#999; padding:30px;"><i class="bi bi-check-circle-fill"></i> Aucun produit urgent — tout va bien pour le moment</p>
     {% endif %}
 </div>
 
 <!-- Produits avec vente mais pas urgents -->
 <div class="card">
     <div class="section-title">
-        <h2 class="card-title" style="margin:0;">🟢 Stock confortable</h2>
+        <h2 class="card-title" style="margin:0;"><i class="bi bi-circle-fill"></i> Stock confortable</h2>
         <span class="section-count badge-ok">{{ produits_ok|length }}</span>
     </div>
     {% if produits_ok %}
@@ -146,7 +146,7 @@
 <!-- Produits sans vente récente -->
 <div class="card">
     <div class="section-title">
-        <h2 class="card-title" style="margin:0;">⚪ Pas de vente récente</h2>
+        <h2 class="card-title" style="margin:0;"><i class="bi bi-circle"></i> Pas de vente récente</h2>
         <span class="section-count badge-neutre">{{ produits_sans_vente|length }}</span>
     </div>
     <p style="font-size:12px; color:#888; margin-bottom:14px;">
@@ -180,8 +180,8 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
-    <a href="/admin/produits">📦 Gérer les produits</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+    <a href="/admin/produits"><i class="bi bi-box-seam"></i> Gérer les produits</a>
 </div>
 
 {% endblock %}

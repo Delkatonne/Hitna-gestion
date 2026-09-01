@@ -106,7 +106,7 @@
  {% set benefice_net = marge_brute - (charges_totales or 0) %}
  <div class="number">{{ "{:,.0f}".format(benefice_net) }} FCFA</div>
  <p>Marge brute : {{ "{:,.0f}".format(marge_brute) }} FCFA &nbsp;|&nbsp; Charges (loyer, salaires...) : {{ "{:,.0f}".format(charges_totales or 0) }} FCFA</p>
- <a href="/admin/charges" style="display:inline-block; margin-top:10px; color:white; text-decoration:underline; font-size:13px;">💸 Gérer les charges →</a>
+ <a href="/admin/charges" style="display:inline-block; margin-top:10px; color:white; text-decoration:underline; font-size:13px;"><i class="bi bi-cash-stack"></i> Gérer les charges <i class="bi bi-arrow-right"></i></a>
 </div>
 
 <div class="stats-container">

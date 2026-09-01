@@ -331,30 +331,30 @@
 </style>
 {% endblock %}
 
-{% block page_title %}📥 Entrées de stock{% endblock %}
+{% block page_title %}<i class="bi bi-box-arrow-in-down"></i> Entrées de stock{% endblock %}
 {% block page_subtitle %}Enregistrer les achats et approvisionnements{% endblock %}
 
 {% block content %}
 <!-- Message d'information -->
 <div class="info-archive">
-    ℹ️ Les entrées de stock sont automatiquement archivées chaque semaine (le lundi).<br>
-    Les archives sont conservées et accessibles dans la section <strong>📚 Archives</strong>.
+    ℹ Les entrées de stock sont automatiquement archivées chaque semaine (le lundi).<br>
+    Les archives sont conservées et accessibles dans la section <strong><i class="bi bi-journals"></i> Archives</strong>.
 </div>
 
 <!-- Statistiques -->
 <div class="stats-entrees">
     <div class="stat-entree">
-        <div class="icon">📦</div>
+        <div class="icon"><i class="bi bi-box-seam"></i></div>
         <div class="value">{{ produits|length }}</div>
         <div class="label">Produits en stock</div>
     </div>
     <div class="stat-entree">
-        <div class="icon">📥</div>
+        <div class="icon"><i class="bi bi-box-arrow-in-down"></i></div>
         <div class="value">{{ entrees|length }}</div>
         <div class="label">Entrées récentes</div>
     </div>
     <div class="stat-entree">
-        <div class="icon">💰</div>
+        <div class="icon"><i class="bi bi-cash-coin"></i></div>
         <div class="value">{{ "{:,.0f}".format(entrees|sum(attribute=4)|default(0)) }} FCFA</div>
         <div class="label">Investissement total</div>
     </div>
@@ -362,10 +362,10 @@
 
 <!-- Formulaire d'ajout avec recherche -->
 <div class="card">
-    <h2 class="card-title">📥 Nouvelle entrée de stock (achat)</h2>
+    <h2 class="card-title"><i class="bi bi-box-arrow-in-down"></i> Nouvelle entrée de stock (achat)</h2>
     
     <div class="search-select-container">
-        <input type="text" id="productSearchInput" class="search-select-input" placeholder="🔍 Rechercher un produit par son nom..." autocomplete="off">
+        <input type="text" id="productSearchInput" class="search-select-input" placeholder="<i class="bi bi-search"></i> Rechercher un produit par son nom..." autocomplete="off">
         <div id="productDropdown" class="search-select-dropdown"></div>
     </div>
     
@@ -375,7 +375,7 @@
                 <span class="name" id="selectedProductName"></span>
                 <span class="stock" id="selectedProductStock"></span>
             </div>
-            <button type="button" class="clear-selection" onclick="clearSelection()">✖ Changer</button>
+            <button type="button" class="clear-selection" onclick="clearSelection()"><i class="bi bi-x-lg"></i> Changer</button>
         </div>
     </div>
     
@@ -386,14 +386,14 @@
             <input type="number" name="quantite" id="quantite" placeholder="Quantité" required>
             <input type="number" name="prix_unitaire" id="prix_unitaire" placeholder="Prix unitaire (FCFA)" required>
             <input type="text" name="fournisseur" id="fournisseur" placeholder="Fournisseur">
-            <button type="submit" id="submitBtn" disabled>✅ Valider l'entrée</button>
+            <button type="submit" id="submitBtn" disabled><i class="bi bi-check-circle-fill"></i> Valider l'entrée</button>
         </div>
     </form>
 </div>
 
 <!-- Historique des entrées regroupé par jour -->
 <div class="card">
-    <h2 class="card-title">📜 Historique des entrées de stock</h2>
+    <h2 class="card-title"><i class="bi bi-scroll"></i> Historique des entrées de stock</h2>
     
     {% if entrees %}
         {% set current_day = "" %}
@@ -411,7 +411,7 @@
                                 </tbody>
                             </table>
                             <div class="day-total-footer">
-                                📊 Total du {{ current_day }} : 
+                                <i class="bi bi-bar-chart-line"></i> Total du {{ current_day }} : 
                                 <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
                                 ({{ day_count }} entrées, {{ day_quantite }} unités)
                             </div>
@@ -420,10 +420,10 @@
                 
                 <div class="day-separator">
                     <div class="day-date">
-                        📅 {{ e_date }}
+                        <i class="bi bi-calendar-event"></i> {{ e_date }}
                         <span class="day-name">
                             {% if e_date == date_actuelle.split(' ')[0] %}
-                                📍 AUJOURD'HUI
+                                <i class="bi bi-geo-alt-fill"></i> AUJOURD'HUI
                             {% elif e_date == date_actuelle.split(' ')[0] %}
                                 HIER
                             {% else %}
@@ -475,7 +475,7 @@
                         </tbody>
                     </table>
                     <div class="day-total-footer">
-                        📊 Total du {{ current_day }} : 
+                        <i class="bi bi-bar-chart-line"></i> Total du {{ current_day }} : 
                         <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
                         ({{ day_count }} entrées, {{ day_quantite }} unités)
                     </div>
@@ -487,8 +487,8 @@
 </div>
 
 <div class="nav-links">
-    <a href="/admin/produits">← Gestion produits</a>
-    <a href="/dashboard">🏠 Dashboard</a>
+    <a href="/admin/produits"><i class="bi bi-arrow-left"></i> Gestion produits</a>
+    <a href="/dashboard"><i class="bi bi-house-door-fill"></i> Dashboard</a>
 </div>
 
 <script>
@@ -532,7 +532,7 @@
             option.innerHTML = `
                 <div>
                     <span class="product-name">${p.nom}</span>
-                    <span class="product-stock">📦 Stock actuel: ${p.stock} unités</span>
+                    <span class="product-stock"> Stock actuel: ${p.stock} unités</span>
                 </div>
             `;
             option.onclick = () => selectProduct(p);
@@ -545,7 +545,7 @@
         selectedProduit = product;
         selectedId.value = product.id;
         selectedName.innerHTML = product.nom;
-        selectedStock.innerHTML = `📦 Stock actuel: ${product.stock} unités`;
+        selectedStock.innerHTML = ` Stock actuel: ${product.stock} unités`;
         selectedDisplay.style.display = 'block';
         searchInput.value = product.nom;
         productDropdownEl.style.display = 'none';
@@ -611,7 +611,7 @@
                 fournisseur: fournisseur
             }).then(function(queued) {
                 if (queued) {
-                    alert(`📡 Entrée enregistrée hors ligne : ${quantite} ${selectedProduit.nom}. Elle sera synchronisée dès le retour du réseau.`);
+                    alert(` Entrée enregistrée hors ligne : ${quantite} ${selectedProduit.nom}. Elle sera synchronisée dès le retour du réseau.`);
                     clearSelection();
                 }
             });

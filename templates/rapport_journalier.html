@@ -72,13 +72,13 @@
 </style>
 {% endblock %}
 
-{% block page_title %}📅 Rapport journalier{% endblock %}
+{% block page_title %}<i class="bi bi-calendar-event"></i> Rapport journalier{% endblock %}
 {% block page_subtitle %}Ventes, entrées et pertes des 7 derniers jours{% endblock %}
 
 {% block content %}
 
 <div class="info-banner">
-    ℹ️ Ce rapport couvre les 7 derniers jours. Chaque jour disparaît automatiquement d'ici une semaine
+    ℹ Ce rapport couvre les 7 derniers jours. Chaque jour disparaît automatiquement d'ici une semaine
     après son passage, mais reste consultable dans <a href="/admin/archives" style="color:#1e3c72; font-weight:bold;">Archives</a> une fois la semaine archivée.
 </div>
 
@@ -87,35 +87,35 @@
         {% for jour, d in rapport %}
         <a href="/rapport-journalier/{{ jour }}" class="jour-card">
             <div class="jour-titre">
-                📅 {{ jour }}
+                <i class="bi bi-calendar-event"></i> {{ jour }}
                 {% if jour == aujourdhui %}
                 <span class="jour-badge-today">Aujourd'hui</span>
                 {% endif %}
             </div>
             <div class="jour-stats">
                 <div class="jour-stat ventes">
-                    <div class="label">🛒 Ventes</div>
+                    <div class="label"><i class="bi bi-cart3"></i> Ventes</div>
                     <div class="valeur">{{ d.nb_ventes }} · {{ "{:,.0f}".format(d.total_ventes) }} FCFA</div>
                 </div>
                 <div class="jour-stat entrees">
-                    <div class="label">📥 Entrées</div>
+                    <div class="label"><i class="bi bi-box-arrow-in-down"></i> Entrées</div>
                     <div class="valeur">{{ d.nb_entrees }} · {{ "{:,.0f}".format(d.total_entrees) }} FCFA</div>
                 </div>
                 <div class="jour-stat pertes">
-                    <div class="label">⚠️ Pertes</div>
+                    <div class="label"><i class="bi bi-exclamation-triangle-fill"></i> Pertes</div>
                     <div class="valeur">{{ d.nb_pertes }} · {{ "{:,.0f}".format(d.total_pertes) }} FCFA</div>
                 </div>
             </div>
         </a>
         {% endfor %}
     {% else %}
-        <p style="text-align: center; color: #999; padding: 40px;">📭 Aucune activité enregistrée sur les 7 derniers jours</p>
+        <p style="text-align: center; color: #999; padding: 40px;"><i class="bi bi-inbox"></i> Aucune activité enregistrée sur les 7 derniers jours</p>
     {% endif %}
 </div>
 
 <div class="nav-links">
-    <a href="{{ '/dashboard' if session.role == 'admin' else '/vente' }}">← Retour</a>
-    <a href="/admin/archives">📚 Archives</a>
+    <a href="{{ '/dashboard' if session.role == 'admin' else '/vente' }}"><i class="bi bi-arrow-left"></i> Retour</a>
+    <a href="/admin/archives"><i class="bi bi-journals"></i> Archives</a>
 </div>
 
 {% endblock %}

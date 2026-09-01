@@ -34,7 +34,7 @@
 </style>
 {% endblock %}
 
-{% block page_title %}🙋 {{ client[1] }}{% endblock %}
+{% block page_title %}<i class="bi bi-hand-index-thumb"></i> {{ client[1] }}{% endblock %}
 {% block page_subtitle %}Fiche client — historique complet des achats{% endblock %}
 
 {% block content %}
@@ -42,15 +42,15 @@
 <div class="card">
     <div class="client-header">
         <div class="infos">
-            <p>📞 <strong>{{ client[2] }}</strong></p>
-            {% if client[3] %}<p>📍 {{ client[3] }}</p>{% endif %}
+            <p><i class="bi bi-telephone-fill"></i> <strong>{{ client[2] }}</strong></p>
+            {% if client[3] %}<p><i class="bi bi-geo-alt-fill"></i> {{ client[3] }}</p>{% endif %}
             <p style="color:#999; font-size:12px;">Client depuis le {{ client[4].split(' ')[0] if client[4] else '-' }}</p>
         </div>
         <div>
-            <button type="button" class="btn-small" style="background:#ffc107;" onclick="document.getElementById('editForm').style.display = document.getElementById('editForm').style.display === 'flex' ? 'none' : 'flex'">✏️ Modifier</button>
+            <button type="button" class="btn-small" style="background:#ffc107;" onclick="document.getElementById('editForm').style.display = document.getElementById('editForm').style.display === 'flex' ? 'none' : 'flex'"><i class="bi bi-pencil-square"></i> Modifier</button>
             <a href="/admin/clients/supprimer/{{ client[0] }}"
                onclick="return confirm('Supprimer ce client ? (son historique de ventes sera conservé mais ne sera plus rattaché à sa fiche)')"
-               class="btn-small" style="background:#dc3545; color:white;">🗑️ Supprimer</a>
+               class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i> Supprimer</a>
         </div>
     </div>
 
@@ -58,29 +58,29 @@
         <input type="text" name="nom" value="{{ client[1] }}" placeholder="Nom" required>
         <input type="tel" name="telephone" value="{{ client[2] }}" placeholder="Téléphone" required>
         <input type="text" name="adresse" value="{{ client[3] or '' }}" placeholder="Adresse">
-        <button type="submit" style="background:#28a745;">✅ Enregistrer</button>
+        <button type="submit" style="background:#28a745;"><i class="bi bi-check-circle-fill"></i> Enregistrer</button>
     </form>
 </div>
 
 <!-- Statistiques -->
 <div class="stats-grid">
     <div class="stat-card" style="background: linear-gradient(135deg, #28a745, #20c997);">
-        <h3>💰 Total dépensé</h3>
+        <h3><i class="bi bi-cash-coin"></i> Total dépensé</h3>
         <div class="number">{{ "{:,.0f}".format(total_depense or 0) }} FCFA</div>
     </div>
     <div class="stat-card" style="background: linear-gradient(135deg, #1e3c72, #2a5298);">
-        <h3>🛒 Nombre d'achats</h3>
+        <h3><i class="bi bi-cart3"></i> Nombre d'achats</h3>
         <div class="number">{{ nb_achats or 0 }}</div>
     </div>
     <div class="stat-card" style="background: linear-gradient(135deg, #17a2b8, #138496);">
-        <h3>🧮 Panier moyen</h3>
+        <h3><i class="bi bi-calculator-fill"></i> Panier moyen</h3>
         <div class="number">{{ "{:,.0f}".format(panier_moyen or 0) }} FCFA</div>
     </div>
 </div>
 
 <!-- Historique -->
 <div class="card">
-    <h2 class="card-title">📜 Historique des achats</h2>
+    <h2 class="card-title"><i class="bi bi-scroll"></i> Historique des achats</h2>
     {% if achats %}
     <div class="table-container">
         <table class="table">
@@ -102,7 +102,7 @@
                     <td style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(a[3]) }} FCFA</td>
                     <td>
                         {% if a[4] %}
-                            <a href="/vente/recu/{{ a[4] }}" target="_blank" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;">🧾 Voir</a>
+                            <a href="/vente/recu/{{ a[4] }}" target="_blank" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;"><i class="bi bi-receipt"></i> Voir</a>
                         {% else %}
                             —
                         {% endif %}
@@ -113,12 +113,12 @@
         </table>
     </div>
     {% else %}
-    <p style="text-align: center; color: #999; padding: 40px;">📭 Aucun achat enregistré pour ce client</p>
+    <p style="text-align: center; color: #999; padding: 40px;"><i class="bi bi-inbox"></i> Aucun achat enregistré pour ce client</p>
     {% endif %}
 </div>
 
 <div class="nav-links">
-    <a href="/admin/clients">← Retour aux clients</a>
-    <a href="/dashboard">🏠 Dashboard</a>
+    <a href="/admin/clients"><i class="bi bi-arrow-left"></i> Retour aux clients</a>
+    <a href="/dashboard"><i class="bi bi-house-door-fill"></i> Dashboard</a>
 </div>
 {% endblock %}

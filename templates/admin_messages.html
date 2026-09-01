@@ -81,13 +81,13 @@
 </style>
 {% endblock %}
 
-{% block page_title %}✉️ Messages{% endblock %}
+{% block page_title %}<i class="bi bi-envelope"></i> Messages{% endblock %}
 {% block page_subtitle %}Messages reçus via le formulaire de contact du site web HITNA{% endblock %}
 
 {% block content %}
 <div class="card">
     <h2 class="card-title">
-        📋 Boîte de réception
+        <i class="bi bi-clipboard-check"></i> Boîte de réception
         {% if nb_non_lus %}<span class="statut-badge non_lu">{{ nb_non_lus }} non lu(s)</span>{% endif %}
     </h2>
 
@@ -95,20 +95,20 @@
         {% for m in messages %}
         <div class="message-card statut-{{ m[6] }}">
             <div class="header">
-                <h3>🙋 {{ m[1] }}</h3>
+                <h3><i class="bi bi-hand-index-thumb"></i> {{ m[1] }}</h3>
                 <span class="date">{{ m[7] }}</span>
             </div>
             {% if m[4] %}<div class="sujet">Sujet : {{ m[4] }}</div>{% endif %}
             <div class="contact-info">
-                {% if m[2] %}<span>📧 {{ m[2] }}</span>{% endif %}
-                {% if m[3] %}<span>📞 {{ m[3] }}</span>{% endif %}
+                {% if m[2] %}<span><i class="bi bi-envelope-fill"></i> {{ m[2] }}</span>{% endif %}
+                {% if m[3] %}<span><i class="bi bi-telephone-fill"></i> {{ m[3] }}</span>{% endif %}
             </div>
             <div class="contenu">{{ m[5] }}</div>
             <div class="actions">
                 <span class="statut-badge {{ m[6] }}">
-                    {% if m[6] == 'non_lu' %}🆕 Non lu
-                    {% elif m[6] == 'lu' %}👁️ Lu
-                    {% else %}✅ Répondu{% endif %}
+                    {% if m[6] == 'non_lu' %}<i class="bi bi-stars"></i> Non lu
+                    {% elif m[6] == 'lu' %}<i class="bi bi-eye-fill"></i> Lu
+                    {% else %}<i class="bi bi-check-circle-fill"></i> Répondu{% endif %}
                 </span>
                 <form method="post" action="/admin/messages/statut/{{ m[0] }}" style="display:inline-flex; gap:6px;">
                     <select name="statut" onchange="this.form.submit()">
@@ -118,17 +118,17 @@
                     </select>
                 </form>
                 {% if m[2] %}
-                <a href="mailto:{{ m[2] }}" class="btn-small" style="background:#17a2b8; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;">✉️ Répondre</a>
+                <a href="mailto:{{ m[2] }}" class="btn-small" style="background:#17a2b8; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;"><i class="bi bi-envelope"></i> Répondre</a>
                 {% endif %}
                 <a href="/admin/messages/supprimer/{{ m[0] }}"
                    onclick="return confirm('Supprimer ce message ?')"
-                   class="btn-small" style="background:#dc3545; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;">🗑️</a>
+                   class="btn-small" style="background:#dc3545; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;"><i class="bi bi-trash"></i></a>
             </div>
         </div>
         {% endfor %}
     {% else %}
         <div style="text-align:center; color:#999; padding:40px;">
-            <div style="font-size:48px; margin-bottom:15px;">📭</div>
+            <div style="font-size:48px; margin-bottom:15px;"><i class="bi bi-inbox"></i></div>
             <h3>Aucun message pour le moment</h3>
             <p style="font-size:13px; margin-top:8px;">Les messages envoyés depuis le formulaire de contact du site web apparaîtront ici.</p>
         </div>
@@ -136,6 +136,6 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 {% endblock %}

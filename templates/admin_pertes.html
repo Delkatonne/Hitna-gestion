@@ -76,7 +76,7 @@
 </style>
 {% endblock %}
 
-{% block page_title %}⚠️ Gestion des pertes{% endblock %}
+{% block page_title %}<i class="bi bi-exclamation-triangle-fill"></i> Gestion des pertes{% endblock %}
 {% block page_subtitle %}Enregistrer les produits perdus, cassés ou volés{% endblock %}
 
 {% block content %}
@@ -84,12 +84,12 @@
 <!-- Statistiques -->
 <div class="stats-pertes">
     <div class="stat-perte">
-        <h3>📊 Pertes aujourd'hui</h3>
+        <h3><i class="bi bi-bar-chart-line"></i> Pertes aujourd'hui</h3>
         <div class="number">{{ stats_aujourdhui[0] or 0 }}</div>
         <p>{{ "{:,.0f}".format(stats_aujourdhui[1] or 0) }} FCFA - {{ stats_aujourdhui[2] or 0 }} unités</p>
     </div>
     <div class="stat-perte warning">
-        <h3>📈 Pertes (30 jours)</h3>
+        <h3><i class="bi bi-graph-up-arrow"></i> Pertes (30 jours)</h3>
         <div class="number">{{ stats_mois[0] or 0 }}</div>
         <p>{{ "{:,.0f}".format(stats_mois[1] or 0) }} FCFA - {{ stats_mois[2] or 0 }} unités</p>
     </div>
@@ -97,12 +97,12 @@
 
 <!-- Formulaire d'ajout -->
 <div class="card">
-    <h2 class="card-title">➕ Enregistrer une perte</h2>
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Enregistrer une perte</h2>
     
     <form method="post" action="/admin/pertes/ajouter" class="form-perte" id="perteForm" onsubmit="return handlePerteSubmit(event)">
         <div class="form-row">
             <div class="form-group">
-                <label>📦 Produit</label>
+                <label><i class="bi bi-box-seam"></i> Produit</label>
                 <select name="produit_id" id="produit_id" required onchange="updateProductInfo()">
                     <option value="">-- Sélectionnez un produit --</option>
                     {% for p in produits %}
@@ -113,29 +113,29 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>🔢 Quantité</label>
+                <label><i class="bi bi-123"></i> Quantité</label>
                 <input type="number" name="quantite" id="quantite" min="1" required onchange="calculerTotal()">
             </div>
             <div class="form-group">
-                <label>💰 Total estimé</label>
+                <label><i class="bi bi-cash-coin"></i> Total estimé</label>
                 <input type="text" id="total_estime" readonly style="background: #e9ecef; font-weight: bold;">
             </div>
         </div>
         <div class="form-row">
             <div class="form-group">
-                <label>📝 Motif de la perte</label>
+                <label><i class="bi bi-pencil-square"></i> Motif de la perte</label>
                 <select name="motif" required>
                     <option value="">-- Sélectionnez un motif --</option>
-                    <option value="Casse">🔨 Casse / Détérioration</option>
-                    <option value="Vol">👤 Vol</option>
-                    <option value="Péremption">📅 Péremption</option>
-                    <option value="Erreur de stock">📊 Erreur de stock</option>
-                    <option value="Autre">📝 Autre</option>
+                    <option value="Casse"><i class="bi bi-hammer"></i> Casse / Détérioration</option>
+                    <option value="Vol"><i class="bi bi-person"></i> Vol</option>
+                    <option value="Péremption"><i class="bi bi-calendar-event"></i> Péremption</option>
+                    <option value="Erreur de stock"><i class="bi bi-bar-chart-line"></i> Erreur de stock</option>
+                    <option value="Autre"><i class="bi bi-pencil-square"></i> Autre</option>
                 </select>
             </div>
             <div class="form-group">
                 <label>&nbsp;</label>
-                <button type="submit" class="btn-danger" style="width: 100%;">⚠️ Enregistrer la perte</button>
+                <button type="submit" class="btn-danger" style="width: 100%;"><i class="bi bi-exclamation-triangle-fill"></i> Enregistrer la perte</button>
             </div>
         </div>
         <div id="stockInfo" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
@@ -144,7 +144,7 @@
 
 <!-- Historique des pertes -->
 <div class="card">
-    <h2 class="card-title">📜 Historique des pertes</h2>
+    <h2 class="card-title"><i class="bi bi-scroll"></i> Historique des pertes</h2>
     
     {% if pertes %}
     <div class="table-container">
@@ -171,10 +171,10 @@
                     <td style="font-weight: bold;">{{ p[4] }} FCFA</td>
                     <td>
                         <span class="motif-badge motif-{{ p[5]|lower|replace(' ', '') }}">
-                            {% if p[5] == 'Casse' %}🔨 Casse
-                            {% elif p[5] == 'Vol' %}👤 Vol
-                            {% elif p[5] == 'Péremption' %}📅 Péremption
-                            {% else %}📝 {{ p[5] }}{% endif %}
+                            {% if p[5] == 'Casse' %}<i class="bi bi-hammer"></i> Casse
+                            {% elif p[5] == 'Vol' %}<i class="bi bi-person"></i> Vol
+                            {% elif p[5] == 'Péremption' %}<i class="bi bi-calendar-event"></i> Péremption
+                            {% else %}<i class="bi bi-pencil-square"></i> {{ p[5] }}{% endif %}
                         </span>
                     </td>
                     <td>{{ p[7] }}</td>
@@ -182,7 +182,7 @@
                         <a href="/admin/pertes/supprimer/{{ p[0] }}" 
                            onclick="return confirm('Annuler cette perte et restaurer le stock ?')"
                            class="btn-small" style="background:#28a745; color:white;">
-                            ↩️ Annuler
+                            <i class="bi bi-arrow-return-left"></i> Annuler
                         </a>
                     </td>
                 </tr>
@@ -191,13 +191,13 @@
         </table>
     </div>
     {% else %}
-    <p style="text-align: center; color: #999; padding: 40px;">📭 Aucune perte enregistrée</p>
+    <p style="text-align: center; color: #999; padding: 40px;"><i class="bi bi-inbox"></i> Aucune perte enregistrée</p>
     {% endif %}
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
-    <a href="/admin/archives">📚 Voir les archives des pertes</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+    <a href="/admin/archives"><i class="bi bi-journals"></i> Voir les archives des pertes</a>
 </div>
 
 <script>
@@ -216,7 +216,7 @@
                 motif: motif
             }).then(function(queued) {
                 if (queued) {
-                    alert(`📡 Perte enregistrée hors ligne : ${quantite} ${nomProduit}. Elle sera synchronisée dès le retour du réseau.`);
+                    alert(` Perte enregistrée hors ligne : ${quantite} ${nomProduit}. Elle sera synchronisée dès le retour du réseau.`);
                     e.target.reset();
                     document.getElementById('stockInfo').innerHTML = '';
                 }
@@ -241,7 +241,7 @@
         
         if (produitId && produits[produitId]) {
             const produit = produits[produitId];
-            stockInfo.innerHTML = `📦 Stock actuel: <strong>${produit.stock}</strong> unités - Prix: ${produit.prix} FCFA/unité`;
+            stockInfo.innerHTML = ` Stock actuel: <strong>${produit.stock}</strong> unités - Prix: ${produit.prix} FCFA/unité`;
             quantiteInput.max = produit.stock;
             calculerTotal();
         } else {

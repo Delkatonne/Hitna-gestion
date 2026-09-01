@@ -67,22 +67,22 @@
 </style>
 {% endblock %}
 
-{% block page_title %}👥 Clients{% endblock %}
+{% block page_title %}<i class="bi bi-people-fill"></i> Clients{% endblock %}
 {% block page_subtitle %}{{ nb_clients }} client(s) enregistré(s) — historique d'achats par numéro de téléphone{% endblock %}
 
 {% block content %}
 <div class="card">
     <form method="get" class="form-recherche">
         <div class="form-group">
-            <label>🔍 Rechercher</label>
+            <label><i class="bi bi-search"></i> Rechercher</label>
             <input type="text" name="q" placeholder="Nom ou numéro de téléphone" value="{{ recherche }}">
         </div>
         <div class="form-group" style="flex: 0 0 auto;">
-            <button type="submit" style="background:#1e3c72; color:white; padding:10px 25px;">🔍 Rechercher</button>
+            <button type="submit" style="background:#1e3c72; color:white; padding:10px 25px;"><i class="bi bi-search"></i> Rechercher</button>
         </div>
         {% if recherche %}
         <div class="form-group" style="flex: 0 0 auto;">
-            <a href="/admin/clients" style="display:inline-block; background:#6c757d; color:white; padding:10px 20px; border-radius:8px; text-decoration:none;">✕ Effacer</a>
+            <a href="/admin/clients" style="display:inline-block; background:#6c757d; color:white; padding:10px 20px; border-radius:8px; text-decoration:none;"><i class="bi bi-x-lg"></i> Effacer</a>
         </div>
         {% endif %}
     </form>
@@ -91,8 +91,8 @@
         {% for c in clients %}
         <a href="/admin/clients/{{ c[0] }}" class="client-card">
             <div class="infos">
-                <h3>🙋 {{ c[1] }}</h3>
-                <p>📞 {{ c[2] }}{% if c[3] %} · 📍 {{ c[3] }}{% endif %}</p>
+                <h3><i class="bi bi-hand-index-thumb"></i> {{ c[1] }}</h3>
+                <p><i class="bi bi-telephone-fill"></i> {{ c[2] }}{% if c[3] %} · <i class="bi bi-geo-alt-fill"></i> {{ c[3] }}{% endif %}</p>
             </div>
             <div class="montant">
                 <div class="total">{{ "{:,.0f}".format(c[5] or 0) }} FCFA</div>
@@ -103,9 +103,9 @@
     {% else %}
         <p style="text-align:center; color:#999; padding:40px;">
             {% if recherche %}
-                📭 Aucun client trouvé pour cette recherche
+                <i class="bi bi-inbox"></i> Aucun client trouvé pour cette recherche
             {% else %}
-                📭 Aucun client enregistré pour le moment.<br>
+                <i class="bi bi-inbox"></i> Aucun client enregistré pour le moment.<br>
                 <small>Un client est automatiquement créé dès qu'un numéro de téléphone est saisi lors d'une vente.</small>
             {% endif %}
         </p>
@@ -113,6 +113,6 @@
 </div>
 
 <div class="nav-links">
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 {% endblock %}

@@ -71,7 +71,7 @@
 </style>
 {% endblock %}
 
-{% block page_title %}💸 Charges & bénéfice net{% endblock %}
+{% block page_title %}<i class="bi bi-cash-stack"></i> Charges & bénéfice net{% endblock %}
 {% block page_subtitle %}Loyer, salaires, factures... pour connaître le vrai bénéfice, pas juste Ventes − Achats{% endblock %}
 
 {% block content %}
@@ -79,20 +79,20 @@
 <!-- Bénéfice net du mois -->
 <div class="stats-charges">
     <div class="stat-charge ventes">
-        <h3>🛒 Ventes (ce mois)</h3>
+        <h3><i class="bi bi-cart3"></i> Ventes (ce mois)</h3>
         <div class="number">{{ "{:,.0f}".format(ventes_mois or 0) }} FCFA</div>
     </div>
     <div class="stat-charge achats">
-        <h3>📥 Achats de stock (ce mois)</h3>
+        <h3><i class="bi bi-box-arrow-in-down"></i> Achats de stock (ce mois)</h3>
         <div class="number">{{ "{:,.0f}".format(achats_mois or 0) }} FCFA</div>
     </div>
     <div class="stat-charge charges">
-        <h3>💸 Charges (ce mois)</h3>
+        <h3><i class="bi bi-cash-stack"></i> Charges (ce mois)</h3>
         <div class="number">{{ "{:,.0f}".format(charges_mois or 0) }} FCFA</div>
         <p style="font-size:12px; margin-top:4px;">{{ stats_mois[0] or 0 }} charge(s) enregistrée(s)</p>
     </div>
     <div class="stat-charge net {% if (benefice_net_mois or 0) < 0 %}negatif{% endif %}">
-        <h3>📊 Bénéfice net (ce mois)</h3>
+        <h3><i class="bi bi-bar-chart-line"></i> Bénéfice net (ce mois)</h3>
         <div class="number">{{ "{:,.0f}".format(benefice_net_mois or 0) }} FCFA</div>
         <p style="font-size:12px; margin-top:4px;">Ventes − Achats − Charges</p>
     </div>
@@ -100,7 +100,7 @@
 
 {% if par_categorie %}
 <div class="card">
-    <h2 class="card-title">📂 Répartition des charges du mois</h2>
+    <h2 class="card-title"><i class="bi bi-folder2-open"></i> Répartition des charges du mois</h2>
     {% for cat, montant in par_categorie %}
     <div class="repartition-item">
         <span>{{ cat }}</span>
@@ -112,12 +112,12 @@
 
 <!-- Formulaire d'ajout -->
 <div class="card">
-    <h2 class="card-title">➕ Enregistrer une charge</h2>
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Enregistrer une charge</h2>
 
     <form method="post" action="/admin/charges/ajouter" class="form-charge">
         <div class="form-row">
             <div class="form-group">
-                <label>📂 Catégorie</label>
+                <label><i class="bi bi-folder2-open"></i> Catégorie</label>
                 <select name="categorie" required>
                     {% for cat in categories %}
                     <option value="{{ cat }}">{{ cat }}</option>
@@ -125,17 +125,17 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>📝 Libellé (optionnel)</label>
+                <label><i class="bi bi-pencil-square"></i> Libellé (optionnel)</label>
                 <input type="text" name="libelle" placeholder="Ex: Loyer boutique - Août">
             </div>
             <div class="form-group">
-                <label>💰 Montant (FCFA)</label>
+                <label><i class="bi bi-cash-coin"></i> Montant (FCFA)</label>
                 <input type="number" name="montant" min="1" step="1" required placeholder="Ex: 50000">
             </div>
         </div>
         <div class="form-row">
             <div class="form-group">
-                <label>📅 Date</label>
+                <label><i class="bi bi-calendar-event"></i> Date</label>
                 <input type="date" name="date_charge" value="{{ today_iso }}">
             </div>
             <div class="form-group">
@@ -145,7 +145,7 @@
                 </label>
             </div>
             <div class="form-group" style="display:flex; align-items:flex-end;">
-                <button type="submit" style="background:#28a745; width:100%;">💾 Enregistrer</button>
+                <button type="submit" style="background:#28a745; width:100%;"><i class="bi bi-save"></i> Enregistrer</button>
             </div>
         </div>
     </form>
@@ -153,7 +153,7 @@
 
 <!-- Historique -->
 <div class="card">
-    <h2 class="card-title">📜 Historique des charges</h2>
+    <h2 class="card-title"><i class="bi bi-scroll"></i> Historique des charges</h2>
 
     {% if charges %}
     <div class="table-container">
@@ -173,13 +173,13 @@
                 <tr>
                     <td>{{ c[4] }}</td>
                     <td><span class="categorie-badge">{{ c[1] }}</span></td>
-                    <td>{{ c[2] }}{% if c[5] %} <small style="color:#856404;">🔁</small>{% endif %}</td>
+                    <td>{{ c[2] }}{% if c[5] %} <small style="color:#856404;"><i class="bi bi-arrow-repeat"></i></small>{% endif %}</td>
                     <td style="font-weight:bold;">{{ "{:,.0f}".format(c[3]) }} FCFA</td>
-                    <td>{% if c[6] %}👤 {{ c[6] }}{% else %}—{% endif %}</td>
+                    <td>{% if c[6] %}<i class="bi bi-person"></i> {{ c[6] }}{% else %}—{% endif %}</td>
                     <td>
                         <a href="/admin/charges/supprimer/{{ c[0] }}"
                            onclick="return confirm('Supprimer cette charge ?')"
-                           class="btn-small" style="background:#dc3545; color:white;">🗑️</a>
+                           class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i></a>
                     </td>
                 </tr>
                 {% endfor %}
@@ -187,12 +187,12 @@
         </table>
     </div>
     {% else %}
-    <p style="text-align: center; color: #999; padding: 40px;">📭 Aucune charge enregistrée</p>
+    <p style="text-align: center; color: #999; padding: 40px;"><i class="bi bi-inbox"></i> Aucune charge enregistrée</p>
     {% endif %}
 </div>
 
 <div class="nav-links">
-    <a href="/admin/stats">📊 Voir les statistiques</a>
-    <a href="/dashboard">← Retour au Dashboard</a>
+    <a href="/admin/stats"><i class="bi bi-bar-chart-line"></i> Voir les statistiques</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
 {% endblock %}

@@ -564,21 +564,21 @@
 </style>
 {% endblock %}
 
-{% block page_title %}🛒 Enregistrer une vente{% endblock %}
+{% block page_title %}<i class="bi bi-cart3"></i> Enregistrer une vente{% endblock %}
 {% block page_subtitle %}Sélectionnez un produit et enregistrez la vente{% endblock %}
 
 {% block content %}
 <!-- Message d'information employé -->
 <div class="card" style="background: #e8f4fd; border-left: 4px solid #17a2b8; margin-bottom: 20px;">
     <p style="margin: 0;">
-        👤 Vous êtes connecté en tant qu'<strong>{{ session.user_nom }}</strong><br>
-        📊 Vous voyez toutes les ventes du jour
+        <i class="bi bi-person"></i> Vous êtes connecté en tant qu'<strong>{{ session.user_nom }}</strong><br>
+        <i class="bi bi-bar-chart-line"></i> Vous voyez toutes les ventes du jour
     </p>
 </div>
 
 <!-- Bannière hors ligne -->
 <div id="offlineBanner" class="offline-banner" style="display: none;">
-    📡 Mode hors ligne activé - Les ventes seront sauvegardées localement
+    <i class="bi bi-broadcast"></i> Mode hors ligne activé - Les ventes seront sauvegardées localement
 </div>
 
 <!-- Statistiques des vendeurs du jour -->
@@ -586,7 +586,7 @@
 <div class="stats-vendeurs">
     {% for v in stats_vendeurs %}
     <div class="stat-vendeur {% if v[0] == 'admin' %}admin{% else %}employe{% endif %}">
-        <div class="icon">{% if v[0] == 'admin' %}👑{% else %}👤{% endif %}</div>
+        <div class="icon">{% if v[0] == 'admin' %}<i class="bi bi-award-fill"></i>{% else %}<i class="bi bi-person"></i>{% endif %}</div>
         <div class="name">{% if v[0] == 'admin' %}Administrateur{% else %}Employé{% endif %}</div>
         <div class="nb-ventes">{{ v[1] }} vente(s)</div>
         <div>{{ "{:,.0f}".format(v[2]) }} FCFA</div>
@@ -597,46 +597,46 @@
 
 <!-- Barre de recherche -->
 <div class="card">
-    <h2 class="card-title">🔍 Rechercher un produit</h2>
+    <h2 class="card-title"><i class="bi bi-search"></i> Rechercher un produit</h2>
     <div class="search-container" style="display:flex; gap:10px;">
         <input type="text" id="searchInput" class="search-box" placeholder="Tapez le nom du produit..." autocomplete="off" style="flex:1;">
         <button type="button" onclick="ouvrirScannerCodeBarre(rechercherParCodeBarre)"
-                style="background:#1e3c72; color:white; border:none; border-radius:10px; padding:0 18px; cursor:pointer; font-size:15px; white-space:nowrap;">📷 Scanner</button>
+                style="background:#1e3c72; color:white; border:none; border-radius:10px; padding:0 18px; cursor:pointer; font-size:15px; white-space:nowrap;"><i class="bi bi-camera-fill"></i> Scanner</button>
     </div>
 </div>
 
 <!-- Produits disponibles -->
 <div class="card">
-    <h2 class="card-title">📦 Produits disponibles</h2>
+    <h2 class="card-title"><i class="bi bi-box-seam"></i> Produits disponibles</h2>
     {% if produits and produits|length > 0 %}
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
         <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unite="{{ p[4] }}" data-fractionnable="{{ p[7] }}" data-barcode="{{ p[8] }}">
-            {% if p[4] %}<div class="unite-badge-vente">📏 {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
-            {% if p[7] %}<div class="unite-badge-vente" style="background:#fff3cd; color:#856404;">➗ Vendable en 1/2, 1/4...</div>{% endif %}
+            {% if p[4] %}<div class="unite-badge-vente"><i class="bi bi-rulers"></i> {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
+            {% if p[7] %}<div class="unite-badge-vente" style="background:#fff3cd; color:#856404;"><i class="bi bi-calculator"></i> Vendable en 1/2, 1/4...</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
             <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
-            <div class="product-stock">📦 Stock: {{ p[3]|qte }} unités</div>
+            <div class="product-stock"><i class="bi bi-box-seam"></i> Stock: {{ p[3]|qte }} unités</div>
             <div id="tier-wrap-{{ p[0] }}"></div>
-            <button type="button" class="btn-add-cart" onclick="ajouterAuPanier({{ p[0] }})">➕ Ajouter au panier</button>
+            <button type="button" class="btn-add-cart" onclick="ajouterAuPanier({{ p[0] }})"><i class="bi bi-plus-lg"></i> Ajouter au panier</button>
         </div>
         {% endfor %}
     </div>
     <div id="noResults" class="no-results" style="display: none;">
-        🔍 Aucun produit trouvé
+        <i class="bi bi-search"></i> Aucun produit trouvé
     </div>
     {% else %}
     <p style="text-align: center; color: #999; padding: 40px;">
-        📭 Aucun produit disponible en stock
+        <i class="bi bi-inbox"></i> Aucun produit disponible en stock
     </p>
     {% endif %}
 </div>
 
 <!-- Panier de vente -->
 <div class="sale-form-container">
-    <h3>🛒 Panier de vente</h3>
+    <h3><i class="bi bi-cart3"></i> Panier de vente</h3>
     <div class="cart-list" id="cartList">
-        <div class="cart-empty" id="cartEmpty">👆 Ajoutez des produits depuis la liste ci-dessus</div>
+        <div class="cart-empty" id="cartEmpty"><i class="bi bi-hand-index-fill"></i> Ajoutez des produits depuis la liste ci-dessus</div>
     </div>
 
     <form method="post" id="saleForm" action="/vente">
@@ -651,14 +651,14 @@
         </div>
 
         <button type="button" id="validateSaleBtn" class="btn-sale" style="display: none;" onclick="validateSale()">
-            💵 Valider la vente
+            <i class="bi bi-cash"></i> Valider la vente
         </button>
     </form>
 </div>
 
 <!-- Historique des ventes du jour -->
 <div class="card">
-    <h2 class="card-title">📜 Ventes du jour</h2>
+    <h2 class="card-title"><i class="bi bi-scroll"></i> Ventes du jour</h2>
     {% if historique and historique|length > 0 %}
     <div class="table-container">
         <table class="table">
@@ -678,27 +678,27 @@
                 {% for v in historique %}
                 <tr>
                     <td>{{ v[4].split(' ')[1] if v[4] else '-' }}</td>
-                    <td><strong>{{ v[1] }}</strong>{% if v[9] %}<br><small style="color:#856404;">📦 {{ v[9] }}</small>{% endif %}</td>
+                    <td><strong>{{ v[1] }}</strong>{% if v[9] %}<br><small style="color:#856404;"><i class="bi bi-box-seam"></i> {{ v[9] }}</small>{% endif %}</td>
                     <td>{{ v[2]|qte }}</td>
                     <td style="color: #28a745; font-weight: bold;">{{ v[3] }} FCFA</td>
                     <td>{{ v[5] or '-' }}</td>
                     <td>
                         {% if v[7] == 'admin' %}
-                            <span class="badge-admin">👑 {{ v[6] }}</span>
+                            <span class="badge-admin"><i class="bi bi-award-fill"></i> {{ v[6] }}</span>
                         {% else %}
-                            <span class="badge-employe">👤 {{ v[6] }}</span>
+                            <span class="badge-employe"><i class="bi bi-person"></i> {{ v[6] }}</span>
                         {% endif %}
                     </td>
                     <td>
                         {% if v[8] %}
-                            <a href="/vente/recu/{{ v[8] }}" target="_blank" class="btn-small" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;">🧾 Voir</a>
+                            <a href="/vente/recu/{{ v[8] }}" target="_blank" class="btn-small" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;"><i class="bi bi-receipt"></i> Voir</a>
                         {% else %}
                             —
                         {% endif %}
                     </td>
                     <td>
                         {% if v[8] %}
-                        <button type="button" onclick="demanderMotifAnnulation('/vente/annuler/{{ v[8] }}')" class="btn-small" style="background:#dc3545; color:white;">❌ Annuler</button>
+                        <button type="button" onclick="demanderMotifAnnulation('/vente/annuler/{{ v[8] }}')" class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-x-circle-fill"></i> Annuler</button>
                         {% endif %}
                     </td>
                 </tr>
@@ -708,10 +708,10 @@
     </div>
     
     <div class="total-jour-card">
-        <h3>💰 TOTAL DES VENTES DU JOUR</h3>
+        <h3><i class="bi bi-cash-coin"></i> TOTAL DES VENTES DU JOUR</h3>
         <div class="montant">{{ "{:,.0f}".format(total_general[0] if total_general and total_general[0] else 0) }} FCFA</div>
         <div class="nb-ventes">{{ total_general[1] if total_general and total_general[1] else 0 }} vente(s) enregistrée(s)</div>
-        <p style="font-size:11px; opacity:0.8; margin-top:6px;">⏰ Une vente ne peut être annulée que le jour même, avant minuit.</p>
+        <p style="font-size:11px; opacity:0.8; margin-top:6px;"><i class="bi bi-alarm-fill"></i> Une vente ne peut être annulée que le jour même, avant minuit.</p>
     </div>
     {% else %}
     <p style="text-align: center; color: #999; padding: 40px;">Aucune vente enregistrée aujourd'hui</p>
@@ -722,23 +722,23 @@
 <!-- NAVIGATION AVEC BOUTON EXPORT POINT DU JOUR                   -->
 <!-- ============================================================ -->
 <div class="nav-links">
-    <a href="/changer_mdp">🔑 Changer mot de passe</a>
-    <a href="/export/pdf_employe" target="_blank" class="btn-export" onclick="this.innerHTML='⏳ Chargement...'; setTimeout(() => { this.innerHTML='📄 Exporter le point du jour'; }, 3000);">
-        📄 Exporter le point du jour
+    <a href="/changer_mdp"><i class="bi bi-key-fill"></i> Changer mot de passe</a>
+    <a href="/export/pdf_employe" target="_blank" class="btn-export" onclick="this.innerHTML='<i class="bi bi-hourglass-split"></i> Chargement...'; setTimeout(() => { this.innerHTML='<i class="bi bi-file-earmark-text"></i> Exporter le point du jour'; }, 3000);">
+        <i class="bi bi-file-earmark-text"></i> Exporter le point du jour
     </a>
-    <a href="/logout" onclick="return confirm('Voulez-vous vraiment vous déconnecter ?')">🚪 Déconnexion</a>
+    <a href="/logout" onclick="return confirm('Voulez-vous vraiment vous déconnecter ?')"><i class="bi bi-door-open-fill"></i> Déconnexion</a>
 </div>
 
 <!-- Modal client -->
 <div id="clientModal" class="modal">
     <div class="modal-content">
-        <h3>👤 Informations client</h3>
+        <h3><i class="bi bi-person"></i> Informations client</h3>
         <p style="color: #666; font-size: 14px; margin-bottom: 10px;"></p>
         <input type="text" id="clientNameInput" placeholder="Nom du client" autocomplete="off">
-        <input type="tel" id="clientPhoneInput" placeholder="📞 Téléphone (pour la fiche client)" autocomplete="off" style="margin-top:10px;">
+        <input type="tel" id="clientPhoneInput" placeholder="<i class="bi bi-telephone-fill"></i> Téléphone (pour la fiche client)" autocomplete="off" style="margin-top:10px;">
         <div class="btn-group">
-            <button class="btn-confirm" onclick="confirmClientName()">✅ Confirmer</button>
-            <button class="btn-skip" onclick="skipClientName()">⏭️ Passer</button>
+            <button class="btn-confirm" onclick="confirmClientName()"><i class="bi bi-check-circle-fill"></i> Confirmer</button>
+            <button class="btn-skip" onclick="skipClientName()"><i class="bi bi-skip-forward-fill"></i> Passer</button>
         </div>
     </div>
 </div>
@@ -831,7 +831,7 @@
                 return;
             }
         }
-        alert(`❌ Aucun produit trouvé pour le code "${code}".\nVous pouvez l'associer depuis la fiche du produit.`);
+        alert(` Aucun produit trouvé pour le code "${code}".\nVous pouvez l'associer depuis la fiche du produit.`);
     }
 
     function ajouterAuPanier(id) {
@@ -964,7 +964,7 @@
         const ids = Object.keys(cart);
 
         if (ids.length === 0) {
-            cartList.innerHTML = '<div class="cart-empty" id="cartEmpty">👆 Ajoutez des produits depuis la liste ci-dessus</div>';
+            cartList.innerHTML = '<div class="cart-empty" id="cartEmpty"> Ajoutez des produits depuis la liste ci-dessus</div>';
             document.getElementById('totalDisplay').style.display = 'none';
             document.getElementById('validateSaleBtn').style.display = 'none';
             return;
@@ -1006,10 +1006,10 @@
 
             html += `
                 <div class="cart-item">
-                    <div class="cart-item-name">${item.name}${item.tierId ? ' — <small>' + item.tierNom + '</small>' : (item.fractionnable ? ' <small style="color:#856404;">➗</small>' : '')}</div>
+                    <div class="cart-item-name">${item.name}${item.tierId ? ' — <small>' + item.tierNom + '</small>' : (item.fractionnable ? ' <small style="color:#856404;"></small>' : '')}</div>
                     <div class="cart-item-qty">${qtyControl}</div>
                     <div class="cart-item-subtotal">${subtotal.toLocaleString()} FCFA</div>
-                    <button type="button" class="cart-item-remove" onclick="retirerDuPanier(${id})">🗑️</button>
+                    <button type="button" class="cart-item-remove" onclick="retirerDuPanier(${id})"></button>
                 </div>
             `;
         });
@@ -1033,7 +1033,7 @@
             document.getElementById('clientModal').style.display = 'flex';
             document.getElementById('clientNameInput').focus();
         } catch (error) {
-            console.error('❌ Erreur validation vente:', error);
+            console.error(' Erreur validation vente:', error);
             alert('Erreur: ' + error.message);
         }
     }
@@ -1070,7 +1070,7 @@
             document.getElementById('clientModal').style.display = 'none';
             soumettreVente(clientName, clientPhone);
         } catch (error) {
-            console.error('❌ Erreur confirmClientName:', error);
+            console.error(' Erreur confirmClientName:', error);
             alert('Erreur: ' + error.message);
         }
     }
@@ -1082,7 +1082,7 @@
             document.getElementById('clientModal').style.display = 'none';
             soumettreVente('', '');
         } catch (error) {
-            console.error('❌ Erreur skipClientName:', error);
+            console.error(' Erreur skipClientName:', error);
             alert('Erreur: ' + error.message);
         }
     }
@@ -1094,7 +1094,7 @@
         if (typeof navigator !== 'undefined' && !navigator.onLine && window.hitnaQueueIfOffline) {
             window.hitnaQueueIfOffline('vente', { client: clientName, telephone: clientPhone, cart: cartPayload }).then(function(queued) {
                 if (queued) {
-                    alert('📡 Vente enregistrée hors ligne. Elle sera synchronisée automatiquement dès le retour du réseau (le reçu ne sera disponible qu\'après synchronisation).');
+                    alert(' Vente enregistrée hors ligne. Elle sera synchronisée automatiquement dès le retour du réseau (le reçu ne sera disponible qu\'après synchronisation).');
                     cart = {};
                     renderCart();
                     document.querySelectorAll('.product-card.in-cart').forEach(c => c.classList.remove('in-cart'));

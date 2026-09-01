@@ -89,48 +89,48 @@
 </style>
 {% endblock %}
 
-{% block page_title %}💰 Paliers de prix{% endblock %}
+{% block page_title %}<i class="bi bi-cash-coin"></i> Paliers de prix{% endblock %}
 {% block page_subtitle %}Formats de vente pour {{ produit[1] }}{% endblock %}
 
 {% block content %}
 
 <div class="produit-header">
-    <h2>📦 {{ produit[1] }}</h2>
+    <h2><i class="bi bi-box-seam"></i> {{ produit[1] }}</h2>
     <div class="prix-base">Prix de base (à l'unité) : {{ "{:,.0f}".format(produit[2]) }} FCFA</div>
 </div>
 
 <div class="info-banner">
-    ℹ️ Ajoute ici tous les formats dans lesquels ce produit peut être vendu — carton de 24, carton de 12,
+    ℹ Ajoute ici tous les formats dans lesquels ce produit peut être vendu — carton de 24, carton de 12,
     pack de 6, à l'unité, etc. — chacun avec son propre prix (pas forcément proportionnel). Le stock reste
     toujours compté dans la plus petite unité (ex: la bouteille) : vendre "1 carton de 24" retire simplement
     24 unités du stock, que le carton soit entamé ou non.
 </div>
 
 <div class="card">
-    <h2 class="card-title">➕ Ajouter un palier</h2>
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Ajouter un palier</h2>
     <form method="post" action="/admin/produits/paliers/{{ produit[0] }}/ajouter" class="form-palier">
         <div class="form-row">
             <div class="form-group">
-                <label>📛 Nom</label>
+                <label><i class="bi bi-person-vcard"></i> Nom</label>
                 <input type="text" name="nom" placeholder="Ex: Carton de 24" required>
             </div>
             <div class="form-group">
-                <label>🔢 Quantité (en unités)</label>
+                <label><i class="bi bi-123"></i> Quantité (en unités)</label>
                 <input type="number" name="quantite" step="0.001" min="0.001" placeholder="Ex: 24" required>
             </div>
             <div class="form-group">
-                <label>💰 Prix pour ce palier</label>
+                <label><i class="bi bi-cash-coin"></i> Prix pour ce palier</label>
                 <input type="number" name="prix" step="1" min="1" placeholder="Ex: 7500" required>
             </div>
             <div class="form-group" style="display:flex; align-items:flex-end;">
-                <button type="submit" style="background:#28a745; padding:10px 25px; width:100%;">➕ Ajouter</button>
+                <button type="submit" style="background:#28a745; padding:10px 25px; width:100%;"><i class="bi bi-plus-lg"></i> Ajouter</button>
             </div>
         </div>
     </form>
 </div>
 
 <div class="card">
-    <h2 class="card-title">📋 Paliers existants</h2>
+    <h2 class="card-title"><i class="bi bi-clipboard-check"></i> Paliers existants</h2>
     {% if paliers %}
         {% for p in paliers %}
         <div class="palier-card {% if p[5] == 0 %}inactif{% endif %}" id="card-{{ p[0] }}">
@@ -140,8 +140,8 @@
                 <p class="prix-unitaire">≈ {{ "{:,.0f}".format(p[4] / p[3]) }} FCFA / unité</p>
             </div>
             <div class="actions">
-                <button onclick="basculerEdition({{ p[0] }})" style="background:#ffc107; color:#333;">✏️ Modifier</button>
-                <a href="/admin/produits/paliers/supprimer/{{ p[0] }}" onclick="return confirm('Supprimer ce palier ?')" style="background:#dc3545; color:white;">🗑️</a>
+                <button onclick="basculerEdition({{ p[0] }})" style="background:#ffc107; color:#333;"><i class="bi bi-pencil-square"></i> Modifier</button>
+                <a href="/admin/produits/paliers/supprimer/{{ p[0] }}" onclick="return confirm('Supprimer ce palier ?')" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i></a>
             </div>
             <form method="post" action="/admin/produits/paliers/modifier/{{ p[0] }}" class="edit-form-palier" id="edit-{{ p[0] }}">
                 <input type="text" name="nom" value="{{ p[2] }}" required>
@@ -151,19 +151,19 @@
                     <input type="checkbox" name="actif" {% if p[5] == 1 %}checked{% endif %} style="width:auto;">
                     Actif
                 </label>
-                <button type="submit" style="background:#28a745; color:white; padding:8px 14px;">✅ Valider</button>
+                <button type="submit" style="background:#28a745; color:white; padding:8px 14px;"><i class="bi bi-check-circle-fill"></i> Valider</button>
             </form>
         </div>
         {% endfor %}
     {% else %}
         <p style="text-align:center; color:#999; padding:40px;">
-            📭 Aucun palier défini — ce produit se vend uniquement au prix de base à l'unité.
+            <i class="bi bi-inbox"></i> Aucun palier défini — ce produit se vend uniquement au prix de base à l'unité.
         </p>
     {% endif %}
 </div>
 
 <div class="nav-links">
-    <a href="/admin/produits">← Retour aux produits</a>
+    <a href="/admin/produits"><i class="bi bi-arrow-left"></i> Retour aux produits</a>
 </div>
 
 <script>
