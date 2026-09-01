@@ -687,21 +687,33 @@ def init_db():
 # ARCHIVAGE HEBDOMADAIRE
 # ──────────────────────────────────────────────────────────────
 def get_derniere_archive():
+    """Retourne (annee, semaine) du dernier archivage hebdomadaire, ou (0, 0) si aucun.
+    On compare toujours le couple (année, semaine) — comparer la seule semaine ISO
+    ferait sauter silencieusement l'archivage une fois par an, quand le numéro de
+    semaine actuel coïncide par coïncidence avec celui d'une année précédente."""
     try:
-        row = q1("SELECT semaine FROM archive_recap ORDER BY id DESC LIMIT 1")
-        return row[0] if row else 0
+        row = q1("SELECT annee, semaine FROM archive_recap ORDER BY id DESC LIMIT 1")
+        return (row[0], row[1]) if row else (0, 0)
     except Exception:
-        return 0
+        return (0, 0)
 
 def archiver_hebdomadaire():
     try:
-        conn = get_db()
-        cm = conn.cursor()
         today = datetime.now()
         debut = today - timedelta(days=7)
         fin = today - timedelta(days=1)
         sem = debut.isocalendar()[1]
         annee = debut.isocalendar()[0]
+
+        # Sécurité anti-doublon : si cette semaine a déjà un récap archivé, on ne
+        # relance pas (protège contre un double déclenchement rapproché).
+        deja = q1("SELECT 1 FROM archive_recap WHERE annee=%s AND semaine=%s", (annee, sem))
+        if deja:
+            print(f"ℹ️ Semaine {sem}/{annee} déjà archivée, archivage ignoré.")
+            return
+
+        conn = get_db()
+        cm = conn.cursor()
         now_s = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         cm.execute('''SELECT s.id,s.produit_id,s.quantite,s.prix_unitaire,s.total,
@@ -758,13 +770,22 @@ def archiver_hebdomadaire():
         print(f"❌ Erreur archiver_hebdomadaire: {e}")
 
 def archiver_si_necessaire():
+    """Déclenche l'archivage dès que la semaine à archiver n'est pas encore
+    archivée — sans dépendre d'un jour/horaire précis. Ancien code : ne se
+    déclenchait QUE le lundi entre 0h et 2h (heure serveur), une fenêtre que
+    personne n'atteint jamais en pratique puisqu'il n'y a pas d'admin connecté
+    au dashboard à cette heure-là. Résultat : l'archivage ne se lançait
+    quasiment jamais. Désormais, ça se rattrape tout seul dès la première
+    visite du dashboard suivant le changement de semaine, n'importe quel jour."""
     try:
         today = datetime.now()
-        if today.weekday() == 0 and today.hour < 2:
-            if get_derniere_archive() != today.isocalendar()[1]:
-                archiver_hebdomadaire()
-    except Exception:
-        pass
+        debut = today - timedelta(days=7)
+        sem = debut.isocalendar()[1]
+        annee = debut.isocalendar()[0]
+        if get_derniere_archive() != (annee, sem):
+            archiver_hebdomadaire()
+    except Exception as e:
+        print(f"❌ Erreur archiver_si_necessaire: {e}")
 
 # ──────────────────────────────────────────────────────────────
 # HELPERS MÉTIER
@@ -3789,6 +3810,51 @@ def admin_archive_jour(jour):
         traceback.print_exc()
         flash(f'❌ Erreur lors du chargement du détail du jour : {str(e)}')
         return redirect('/admin/archives')
+
+
+@app.route('/admin/archiver-maintenant', methods=['POST'])
+def admin_archiver_maintenant():
+    """Filet de sécurité manuel : permet à l'admin de forcer l'archivage
+    hebdomadaire à la demande (ex: si l'archivage automatique a été manqué),
+    sans attendre le prochain déclenchement automatique via le dashboard.
+    Sans danger à ré-exécuter : archiver_hebdomadaire() ignore les semaines
+    déjà archivées (voir garde anti-doublon)."""
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    try:
+        avant = get_derniere_archive()
+        archiver_hebdomadaire()
+        apres = get_derniere_archive()
+        if apres != avant:
+            flash(f"✅ Archivage effectué (semaine {apres[1]}/{apres[0]})")
+        else:
+            flash("ℹ️ Rien à archiver — tout est déjà à jour.")
+    except Exception as e:
+        print(f"❌ Erreur admin_archiver_maintenant: {e}")
+        flash(f"❌ Erreur lors de l'archivage manuel : {e}")
+    return redirect('/admin/archives/semaines')
+
+
+@app.route('/admin/archiver-auto')
+def admin_archiver_auto():
+    """Appel automatisé (cron externe, ex: cron-job.org) avec ?token=BACKUP_SECRET,
+    pour garantir l'archivage même les semaines où aucun admin n'ouvre le dashboard.
+    Même principe que /admin/backup/export : protégé par token, pas de session requise."""
+    try:
+        token = request.args.get('token', '')
+        session_admin = session.get('role') == 'admin'
+        token_valide = bool(BACKUP_SECRET) and token == BACKUP_SECRET
+        if not (session_admin or token_valide):
+            return jsonify({'error': 'Non autorisé'}), 403
+
+        avant = get_derniere_archive()
+        archiver_hebdomadaire()
+        apres = get_derniere_archive()
+        return jsonify({'success': True, 'archive_avant': avant, 'archive_apres': apres,
+                         'a_archive': apres != avant})
+    except Exception as e:
+        print(f"❌ Erreur admin_archiver_auto: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/admin/archives/semaines')
