@@ -51,6 +51,21 @@
         to { opacity: 1; transform: translateY(0); }
     }
     
+    .plage-info {
+        background: #e7f3ff;
+        color: #084298;
+        border: 1px solid #b6d9fc;
+        border-radius: 10px;
+        padding: 10px 16px;
+        margin-bottom: 15px;
+        font-size: 14px;
+    }
+    .plage-info.vide {
+        background: #fff3cd;
+        color: #664d03;
+        border-color: #ffe69c;
+    }
+
     .filters-container {
         background: #f8f9fa;
         padding: 20px;
@@ -441,6 +456,11 @@
 
 <!-- Contenu Ventes -->
 <div id="tab-ventes" class="tab-content {% if type_data == 'ventes' %}active{% endif %}">
+    {% if plage_ventes and plage_ventes[0] %}
+        <div class="plage-info">📦 Données archivées disponibles : du <strong>{{ plage_ventes[0].split(' ')[0] }}</strong> au <strong>{{ plage_ventes[1].split(' ')[0] }}</strong></div>
+    {% else %}
+        <div class="plage-info vide">📭 Aucune vente archivée pour l'instant — les ventes de la semaine en cours restent dans « Ventes » tant qu'elles n'ont pas été archivées.</div>
+    {% endif %}
     <div class="filters-container">
         <div class="filter-group">
             <label>📅 Date de début</label>
@@ -569,6 +589,11 @@
 
 <!-- Contenu Entrées -->
 <div id="tab-entrees" class="tab-content {% if type_data == 'entrees' %}active{% endif %}">
+    {% if plage_entrees and plage_entrees[0] %}
+        <div class="plage-info">📦 Données archivées disponibles : du <strong>{{ plage_entrees[0].split(' ')[0] }}</strong> au <strong>{{ plage_entrees[1].split(' ')[0] }}</strong></div>
+    {% else %}
+        <div class="plage-info vide">📭 Aucune entrée archivée pour l'instant — les entrées de la semaine en cours restent dans le tableau « Entrées » tant qu'elles n'ont pas été archivées.</div>
+    {% endif %}
     <div class="filters-container">
         <div class="filter-group">
             <label>📅 Date de début</label>
@@ -694,6 +719,11 @@
 
 <!-- Contenu Pertes -->
 <div id="tab-pertes" class="tab-content {% if type_data == 'pertes' %}active{% endif %}">
+    {% if plage_pertes and plage_pertes[0] %}
+        <div class="plage-info">📦 Données archivées disponibles : du <strong>{{ plage_pertes[0].split(' ')[0] }}</strong> au <strong>{{ plage_pertes[1].split(' ')[0] }}</strong></div>
+    {% else %}
+        <div class="plage-info vide">📭 Aucune perte archivée pour l'instant — les pertes de la semaine en cours restent dans le tableau « Pertes » tant qu'elles n'ont pas été archivées.</div>
+    {% endif %}
     <div class="filters-container">
         <div class="filter-group">
             <label>📅 Date de début</label>
@@ -827,6 +857,11 @@
 
 <!-- Contenu Ventes annulées -->
 <div id="tab-annulees" class="tab-content {% if type_data == 'annulees' %}active{% endif %}">
+    {% if plage_annulees and plage_annulees[0] %}
+        <div class="plage-info">📦 Données archivées disponibles : du <strong>{{ plage_annulees[0].split(' ')[0] }}</strong> au <strong>{{ plage_annulees[1].split(' ')[0] }}</strong></div>
+    {% else %}
+        <div class="plage-info vide">📭 Aucune vente annulée archivée pour l'instant — soit il n'y en a pas eu récemment, soit l'archivage hebdomadaire ne s'est pas encore exécuté depuis la mise en place de cette archive.</div>
+    {% endif %}
     <div class="filters-container">
         <div class="filter-group">
             <label>📅 Date de début</label>

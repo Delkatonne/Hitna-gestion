@@ -3703,26 +3703,69 @@ def admin_archives():
             where_sql = (" AND " + " AND ".join(conditions)) if conditions else ""
             return where_sql, tuple(params)
 
+        def _query_stricte(sql, params):
+            """Comme qall(), mais SANS avaler les erreurs SQL. qall() retourne
+            une liste vide aussi bien quand il n'y a vraiment aucun résultat que
+            quand la requête plante — les deux cas sont donc indiscernables pour
+            la personne qui utilise l'app ('aucune liste' dans les deux cas).
+            Ici, une vraie erreur remonte pour de vrai et peut être affichée."""
+            conn = get_db()
+            try:
+                cur = conn.cursor()
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+                cur.close()
+                conn.commit()
+                return rows
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                release_db(conn)
+
+        def _archiver_type(nom, sql, params):
+            try:
+                return _query_stricte(sql, params), None
+            except Exception as e:
+                print(f"❌ Erreur requête archive_{nom}: {e}")
+                return [], f"Recherche « {nom} » : erreur technique ({e})"
+
+        erreurs_recherche = []
+
         where_sql, params = _filtre('date_entree')
-        entrees_archive = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_entree,fournisseur,employe_nom,archive_date
+        entrees_archive, err = _archiver_type('entrées', f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_entree,fournisseur,employe_nom,archive_date
             FROM archive_entrees WHERE 1=1{where_sql}
             ORDER BY date_entree {order} LIMIT 200''', params)
+        if err: erreurs_recherche.append(err)
 
         where_sql, params = _filtre('date_perte')
-        pertes_archive = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,motif,date_perte,employe_nom,archive_date
+        pertes_archive, err = _archiver_type('pertes', f'''SELECT id,produit_nom,quantite,prix_unitaire,total,motif,date_perte,employe_nom,archive_date
             FROM archive_pertes WHERE 1=1{where_sql}
             ORDER BY date_perte {order} LIMIT 200''', params)
+        if err: erreurs_recherche.append(err)
 
         where_sql, params = _filtre('date_vente')
-        ventes_archive = qall(f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_vente,client,employe_nom,archive_date
+        ventes_archive, err = _archiver_type('ventes', f'''SELECT id,produit_nom,quantite,prix_unitaire,total,date_vente,client,employe_nom,archive_date
             FROM archive_ventes WHERE 1=1{where_sql}
             ORDER BY date_vente {order} LIMIT 200''', params)
+        if err: erreurs_recherche.append(err)
 
         where_sql, params = _filtre('date_annulation')
-        annulees_archive = qall(f'''SELECT id,groupe_vente,produit_nom,quantite,prix_unitaire,total,client,
+        annulees_archive, err = _archiver_type('ventes annulées', f'''SELECT id,groupe_vente,produit_nom,quantite,prix_unitaire,total,client,
                    vendeur_original,date_vente_original,date_annulation,annule_par,motif,archive_date
             FROM archive_ventes_annulees WHERE 1=1{where_sql}
             ORDER BY date_annulation {order} LIMIT 200''', params)
+        if err: erreurs_recherche.append(err)
+
+        if erreurs_recherche:
+            flash("⚠️ " + " | ".join(erreurs_recherche))
+
+        # Plage de dates réellement disponible par type — permet de voir tout
+        # de suite si "aucun résultat" vient du filtre ou d'une archive vide.
+        plage_ventes = q1("SELECT MIN(date_vente), MAX(date_vente) FROM archive_ventes") or (None, None)
+        plage_entrees = q1("SELECT MIN(date_entree), MAX(date_entree) FROM archive_entrees") or (None, None)
+        plage_pertes = q1("SELECT MIN(date_perte), MAX(date_perte) FROM archive_pertes") or (None, None)
+        plage_annulees = q1("SELECT MIN(date_annulation), MAX(date_annulation) FROM archive_ventes_annulees") or (None, None)
 
         rows_par_type = {'ventes': ventes_archive, 'entrees': entrees_archive,
                           'pertes': pertes_archive, 'annulees': annulees_archive}
@@ -3745,6 +3788,10 @@ def admin_archives():
             entrees_archive=entrees_archive,
             pertes_archive=pertes_archive,
             annulees_archive=annulees_archive,
+            plage_ventes=plage_ventes,
+            plage_entrees=plage_entrees,
+            plage_pertes=plage_pertes,
+            plage_annulees=plage_annulees,
             nb_ventes_arch=nb_ventes_arch[0] if nb_ventes_arch else 0,
             nb_entrees_arch=nb_entrees_arch[0] if nb_entrees_arch else 0,
             nb_pertes_arch=nb_pertes_arch[0] if nb_pertes_arch else 0,
@@ -3773,6 +3820,10 @@ def admin_archives():
             entrees_archive=[],
             pertes_archive=[],
             annulees_archive=[],
+            plage_ventes=(None, None),
+            plage_entrees=(None, None),
+            plage_pertes=(None, None),
+            plage_annulees=(None, None),
             nb_ventes_arch=0,
             nb_entrees_arch=0,
             nb_pertes_arch=0,
