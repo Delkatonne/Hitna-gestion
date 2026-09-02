@@ -2,38 +2,82 @@
 
 {% block title %}Détail du {{ jour }} - Archives{% endblock %}
 
+{% block extra_css %}
+<style>
+    .recherche-date-jour {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 14px;
+        padding: 16px 18px;
+        margin-bottom: 18px;
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .recherche-date-jour label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; }
+    .recherche-date-jour input[type="date"] { padding: 9px 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 14px; }
+    .recherche-date-jour button {
+        background: #1e3c72; color: white; border: none; padding: 10px 20px;
+        border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
+
+<form class="recherche-date-jour" onsubmit="return allerADateJour(event)">
+    <div>
+        <label>📅 Consulter un autre jour</label>
+        <input type="date" id="date_autre_jour" value="{{ jour }}" required>
+    </div>
+    <button type="submit">🔍 Consulter</button>
+</form>
+<script>
+function allerADateJour(e) {
+    e.preventDefault();
+    const val = document.getElementById('date_autre_jour').value;
+    if (val) { window.location.href = '/admin/archives/jour/' + val; }
+    return false;
+}
+</script>
+
 <div class="card">
-    <h2 class="card-title"><i class="bi bi-calendar-event"></i> Détail des opérations du {{ jour }}</h2>
+    <h2 class="card-title">📅 Détail des opérations du {{ jour }}</h2>
     
     <!-- Résumé du jour -->
     <div class="stats-grid">
         <div class="stat-card" style="background: linear-gradient(135deg, #28a745, #20c997);">
-            <h3><i class="bi bi-cash-coin"></i> Ventes du jour</h3>
+            <h3>💰 Ventes du jour</h3>
             <div class="number">{{ "{:,.0f}".format(stats_ventes[2] if stats_ventes[2] else 0) }} FCFA</div>
             <p>{{ stats_ventes[0] if stats_ventes[0] else 0 }} vente(s) - {{ stats_ventes[1] if stats_ventes[1] else 0 }} unités</p>
         </div>
         <div class="stat-card" style="background: linear-gradient(135deg, #dc3545, #c82333);">
-            <h3><i class="bi bi-cash-stack"></i> Achats du jour</h3>
+            <h3>💸 Achats du jour</h3>
             <div class="number">{{ "{:,.0f}".format(stats_entrees[2] if stats_entrees[2] else 0) }} FCFA</div>
             <p>{{ stats_entrees[0] if stats_entrees[0] else 0 }} achat(s) - {{ stats_entrees[1] if stats_entrees[1] else 0 }} unités</p>
         </div>
         <div class="stat-card" style="background: linear-gradient(135deg, #17a2b8, #138496);">
-            <h3><i class="bi bi-bar-chart-line"></i> Bénéfice brut</h3>
+            <h3>📊 Bénéfice brut</h3>
             <div class="number">{{ "{:,.0f}".format((stats_ventes[2] if stats_ventes[2] else 0) - (stats_entrees[2] if stats_entrees[2] else 0)) }} FCFA</div>
             <p>Ventes - Achats</p>
         </div>
         <div class="stat-card" style="background: linear-gradient(135deg, #ffc107, #e0a800); color:#333;">
-            <h3><i class="bi bi-exclamation-triangle-fill"></i> Pertes du jour</h3>
+            <h3>⚠️ Pertes du jour</h3>
             <div class="number">{{ "{:,.0f}".format(stats_pertes[2] if stats_pertes[2] else 0) }} FCFA</div>
             <p>{{ stats_pertes[0] if stats_pertes[0] else 0 }} perte(s) - {{ stats_pertes[1] if stats_pertes[1] else 0 }} unités</p>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #6c757d, #495057);">
+            <h3>🚫 Ventes annulées</h3>
+            <div class="number">{{ "{:,.0f}".format(stats_annulees[2] if stats_annulees and stats_annulees[2] else 0) }} FCFA</div>
+            <p>{{ stats_annulees[0] if stats_annulees and stats_annulees[0] else 0 }} annulation(s)</p>
         </div>
     </div>
 </div>
 
 <!-- Détail des ventes du jour -->
 <div class="card">
-    <h2 class="card-title"><i class="bi bi-cart3"></i> Ventes du {{ jour }}</h2>
+    <h2 class="card-title">🛒 Ventes du {{ jour }}</h2>
     {% if ventes_jour %}
     <div class="table-container">
         <table class="table">
@@ -44,37 +88,30 @@
                     <th>Quantité</th>
                     <th>Prix unit.</th>
                     <th>Total</th>
-                    <th>Paiement</th>
                     <th>Client</th>
                     <th>Vendeur</th>
-                    <th>Reçu</th>
                 </tr>
             </thead>
             <tbody>
                 {% for v in ventes_jour %}
                 <tr>
-                    <td>{{ v[5].split(' ')[1] if v[5] else '-' }}</td>
-                    <td><strong>{{ v[11] if v[11] else 'Produit #' + v[1]|string }}</strong>{% if v[14] %}<br><span style="font-size:11px; color:#1e7e34;"><i class="bi bi-box-seam"></i> {{ v[14] }}</span>{% endif %}</td>
+                    <td>{{ v[5].split(' ')[1] if v[5] and ' ' in v[5] else '-' }}</td>
+                    <td>
+                        <strong>{{ v[1] if v[1] else 'Produit inconnu' }}</strong>
+                        {% if v[9] %}<br><span style="font-size:11px; color:#1e7e34;">📦 {{ v[9] }}</span>{% endif %}
+                    </td>
                     <td>{{ v[2] }}</td>
                     <td>{{ v[3] }} FCFA</td>
                     <td style="color: #28a745; font-weight: bold;">{{ v[4] }} FCFA</td>
-                    <td><span style="font-size:12px; background:#f0f0f0; padding:3px 8px; border-radius:6px;">{{ v[15] or 'Espèces' }}</span></td>
-                    <td>{{ v[7] or '-' }}</td>
-                    <td>{% if v[12] %}<i class="bi bi-person"></i> {{ v[12] }}{% else %}Inconnu{% endif %}</td>
-                    <td>
-                        {% if v[13] %}
-                            <a href="/vente/recu/{{ v[13] }}" target="_blank" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;"><i class="bi bi-receipt"></i> Voir</a>
-                        {% else %}
-                            —
-                        {% endif %}
-                    </td>
+                    <td>{{ v[6] or '-' }}</td>
+                    <td>{% if v[7] %}👤 {{ v[7] }}{% else %}Inconnu{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>
             <tfoot>
                 <tr style="background: #f8f9fa; font-weight: bold;">
                     <td colspan="4" style="text-align: right;">Total :</td>
-                    <td colspan="4">{{ "{:,.0f}".format(stats_ventes[2] if stats_ventes[2] else 0) }} FCFA</td>
+                    <td colspan="3">{{ "{:,.0f}".format(stats_ventes[2] if stats_ventes[2] else 0) }} FCFA</td>
                 </tr>
             </tfoot>
         </table>
@@ -86,7 +123,7 @@
 
 <!-- Détail des entrées du jour -->
 <div class="card">
-    <h2 class="card-title"><i class="bi bi-box-arrow-in-down"></i> Entrées de stock du {{ jour }}</h2>
+    <h2 class="card-title">📥 Entrées de stock du {{ jour }}</h2>
     {% if entrees_jour %}
     <div class="table-container">
         <table class="table">
@@ -104,13 +141,13 @@
             <tbody>
                 {% for e in entrees_jour %}
                 <tr>
-                    <td>{{ e[5].split(' ')[1] if e[5] else '-' }}</td>
-                    <td><strong>{{ e[11] if e[11] else 'Produit #' + e[1]|string }}</strong></td>
+                    <td>{{ e[5].split(' ')[1] if e[5] and ' ' in e[5] else '-' }}</td>
+                    <td><strong>{{ e[1] if e[1] else 'Produit inconnu' }}</strong></td>
                     <td style="color: #dc3545;">+{{ e[2] }}</td>
                     <td>{{ e[3] }} FCFA</td>
                     <td>{{ e[4] }} FCFA</td>
                     <td>{{ e[6] or '-' }}</td>
-                    <td>{% if e[12] %}<i class="bi bi-person"></i> {{ e[12] }}{% else %}Inconnu{% endif %}</td>
+                    <td>{% if e[7] %}👤 {{ e[7] }}{% else %}Inconnu{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -129,7 +166,7 @@
 
 <!-- Détail des pertes du jour -->
 <div class="card">
-    <h2 class="card-title"><i class="bi bi-exclamation-triangle-fill"></i> Pertes du {{ jour }}</h2>
+    <h2 class="card-title">⚠️ Pertes du {{ jour }}</h2>
     {% if pertes_jour %}
     <div class="table-container">
         <table class="table">
@@ -147,13 +184,13 @@
             <tbody>
                 {% for p in pertes_jour %}
                 <tr>
-                    <td>{{ p[6].split(' ')[1] if p[6] else '-' }}</td>
-                    <td><strong>{{ p[11] if p[11] else 'Produit #' + p[1]|string }}</strong></td>
+                    <td>{{ p[6].split(' ')[1] if p[6] and ' ' in p[6] else '-' }}</td>
+                    <td><strong>{{ p[1] if p[1] else 'Produit inconnu' }}</strong></td>
                     <td style="color: #dc3545;">-{{ p[2] }}</td>
                     <td>{{ p[3] }} FCFA</td>
                     <td style="font-weight: bold;">{{ p[4] }} FCFA</td>
                     <td>{{ p[5] or '-' }}</td>
-                    <td>{% if p[12] %}<i class="bi bi-person"></i> {{ p[12] }}{% else %}Inconnu{% endif %}</td>
+                    <td>{% if p[7] %}👤 {{ p[7] }}{% else %}Inconnu{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -170,8 +207,55 @@
     {% endif %}
 </div>
 
+<!-- Détail des ventes annulées du jour -->
+<div class="card">
+    <h2 class="card-title">🚫 Ventes annulées du {{ jour }}</h2>
+    {% if annulees_jour %}
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Heure de vente</th>
+                    <th>Heure d'annulation</th>
+                    <th>Produit</th>
+                    <th>Quantité</th>
+                    <th>Total</th>
+                    <th>Client</th>
+                    <th>Vendeur d'origine</th>
+                    <th>Motif</th>
+                    <th>Annulé par</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in annulees_jour %}
+                <tr>
+                    <td>{{ a[8].split(' ')[1] if a[8] and ' ' in a[8] else '-' }}</td>
+                    <td>{{ a[9].split(' ')[1] if a[9] and ' ' in a[9] else '-' }}</td>
+                    <td><strong>{{ a[2] if a[2] else 'Produit inconnu' }}</strong></td>
+                    <td style="color: #dc3545;">-{{ a[3] }}</td>
+                    <td style="font-weight: bold; color: #dc3545;">{{ a[5] }} FCFA</td>
+                    <td>{{ a[6] or '-' }}</td>
+                    <td>{% if a[7] %}👤 {{ a[7] }}{% else %}Inconnu{% endif %}</td>
+                    <td>{{ a[11] or 'Non précisé' }}</td>
+                    <td>{% if a[10] %}👤 {{ a[10] }}{% else %}Inconnu{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="background: #f8f9fa; font-weight: bold;">
+                    <td colspan="4" style="text-align: right;">Total annulé :</td>
+                    <td colspan="5">{{ "{:,.0f}".format(stats_annulees[2] if stats_annulees and stats_annulees[2] else 0) }} FCFA</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% else %}
+    <p style="text-align: center; color: #999; padding: 40px;">Aucune vente annulée ce jour</p>
+    {% endif %}
+</div>
+
 <div class="nav-links">
-    <a href="/admin/archives"><i class="bi bi-arrow-left"></i> Retour aux archives</a>
-    <a href="/dashboard"><i class="bi bi-house-door-fill"></i> Dashboard</a>
+    <a href="/admin/archives">← Retour aux archives</a>
+    <a href="/dashboard">🏠 Dashboard</a>
 </div>
 {% endblock %}

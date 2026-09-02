@@ -3660,8 +3660,14 @@ def rapport_journalier_jour(jour):
         stats_entrees = (len(entrees_jour), sum(e[2] for e in entrees_jour), sum(e[4] for e in entrees_jour))
         stats_pertes = (len(pertes_jour), sum(p[2] for p in pertes_jour), sum(p[4] for p in pertes_jour))
 
+        # Rien dans les tables actives ? Le jour est peut-être déjà archivé
+        # (semaine passée) — on bascule automatiquement vers les archives au
+        # lieu de dire juste "rien à voir ici". Pour l'admin uniquement : un
+        # employé sans accès aux archives reste sur ce message.
         if not ventes_jour and not entrees_jour and not pertes_jour:
-            flash("ℹ️ Aucune donnée pour ce jour ici — si la semaine a déjà été archivée, consultez Archives.")
+            if session.get('role') == 'admin':
+                return redirect(f'/admin/archives/jour/{jour}')
+            flash("ℹ️ Aucune donnée pour ce jour ici — si la semaine a déjà été archivée, demandez à un admin de consulter les Archives.")
 
         return render_template('rapport_journalier_jour.html',
             jour=jour, ventes_jour=ventes_jour, entrees_jour=entrees_jour, pertes_jour=pertes_jour,
@@ -3844,50 +3850,76 @@ def admin_archives():
 
 @app.route('/admin/archives/jour/<jour>')
 def admin_archive_jour(jour):
-    """Détail des ventes/entrées archivées pour une journée donnée (YYYY-MM-DD)."""
+    """Détail complet (ventes/entrées/pertes/ventes annulées) archivé pour une
+    journée donnée (YYYY-MM-DD) — consultable indéfiniment, semaines/mois/années
+    après, pour servir de preuve. Avant : la requête sélectionnait des colonnes
+    (id, produit_id, ... groupe_vente) que le template n'utilisait pas aux bons
+    index — dès qu'un jour avait au moins une vente, le template plantait en
+    lisant des colonnes hors-limites (ex: mode de paiement, qui n'existe même
+    pas dans le schéma), et l'admin se retrouvait bêtement renvoyé vers
+    /admin/archives avec une erreur générique."""
     if session.get('role') != 'admin':
         return redirect('/login')
     try:
-        ventes_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,date_vente,
-                               employe_id,client,archive_date,semaine,annee,produit_nom,employe_nom,groupe_vente
+        motif = jour + '%'
+
+        ventes_jour = qall('''SELECT id, produit_nom, quantite, prix_unitaire, total,
+                               date_vente, client, employe_nom, groupe_vente, palier_nom
                                FROM archive_ventes
-                               WHERE date_vente LIKE ?
-                               ORDER BY date_vente ASC''', (jour + '%',))
-        entrees_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,date_entree,
-                                fournisseur,employe_id,archive_date,semaine,annee,produit_nom,employe_nom
+                               WHERE date_vente LIKE %s
+                               ORDER BY date_vente ASC''', (motif,))
+
+        entrees_jour = qall('''SELECT id, produit_nom, quantite, prix_unitaire, total,
+                                date_entree, fournisseur, employe_nom
                                 FROM archive_entrees
-                                WHERE date_entree LIKE ?
-                                ORDER BY date_entree ASC''', (jour + '%',))
+                                WHERE date_entree LIKE %s
+                                ORDER BY date_entree ASC''', (motif,))
 
-        pertes_jour = qall('''SELECT id,produit_id,quantite,prix_unitaire,total,motif,date_perte,
-                               employe_id,archive_date,semaine,annee,produit_nom,employe_nom
+        pertes_jour = qall('''SELECT id, produit_nom, quantite, prix_unitaire, total,
+                               motif, date_perte, employe_nom
                                FROM archive_pertes
-                               WHERE date_perte LIKE ?
-                               ORDER BY date_perte ASC''', (jour + '%',))
+                               WHERE date_perte LIKE %s
+                               ORDER BY date_perte ASC''', (motif,))
 
-        stats_ventes = q1('''SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0)
-                              FROM archive_ventes WHERE date_vente LIKE ?''', (jour + '%',)) or (0, 0, 0)
-        stats_entrees = q1('''SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0)
-                               FROM archive_entrees WHERE date_entree LIKE ?''', (jour + '%',)) or (0, 0, 0)
-        stats_pertes = q1('''SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0)
-                              FROM archive_pertes WHERE date_perte LIKE ?''', (jour + '%',)) or (0, 0, 0)
+        annulees_jour = qall('''SELECT id, groupe_vente, produit_nom, quantite, prix_unitaire, total,
+                                 client, vendeur_original, date_vente_original, date_annulation,
+                                 annule_par, motif
+                                 FROM archive_ventes_annulees
+                                 WHERE date_annulation LIKE %s
+                                 ORDER BY date_annulation ASC''', (motif,))
 
-        if not ventes_jour and not entrees_jour and not pertes_jour:
-            flash("ℹ️ Aucune donnée archivée pour ce jour (seules les semaines déjà archivées sont consultables ici).")
+        stats_ventes = q1('SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_ventes WHERE date_vente LIKE %s', (motif,)) or (0, 0, 0)
+        stats_entrees = q1('SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_entrees WHERE date_entree LIKE %s', (motif,)) or (0, 0, 0)
+        stats_pertes = q1('SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_pertes WHERE date_perte LIKE %s', (motif,)) or (0, 0, 0)
+        stats_annulees = q1('SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_ventes_annulees WHERE date_annulation LIKE %s', (motif,)) or (0, 0, 0)
+
+        # Si ce jour n'est pas encore archivé, il est peut-être encore dans les
+        # tables actives (semaine en cours) — on renvoie directement vers le
+        # rapport journalier "live" pour ce jour au lieu de dire juste "rien ici".
+        if not (ventes_jour or entrees_jour or pertes_jour or annulees_jour):
+            en_direct = q1("SELECT 1 FROM sorties WHERE DATE(date_sortie::timestamp) = %s", (jour,)) \
+                     or q1("SELECT 1 FROM entrees WHERE DATE(date_entree::timestamp) = %s", (jour,)) \
+                     or q1("SELECT 1 FROM pertes WHERE DATE(date_perte::timestamp) = %s", (jour,))
+            if en_direct:
+                return redirect(f'/rapport-journalier/{jour}')
+            flash(f"ℹ️ Aucune donnée trouvée pour le {jour} — ni dans les archives, ni dans les données en cours.")
 
         return render_template('archive_jour.html',
             jour=jour,
             ventes_jour=ventes_jour,
             entrees_jour=entrees_jour,
             pertes_jour=pertes_jour,
+            annulees_jour=annulees_jour,
             stats_ventes=stats_ventes,
             stats_entrees=stats_entrees,
-            stats_pertes=stats_pertes)
+            stats_pertes=stats_pertes,
+            stats_annulees=stats_annulees)
     except Exception as e:
         import traceback
         traceback.print_exc()
         flash(f'❌ Erreur lors du chargement du détail du jour : {str(e)}')
         return redirect('/admin/archives')
+
 
 
 @app.route('/admin/archiver-maintenant', methods=['POST'])

@@ -64,6 +64,41 @@
         margin-bottom: 22px;
     }
 
+    .recherche-date {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 14px;
+        padding: 18px 20px;
+        margin-bottom: 22px;
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .recherche-date label {
+        display: block;
+        font-size: 13px;
+        color: #555;
+        margin-bottom: 6px;
+    }
+    .recherche-date input[type="date"] {
+        padding: 9px 12px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+    .recherche-date button {
+        background: #1e3c72;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 14px;
+    }
+    .recherche-date button:hover { opacity: 0.9; }
+
     @media (max-width: 600px) {
         .jour-card { flex-direction: column; align-items: flex-start; }
         .jour-stats { width: 100%; justify-content: space-between; gap: 10px; }
@@ -72,50 +107,70 @@
 </style>
 {% endblock %}
 
-{% block page_title %}<i class="bi bi-calendar-event"></i> Rapport journalier{% endblock %}
+{% block page_title %}📅 Rapport journalier{% endblock %}
 {% block page_subtitle %}Ventes, entrées et pertes des 7 derniers jours{% endblock %}
 
 {% block content %}
 
 <div class="info-banner">
-    ℹ Ce rapport couvre les 7 derniers jours. Chaque jour disparaît automatiquement d'ici une semaine
-    après son passage, mais reste consultable dans <a href="/admin/archives" style="color:#1e3c72; font-weight:bold;">Archives</a> une fois la semaine archivée.
+    ℹ️ La liste ci-dessous couvre les 7 derniers jours. Pour retrouver un jour plus ancien —
+    de plusieurs semaines, plusieurs mois ou même plusieurs années — utilisez la recherche par date
+    ci-dessous : ça marche pour n'importe quelle date, récente ou déjà archivée.
 </div>
+
+<form class="recherche-date" onsubmit="return allerADate(event)">
+    <div>
+        <label>📅 Consulter une date précise</label>
+        <input type="date" id="date_recherche_jour" required>
+    </div>
+    <button type="submit">🔍 Consulter ce jour</button>
+</form>
+
+<script>
+function allerADate(e) {
+    e.preventDefault();
+    const val = document.getElementById('date_recherche_jour').value;
+    if (val) {
+        window.location.href = '/rapport-journalier/' + val;
+    }
+    return false;
+}
+</script>
 
 <div class="card">
     {% if rapport %}
         {% for jour, d in rapport %}
         <a href="/rapport-journalier/{{ jour }}" class="jour-card">
             <div class="jour-titre">
-                <i class="bi bi-calendar-event"></i> {{ jour }}
+                📅 {{ jour }}
                 {% if jour == aujourdhui %}
                 <span class="jour-badge-today">Aujourd'hui</span>
                 {% endif %}
             </div>
             <div class="jour-stats">
                 <div class="jour-stat ventes">
-                    <div class="label"><i class="bi bi-cart3"></i> Ventes</div>
+                    <div class="label">🛒 Ventes</div>
                     <div class="valeur">{{ d.nb_ventes }} · {{ "{:,.0f}".format(d.total_ventes) }} FCFA</div>
                 </div>
                 <div class="jour-stat entrees">
-                    <div class="label"><i class="bi bi-box-arrow-in-down"></i> Entrées</div>
+                    <div class="label">📥 Entrées</div>
                     <div class="valeur">{{ d.nb_entrees }} · {{ "{:,.0f}".format(d.total_entrees) }} FCFA</div>
                 </div>
                 <div class="jour-stat pertes">
-                    <div class="label"><i class="bi bi-exclamation-triangle-fill"></i> Pertes</div>
+                    <div class="label">⚠️ Pertes</div>
                     <div class="valeur">{{ d.nb_pertes }} · {{ "{:,.0f}".format(d.total_pertes) }} FCFA</div>
                 </div>
             </div>
         </a>
         {% endfor %}
     {% else %}
-        <p style="text-align: center; color: #999; padding: 40px;"><i class="bi bi-inbox"></i> Aucune activité enregistrée sur les 7 derniers jours</p>
+        <p style="text-align: center; color: #999; padding: 40px;">📭 Aucune activité enregistrée sur les 7 derniers jours</p>
     {% endif %}
 </div>
 
 <div class="nav-links">
-    <a href="{{ '/dashboard' if session.role == 'admin' else '/vente' }}"><i class="bi bi-arrow-left"></i> Retour</a>
-    <a href="/admin/archives"><i class="bi bi-journals"></i> Archives</a>
+    <a href="{{ '/dashboard' if session.role == 'admin' else '/vente' }}">← Retour</a>
+    <a href="/admin/archives">📚 Archives</a>
 </div>
 
 {% endblock %}
