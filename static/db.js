@@ -6,7 +6,12 @@
 // ============================================================
 
 const HITNA_DB_NAME = 'hitna_offline';
-const HITNA_DB_VERSION = 1;
+// Passé de 1 à 2 : sans ce changement, les appareils qui avaient déjà créé la
+// base avec un ancien schéma (avant l'ajout de "produits_cache") restent
+// bloqués pour toujours — onupgradeneeded ne se redéclenche que si le numéro
+// de version augmente. C'était la cause de l'erreur en boucle "One of the
+// specified object stores was not found" vue dans la console.
+const HITNA_DB_VERSION = 2;
 
 function hitnaOpenDB() {
     return new Promise((resolve, reject) => {
