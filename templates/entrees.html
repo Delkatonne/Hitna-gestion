@@ -331,30 +331,30 @@
 </style>
 {% endblock %}
 
-{% block page_title %}<i class="bi bi-box-arrow-in-down"></i> Entrées de stock{% endblock %}
+{% block page_title %}📥 Entrées de stock{% endblock %}
 {% block page_subtitle %}Enregistrer les achats et approvisionnements{% endblock %}
 
 {% block content %}
 <!-- Message d'information -->
 <div class="info-archive">
-    ℹ Les entrées de stock sont automatiquement archivées chaque semaine (le lundi).<br>
-    Les archives sont conservées et accessibles dans la section <strong><i class="bi bi-journals"></i> Archives</strong>.
+    ℹ️ Les entrées de stock sont automatiquement archivées chaque semaine (le lundi).<br>
+    Les archives sont conservées et accessibles dans la section <strong>📚 Archives</strong>.
 </div>
 
 <!-- Statistiques -->
 <div class="stats-entrees">
     <div class="stat-entree">
-        <div class="icon"><i class="bi bi-box-seam"></i></div>
+        <div class="icon">📦</div>
         <div class="value">{{ produits|length }}</div>
         <div class="label">Produits en stock</div>
     </div>
     <div class="stat-entree">
-        <div class="icon"><i class="bi bi-box-arrow-in-down"></i></div>
+        <div class="icon">📥</div>
         <div class="value">{{ entrees|length }}</div>
         <div class="label">Entrées récentes</div>
     </div>
     <div class="stat-entree">
-        <div class="icon"><i class="bi bi-cash-coin"></i></div>
+        <div class="icon">💰</div>
         <div class="value">{{ "{:,.0f}".format(entrees|sum(attribute=4)|default(0)) }} FCFA</div>
         <div class="label">Investissement total</div>
     </div>
@@ -362,10 +362,10 @@
 
 <!-- Formulaire d'ajout avec recherche -->
 <div class="card">
-    <h2 class="card-title"><i class="bi bi-box-arrow-in-down"></i> Nouvelle entrée de stock (achat)</h2>
+    <h2 class="card-title">📥 Nouvelle entrée de stock (achat)</h2>
     
     <div class="search-select-container">
-        <input type="text" id="productSearchInput" class="search-select-input" placeholder="<i class="bi bi-search"></i> Rechercher un produit par son nom..." autocomplete="off">
+        <input type="text" id="productSearchInput" class="search-select-input" placeholder="🔍 Rechercher un produit par son nom..." autocomplete="off">
         <div id="productDropdown" class="search-select-dropdown"></div>
     </div>
     
@@ -375,7 +375,7 @@
                 <span class="name" id="selectedProductName"></span>
                 <span class="stock" id="selectedProductStock"></span>
             </div>
-            <button type="button" class="clear-selection" onclick="clearSelection()"><i class="bi bi-x-lg"></i> Changer</button>
+            <button type="button" class="clear-selection" onclick="clearSelection()">✖ Changer</button>
         </div>
     </div>
     
@@ -386,44 +386,41 @@
             <input type="number" name="quantite" id="quantite" placeholder="Quantité" required>
             <input type="number" name="prix_unitaire" id="prix_unitaire" placeholder="Prix unitaire (FCFA)" required>
             <input type="text" name="fournisseur" id="fournisseur" placeholder="Fournisseur">
-            <button type="submit" id="submitBtn" disabled><i class="bi bi-check-circle-fill"></i> Valider l'entrée</button>
+            <button type="submit" id="submitBtn" disabled>✅ Valider l'entrée</button>
         </div>
     </form>
 </div>
 
 <!-- Historique des entrées regroupé par jour -->
 <div class="card">
-    <h2 class="card-title"><i class="bi bi-scroll"></i> Historique des entrées de stock</h2>
+    <h2 class="card-title">📜 Historique des entrées de stock</h2>
     
     {% if entrees %}
-        {% set current_day = "" %}
-        {% set day_total = 0 %}
-        {% set day_count = 0 %}
-        {% set day_quantite = 0 %}
+        {% set ns = namespace(current_day="", day_total=0, day_count=0, day_quantite=0) %}
         
         {% for e in entrees %}
             {% set date_complete = e[5] if e[5] else '' %}
             {% set e_date = date_complete.split(' ')[0] if date_complete else '' %}
             {% set e_time = date_complete.split(' ')[1] if date_complete and ' ' in date_complete else '' %}
             
-            {% if current_day != e_date and e_date != '' %}
-                {% if current_day != "" %}
+            {% if ns.current_day != e_date and e_date != '' %}
+                {% if ns.current_day != "" %}
                                 </tbody>
                             </table>
                             <div class="day-total-footer">
-                                <i class="bi bi-bar-chart-line"></i> Total du {{ current_day }} : 
-                                <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
-                                ({{ day_count }} entrées, {{ day_quantite }} unités)
+                                📊 Total du {{ ns.current_day }} : 
+                                <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(ns.day_total) }} FCFA</span> 
+                                ({{ ns.day_count }} entrées, {{ ns.day_quantite }} unités)
                             </div>
                         </div>
                 {% endif %}
                 
                 <div class="day-separator">
                     <div class="day-date">
-                        <i class="bi bi-calendar-event"></i> {{ e_date }}
+                        📅 {{ e_date }}
                         <span class="day-name">
                             {% if e_date == date_actuelle.split(' ')[0] %}
-                                <i class="bi bi-geo-alt-fill"></i> AUJOURD'HUI
+                                📍 AUJOURD'HUI
                             {% elif e_date == date_actuelle.split(' ')[0] %}
                                 HIER
                             {% else %}
@@ -450,10 +447,10 @@
                                 </tr>
                             </thead>
                             <tbody>
-                {% set current_day = e_date %}
-                {% set day_total = 0 %}
-                {% set day_count = 0 %}
-                {% set day_quantite = 0 %}
+                {% set ns.current_day = e_date %}
+                {% set ns.day_total = 0 %}
+                {% set ns.day_count = 0 %}
+                {% set ns.day_quantite = 0 %}
             {% endif %}
             
             {% if e_date != '' %}
@@ -465,19 +462,19 @@
                     <td style="font-weight: bold; color: #28a745;">{{ e[4] }} FCFA</td>
                     <td>{{ e[6] or '-' }}</td>
                 </tr>
-                {% set day_total = day_total + e[4] %}
-                {% set day_count = day_count + 1 %}
-                {% set day_quantite = day_quantite + e[2] %}
+                {% set ns.day_total = ns.day_total + e[4] %}
+                {% set ns.day_count = ns.day_count + 1 %}
+                {% set ns.day_quantite = ns.day_quantite + e[2] %}
             {% endif %}
         {% endfor %}
         
-        {% if current_day != "" %}
+        {% if ns.current_day != "" %}
                         </tbody>
                     </table>
                     <div class="day-total-footer">
-                        <i class="bi bi-bar-chart-line"></i> Total du {{ current_day }} : 
-                        <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
-                        ({{ day_count }} entrées, {{ day_quantite }} unités)
+                        📊 Total du {{ ns.current_day }} : 
+                        <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(ns.day_total) }} FCFA</span> 
+                        ({{ ns.day_count }} entrées, {{ ns.day_quantite }} unités)
                     </div>
                 </div>
         {% endif %}
@@ -487,8 +484,8 @@
 </div>
 
 <div class="nav-links">
-    <a href="/admin/produits"><i class="bi bi-arrow-left"></i> Gestion produits</a>
-    <a href="/dashboard"><i class="bi bi-house-door-fill"></i> Dashboard</a>
+    <a href="/admin/produits">← Gestion produits</a>
+    <a href="/dashboard">🏠 Dashboard</a>
 </div>
 
 <script>
@@ -532,7 +529,7 @@
             option.innerHTML = `
                 <div>
                     <span class="product-name">${p.nom}</span>
-                    <span class="product-stock"> Stock actuel: ${p.stock} unités</span>
+                    <span class="product-stock">📦 Stock actuel: ${p.stock} unités</span>
                 </div>
             `;
             option.onclick = () => selectProduct(p);
@@ -545,7 +542,7 @@
         selectedProduit = product;
         selectedId.value = product.id;
         selectedName.innerHTML = product.nom;
-        selectedStock.innerHTML = ` Stock actuel: ${product.stock} unités`;
+        selectedStock.innerHTML = `📦 Stock actuel: ${product.stock} unités`;
         selectedDisplay.style.display = 'block';
         searchInput.value = product.nom;
         productDropdownEl.style.display = 'none';
@@ -611,18 +608,14 @@
                 fournisseur: fournisseur
             }).then(function(queued) {
                 if (queued) {
-                    alert(` Entrée enregistrée hors ligne : ${quantite} ${selectedProduit.nom}. Elle sera synchronisée dès le retour du réseau.`);
+                    alert(`📡 Entrée enregistrée hors ligne : ${quantite} ${selectedProduit.nom}. Elle sera synchronisée dès le retour du réseau.`);
                     clearSelection();
                 }
             });
             return false;
         }
 
-        const confirmee = confirm(`Confirmer l'entrée de ${quantite} ${selectedProduit.nom} pour ${quantite * prix} FCFA ?`);
-        if (confirmee && typeof hitnaShowLoading === 'function') {
-            hitnaShowLoading('Enregistrement de l\'entrée...');
-        }
-        return confirmee;
+        return confirm(`Confirmer l'entrée de ${quantite} ${selectedProduit.nom} pour ${quantite * prix} FCFA ?`);
     });
     
     // Mettre à jour les totaux des jours dans l'en-tête

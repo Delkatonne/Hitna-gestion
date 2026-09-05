@@ -485,23 +485,21 @@
     </div>
     
     {% if ventes_archive|default([]) %}
-        {% set current_day = "" %}
-        {% set day_total = 0 %}
-        {% set day_count = 0 %}
+        {% set ns = namespace(current_day="", day_total=0, day_count=0) %}
         
         {% for v in ventes_archive %}
             {% set date_complete = v[5] if v[5] else '' %}
             {% set v_date = date_complete.split(' ')[0] if date_complete else '' %}
             {% set v_time = date_complete.split(' ')[1] if date_complete and ' ' in date_complete else '' %}
             
-            {% if current_day != v_date and v_date != '' %}
-                {% if current_day != "" %}
+            {% if ns.current_day != v_date and v_date != '' %}
+                {% if ns.current_day != "" %}
                                 </tbody>
                             </table>
                             <div class="day-total-footer">
-                                📊 Total du {{ current_day }} : 
-                                <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
-                                ({{ day_count }} ventes)
+                                📊 Total du {{ ns.current_day }} : 
+                                <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(ns.day_total) }} FCFA</span> 
+                                ({{ ns.day_count }} ventes)
                             </div>
                         </div>
                 {% endif %}
@@ -537,9 +535,9 @@
                                 </tr>
                             </thead>
                             <tbody>
-                {% set current_day = v_date %}
-                {% set day_total = 0 %}
-                {% set day_count = 0 %}
+                {% set ns.current_day = v_date %}
+                {% set ns.day_total = 0 %}
+                {% set ns.day_count = 0 %}
             {% endif %}
             
             {% if v_date != '' %}
@@ -558,18 +556,18 @@
                         {% endif %}
                     </td>
                 </tr>
-                {% set day_total = day_total + v[4] %}
-                {% set day_count = day_count + 1 %}
+                {% set ns.day_total = ns.day_total + v[4] %}
+                {% set ns.day_count = ns.day_count + 1 %}
             {% endif %}
         {% endfor %}
         
-        {% if current_day != "" %}
+        {% if ns.current_day != "" %}
                         </tbody>
                     </table>
                     <div class="day-total-footer">
-                        📊 Total du {{ current_day }} : 
-                        <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
-                        ({{ day_count }} ventes)
+                        📊 Total du {{ ns.current_day }} : 
+                        <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(ns.day_total) }} FCFA</span> 
+                        ({{ ns.day_count }} ventes)
                     </div>
                 </div>
         {% endif %}
@@ -618,24 +616,21 @@
     </div>
     
     {% if entrees_archive|default([]) %}
-        {% set current_day = "" %}
-        {% set day_total = 0 %}
-        {% set day_count = 0 %}
-        {% set day_quantite = 0 %}
+        {% set ns = namespace(current_day="", day_total=0, day_count=0, day_quantite=0) %}
         
         {% for e in entrees_archive %}
             {% set date_complete = e[5] if e[5] else '' %}
             {% set e_date = date_complete.split(' ')[0] if date_complete else '' %}
             {% set e_time = date_complete.split(' ')[1] if date_complete and ' ' in date_complete else '' %}
             
-            {% if current_day != e_date and e_date != '' %}
-                {% if current_day != "" %}
+            {% if ns.current_day != e_date and e_date != '' %}
+                {% if ns.current_day != "" %}
                                 </tbody>
                             </table>
                             <div class="day-total-footer">
-                                📊 Total du {{ current_day }} : 
-                                <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
-                                ({{ day_count }} entrées, {{ day_quantite }} unités)
+                                📊 Total du {{ ns.current_day }} : 
+                                <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(ns.day_total) }} FCFA</span> 
+                                ({{ ns.day_count }} entrées, {{ ns.day_quantite }} unités)
                             </div>
                         </div>
                 {% endif %}
@@ -671,10 +666,10 @@
                                 </tr>
                             </thead>
                             <tbody>
-                {% set current_day = e_date %}
-                {% set day_total = 0 %}
-                {% set day_count = 0 %}
-                {% set day_quantite = 0 %}
+                {% set ns.current_day = e_date %}
+                {% set ns.day_total = 0 %}
+                {% set ns.day_count = 0 %}
+                {% set ns.day_quantite = 0 %}
             {% endif %}
             
             {% if e_date != '' %}
@@ -687,19 +682,19 @@
                     <td>{{ e[6] or '-' }}</td>
                     <td>{% if e[7] %}👤 {{ e[7] }}{% else %}Inconnu{% endif %}</td>
                 </tr>
-                {% set day_total = day_total + e[4] %}
-                {% set day_count = day_count + 1 %}
-                {% set day_quantite = day_quantite + e[2] %}
+                {% set ns.day_total = ns.day_total + e[4] %}
+                {% set ns.day_count = ns.day_count + 1 %}
+                {% set ns.day_quantite = ns.day_quantite + e[2] %}
             {% endif %}
         {% endfor %}
         
-        {% if current_day != "" %}
+        {% if ns.current_day != "" %}
                         </tbody>
                     </table>
                     <div class="day-total-footer">
-                        📊 Total du {{ current_day }} : 
-                        <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
-                        ({{ day_count }} entrées, {{ day_quantite }} unités)
+                        📊 Total du {{ ns.current_day }} : 
+                        <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(ns.day_total) }} FCFA</span> 
+                        ({{ ns.day_count }} entrées, {{ ns.day_quantite }} unités)
                     </div>
                 </div>
         {% endif %}
@@ -748,24 +743,21 @@
     </div>
     
     {% if pertes_archive|default([]) %}
-        {% set current_day = "" %}
-        {% set day_total = 0 %}
-        {% set day_count = 0 %}
-        {% set day_quantite = 0 %}
+        {% set ns = namespace(current_day="", day_total=0, day_count=0, day_quantite=0) %}
         
         {% for p in pertes_archive %}
             {% set date_complete = p[6] if p[6] else '' %}
             {% set p_date = date_complete.split(' ')[0] if date_complete else '' %}
             {% set p_time = date_complete.split(' ')[1] if date_complete and ' ' in date_complete else '' %}
             
-            {% if current_day != p_date and p_date != '' %}
-                {% if current_day != "" %}
+            {% if ns.current_day != p_date and p_date != '' %}
+                {% if ns.current_day != "" %}
                                 </tbody>
                             </table>
                             <div class="day-total-footer">
-                                📊 Total du {{ current_day }} : 
-                                <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
-                                ({{ day_count }} pertes, {{ day_quantite }} unités)
+                                📊 Total du {{ ns.current_day }} : 
+                                <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(ns.day_total) }} FCFA</span> 
+                                ({{ ns.day_count }} pertes, {{ ns.day_quantite }} unités)
                             </div>
                         </div>
                 {% endif %}
@@ -801,10 +793,10 @@
                                 </tr>
                             </thead>
                             <tbody>
-                {% set current_day = p_date %}
-                {% set day_total = 0 %}
-                {% set day_count = 0 %}
-                {% set day_quantite = 0 %}
+                {% set ns.current_day = p_date %}
+                {% set ns.day_total = 0 %}
+                {% set ns.day_count = 0 %}
+                {% set ns.day_quantite = 0 %}
             {% endif %}
             
             {% if p_date != '' %}
@@ -825,19 +817,19 @@
                     </td>
                     <td>{% if p[7] %}👤 {{ p[7] }}{% else %}Inconnu{% endif %}</td>
                 </tr>
-                {% set day_total = day_total + p[4] %}
-                {% set day_count = day_count + 1 %}
-                {% set day_quantite = day_quantite + p[2] %}
+                {% set ns.day_total = ns.day_total + p[4] %}
+                {% set ns.day_count = ns.day_count + 1 %}
+                {% set ns.day_quantite = ns.day_quantite + p[2] %}
             {% endif %}
         {% endfor %}
         
-        {% if current_day != "" %}
+        {% if ns.current_day != "" %}
                         </tbody>
                     </table>
                     <div class="day-total-footer">
-                        📊 Total du {{ current_day }} : 
-                        <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
-                        ({{ day_count }} pertes, {{ day_quantite }} unités)
+                        📊 Total du {{ ns.current_day }} : 
+                        <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(ns.day_total) }} FCFA</span> 
+                        ({{ ns.day_count }} pertes, {{ ns.day_quantite }} unités)
                     </div>
                 </div>
         {% endif %}
@@ -886,23 +878,21 @@
     </div>
 
     {% if annulees_archive|default([]) %}
-        {% set current_day = "" %}
-        {% set day_total = 0 %}
-        {% set day_count = 0 %}
+        {% set ns = namespace(current_day="", day_total=0, day_count=0) %}
 
         {% for a in annulees_archive %}
             {% set date_complete = a[9] if a[9] else '' %}
             {% set a_date = date_complete.split(' ')[0] if date_complete else '' %}
             {% set a_time = date_complete.split(' ')[1] if date_complete and ' ' in date_complete else '' %}
 
-            {% if current_day != a_date and a_date != '' %}
-                {% if current_day != "" %}
+            {% if ns.current_day != a_date and a_date != '' %}
+                {% if ns.current_day != "" %}
                                 </tbody>
                             </table>
                             <div class="day-total-footer">
-                                📊 Total du {{ current_day }} : 
-                                <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
-                                ({{ day_count }} ventes annulées)
+                                📊 Total du {{ ns.current_day }} : 
+                                <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(ns.day_total) }} FCFA</span> 
+                                ({{ ns.day_count }} ventes annulées)
                             </div>
                         </div>
                 {% endif %}
@@ -940,9 +930,9 @@
                                 </tr>
                             </thead>
                             <tbody>
-                {% set current_day = a_date %}
-                {% set day_total = 0 %}
-                {% set day_count = 0 %}
+                {% set ns.current_day = a_date %}
+                {% set ns.day_total = 0 %}
+                {% set ns.day_count = 0 %}
             {% endif %}
 
             {% if a_date != '' %}
@@ -957,18 +947,18 @@
                     <td>{{ a[11] if a[11] else 'Non précisé' }}</td>
                     <td>{% if a[10] %}👤 {{ a[10] }}{% else %}Inconnu{% endif %}</td>
                 </tr>
-                {% set day_total = day_total + a[5] %}
-                {% set day_count = day_count + 1 %}
+                {% set ns.day_total = ns.day_total + a[5] %}
+                {% set ns.day_count = ns.day_count + 1 %}
             {% endif %}
         {% endfor %}
 
-        {% if current_day != "" %}
+        {% if ns.current_day != "" %}
                         </tbody>
                     </table>
                     <div class="day-total-footer">
-                        📊 Total du {{ current_day }} : 
-                        <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(day_total) }} FCFA</span> 
-                        ({{ day_count }} ventes annulées)
+                        📊 Total du {{ ns.current_day }} : 
+                        <span style="color: #dc3545; font-weight: bold;">{{ "{:,.0f}".format(ns.day_total) }} FCFA</span> 
+                        ({{ ns.day_count }} ventes annulées)
                     </div>
                 </div>
         {% endif %}
