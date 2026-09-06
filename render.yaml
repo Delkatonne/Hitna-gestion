@@ -8,8 +8,7 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.9"
       - key: DATABASE_URL
-        # ✅ Ajout de ?sslmode=require à la fin
-        value: "postgresql://postgres:hitna-gestion_db@db.rckfkvfrayhojemkvgjf.supabase.co:5432/postgres?sslmode=require"
+        sync: false
       - key: SECRET_KEY
         generateValue: true
       - key: BACKUP_SECRET

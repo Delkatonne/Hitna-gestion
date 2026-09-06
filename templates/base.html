@@ -980,7 +980,7 @@
                         {% for category, message in messages %}
                             <script>
                                 document.addEventListener('DOMContentLoaded', function() { 
-                                    showNotification('{{ message|safe }}', '{{ category if category else "success" }}');
+                                    showNotification({{ message|tojson }}, {{ (category if category else "success")|tojson }});
                                 });
                             </script>
                         {% endfor %}

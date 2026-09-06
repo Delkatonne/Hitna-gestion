@@ -722,7 +722,12 @@ def archiver_hebdomadaire():
         if deja:
             print(f"ℹ️ Semaine {sem}/{annee} déjà archivée, archivage ignoré.")
             return
+    except Exception as e:
+        print(f"❌ Erreur archiver_hebdomadaire (préparation): {e}")
+        return
 
+    conn = None
+    try:
         conn = get_db()
         cm = conn.cursor()
         now_s = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -788,9 +793,16 @@ def archiver_hebdomadaire():
                     len(ventes),tv,len(entrees),ta,now_s))
         conn.commit()
         cm.close()
-        release_db(conn)
     except Exception as e:
         print(f"❌ Erreur archiver_hebdomadaire: {e}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            release_db(conn)
 
 def archiver_si_necessaire():
     """Déclenche l'archivage dès que la semaine à archiver n'est pas encore
@@ -1037,8 +1049,8 @@ def changer_mdp():
         
         if request.method == 'POST':
             pwd = request.form.get('new_password', '')
-            if len(pwd) < 4:
-                flash('❌ Minimum 4 caractères')
+            if len(pwd) < 8:
+                flash('❌ Minimum 8 caractères')
                 return redirect('/changer_mdp')
             
             exe("UPDATE users SET password_hash=? WHERE id=?", 
@@ -2645,6 +2657,8 @@ def page_notifications():
 
 @app.route('/api/stock_bas')
 def api_stock_bas():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Non autorisé'}), 401
     try:
         rows = qall("SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min")
         return jsonify([{'nom':r[0],'stock':r[1],'stock_min':r[2]} for r in rows])
@@ -4446,75 +4460,9 @@ def export_pdf_employe():
 # ══════════════════════════════════════════════════════════════
 # API DE SYNCHRONISATION POUR MODE HORS LIGNE
 # ══════════════════════════════════════════════════════════════
-@app.route('/api/sync/sorties', methods=['POST'])
-def api_sync_sorties():
-    try:
-        data = request.get_json()
-        if not data.get('produit_id') or not data.get('quantite'):
-            return jsonify({'error': 'Données manquantes'}), 400
-        produit = q1("SELECT prix FROM produits WHERE id = %s", (data['produit_id'],))
-        if not produit:
-            return jsonify({'error': 'Produit non trouvé'}), 404
-        prix_unitaire = produit[0]
-        total = data['quantite'] * prix_unitaire
-        client_id = trouver_ou_creer_client(data.get('client', ''), data.get('telephone', ''))
-        exe("""INSERT INTO sorties 
-            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, client_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-            (data['produit_id'], data['quantite'], prix_unitaire, total,
-             data.get('date_sortie', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
-             data.get('client', ''), data.get('employe_id', 1), client_id))
-        exe("UPDATE produits SET stock = stock - %s WHERE id = %s", (data['quantite'], data['produit_id']))
-        verifier_alertes_stock()
-        return jsonify({'success': True, 'message': 'Vente synchronisée'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/sync/entrees', methods=['POST'])
-def api_sync_entrees():
-    try:
-        data = request.get_json()
-        if not data.get('produit_id') or not data.get('quantite'):
-            return jsonify({'error': 'Données manquantes'}), 400
-        produit = q1("SELECT prix FROM produits WHERE id = %s", (data['produit_id'],))
-        if not produit:
-            return jsonify({'error': 'Produit non trouvé'}), 404
-        prix_unitaire = data.get('prix_unitaire', produit[0])
-        total = data['quantite'] * prix_unitaire
-        exe("""INSERT INTO entrees 
-            (produit_id, quantite, prix_unitaire, total, date_entree, fournisseur, employe_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-            (data['produit_id'], data['quantite'], prix_unitaire, total,
-             data.get('date_entree', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
-             data.get('fournisseur', ''), data.get('employe_id', 1)))
-        exe("UPDATE produits SET stock = stock + %s WHERE id = %s", (data['quantite'], data['produit_id']))
-        verifier_alertes_stock()
-        return jsonify({'success': True, 'message': 'Entrée synchronisée'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/sync/pertes', methods=['POST'])
-def api_sync_pertes():
-    try:
-        data = request.get_json()
-        if not data.get('produit_id') or not data.get('quantite'):
-            return jsonify({'error': 'Données manquantes'}), 400
-        produit = q1("SELECT prix FROM produits WHERE id = %s", (data['produit_id'],))
-        if not produit:
-            return jsonify({'error': 'Produit non trouvé'}), 404
-        prix_unitaire = produit[0]
-        total = data['quantite'] * prix_unitaire
-        exe("""INSERT INTO pertes 
-            (produit_id, quantite, prix_unitaire, total, motif, date_perte, employe_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-            (data['produit_id'], data['quantite'], prix_unitaire, total,
-             data.get('motif', 'Synchronisation hors ligne'),
-             data.get('date_perte', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
-             data.get('employe_id', 1)))
-        exe("UPDATE produits SET stock = GREATEST(0, stock - %s) WHERE id = %s", (data['quantite'], data['produit_id']))
-        return jsonify({'success': True, 'message': 'Perte synchronisée'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+# (Les anciennes routes /api/sync/sorties, /api/sync/entrees et /api/sync/pertes
+# ont été supprimées : elles n'étaient protégées par aucune authentification et
+# faisaient doublon avec /api/sync ci-dessous, qui exige une session valide.)
 
 # ══════════════════════════════════════════════════════════════
 # MOT DE PASSE OUBLIÉ
@@ -4574,8 +4522,12 @@ L'équipe HITNA
                     finally:
                         socket.setdefaulttimeout(ancien_timeout)
                 except Exception as e:
+                    # Le lien ne doit JAMAIS être affiché au demandeur (qui n'est pas encore authentifié) :
+                    # on le journalise côté serveur uniquement, pour qu'un administrateur ayant accès aux
+                    # logs puisse le transmettre manuellement si besoin.
                     print(f"Erreur envoi email: {e}")
-                    flash(f'🔗 Lien de réinitialisation : {reset_url}', 'info')
+                    print(f"🔗 Lien de réinitialisation (à transmettre manuellement) : {reset_url}")
+                    flash('❌ L\'envoi de l\'email a échoué. Contactez le support technique.', 'error')
             else:
                 flash('❌ Aucun administrateur actif avec cet email', 'error')
             return redirect('/login')
@@ -4606,8 +4558,8 @@ def reset_password(token):
             if pwd != cpwd:
                 flash('❌ Mots de passe différents')
                 return redirect(f'/reset_password/{token}')
-            if len(pwd) < 4:
-                flash('❌ Minimum 4 caractères')
+            if len(pwd) < 8:
+                flash('❌ Minimum 8 caractères')
                 return redirect(f'/reset_password/{token}')
             exe("UPDATE users SET password_hash=? WHERE id=?",(hash_password(pwd), user_id))
             exe("UPDATE reset_tokens SET used=1 WHERE token=?",(token,))

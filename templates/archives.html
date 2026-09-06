@@ -1002,10 +1002,10 @@
         
         const url = new URL(window.location.href);
         url.searchParams.set('type', type);
-        if (dateDebut) url.searchParams.set('date_debut', dateDebut);
-        if (dateFin) url.searchParams.set('date_fin', dateFin);
-        if (produitNom) url.searchParams.set('produit', produitNom);
-        if (tri) url.searchParams.set('tri', tri);
+        if (dateDebut) { url.searchParams.set('date_debut', dateDebut); } else { url.searchParams.delete('date_debut'); }
+        if (dateFin) { url.searchParams.set('date_fin', dateFin); } else { url.searchParams.delete('date_fin'); }
+        if (produitNom) { url.searchParams.set('produit', produitNom); } else { url.searchParams.delete('produit'); }
+        if (tri) { url.searchParams.set('tri', tri); } else { url.searchParams.delete('tri'); }
         url.searchParams.delete('semaine');
         window.location.href = url.toString();
     }
