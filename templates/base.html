@@ -908,6 +908,13 @@
                         <span class="icon"><i class="bi bi-box-arrow-in-down"></i></span><span>Entrées de stock</span>
                     </a>
                 </div>
+
+                <a href="{{ url_for('historique_produit') }}"
+                    class="dropdown-item">
+                        <i class="bi bi-clock-history"></i>
+                        Historique produit
+                 </a>
+
                 {% endif %}
                 {% if session.permissions and 'commandes' in session.permissions.split(',') %}
                 <div class="nav-item">

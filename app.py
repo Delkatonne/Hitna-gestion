@@ -1230,6 +1230,214 @@ def supprimer_palier(id):
         flash('❌ Erreur lors de la suppression')
         return redirect('/admin/produits')
 
+
+
+@app.route("/admin/historique-produit")
+@login_required
+def historique_produit():
+    # Réserver cette page à l'administration
+    if session.get("role") != "admin":
+        flash("Accès réservé à l'administration.", "danger")
+        return redirect(url_for("index"))
+
+    produit_recherche = request.args.get("produit", "").strip()
+
+    # Valeurs par défaut
+    produit = None
+    mouvements = []
+
+    stats = {
+        "entrees": 0,
+        "ventes": 0,
+        "pertes": 0,
+        "annulees": 0
+    }
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    if produit_recherche:
+
+        # =========================================================
+        # 1. RECHERCHE DU PRODUIT
+        # =========================================================
+        cur.execute("""
+            SELECT id, nom, quantite, prix_achat, prix_vente
+            FROM produits
+            WHERE LOWER(nom) LIKE LOWER(%s)
+            ORDER BY nom
+            LIMIT 1
+        """, (f"%{produit_recherche}%",))
+
+        produit = cur.fetchone()
+
+        if produit:
+            produit_id = produit["id"]
+
+            # =====================================================
+            # 2. ENTRÉES
+            # =====================================================
+            cur.execute("""
+                SELECT
+                    e.id,
+                    e.quantite,
+                    e.prix_unitaire,
+                    e.total,
+                    e.date_entree,
+                    e.fournisseur,
+                    e.employe_id,
+                    u.nom AS employe_nom
+                FROM entrees e
+                LEFT JOIN users u ON e.employe_id = u.id
+                WHERE e.produit_id = %s
+                ORDER BY e.date_entree DESC
+            """, (produit_id,))
+
+            entrees = cur.fetchall()
+
+            for e in entrees:
+                mouvements.append({
+                    "date": e["date_entree"],
+                    "type": "entree",
+                    "quantite": e["quantite"],
+                    "montant": e["total"],
+                    "details": (
+                        f"Fournisseur : {e['fournisseur']}"
+                        if e["fournisseur"]
+                        else "Entrée de stock"
+                    ),
+                    "employe": e["employe_nom"] or "—"
+                })
+
+                stats["entrees"] += e["quantite"] or 0
+
+            # =====================================================
+            # 3. VENTES
+            # =====================================================
+            cur.execute("""
+                SELECT
+                    s.id,
+                    s.quantite,
+                    s.total,
+                    s.date_vente,
+                    s.client,
+                    u.nom AS vendeur_nom
+                FROM sorties s
+                LEFT JOIN users u ON s.employe_id = u.id
+                WHERE s.produit_id = %s
+                ORDER BY s.date_vente DESC
+            """, (produit_id,))
+
+            ventes = cur.fetchall()
+
+            for v in ventes:
+                mouvements.append({
+                    "date": v["date_vente"],
+                    "type": "vente",
+                    "quantite": -(v["quantite"] or 0),
+                    "montant": v["total"],
+                    "details": (
+                        f"Client : {v['client']}"
+                        if v["client"]
+                        else "Vente"
+                    ),
+                    "employe": v["vendeur_nom"] or "—"
+                })
+
+                stats["ventes"] += v["quantite"] or 0
+
+            # =====================================================
+            # 4. PERTES
+            # =====================================================
+            cur.execute("""
+                SELECT
+                    p.id,
+                    p.quantite,
+                    p.prix_unitaire,
+                    p.total,
+                    p.motif,
+                    p.date_perte,
+                    u.nom AS employe_nom
+                FROM pertes p
+                LEFT JOIN users u ON p.employe_id = u.id
+                WHERE p.produit_id = %s
+                ORDER BY p.date_perte DESC
+            """, (produit_id,))
+
+            pertes = cur.fetchall()
+
+            for p in pertes:
+                mouvements.append({
+                    "date": p["date_perte"],
+                    "type": "perte",
+                    "quantite": -(p["quantite"] or 0),
+                    "montant": p["total"],
+                    "details": (
+                        f"Motif : {p['motif']}"
+                        if p["motif"]
+                        else "Perte"
+                    ),
+                    "employe": p["employe_nom"] or "—"
+                })
+
+                stats["pertes"] += p["quantite"] or 0
+
+            # =====================================================
+            # 5. VENTES ANNULÉES
+            # =====================================================
+            cur.execute("""
+                SELECT
+                    id,
+                    quantite,
+                    total,
+                    client,
+                    vendeur_original,
+                    date_vente_original,
+                    date_annulation,
+                    annule_par,
+                    motif
+                FROM ventes_annulees
+                WHERE produit_nom = %s
+                ORDER BY date_annulation DESC
+            """, (produit["nom"],))
+
+            ventes_annulees = cur.fetchall()
+
+            for va in ventes_annulees:
+                mouvements.append({
+                    "date": va["date_annulation"],
+                    "type": "annulee",
+                    "quantite": va["quantite"] or 0,
+                    "montant": va["total"],
+                    "details": (
+                        f"Client : {va['client'] or '—'}"
+                        f" | Motif : {va['motif'] or '—'}"
+                    ),
+                    "employe": va["annule_par"] or "—"
+                })
+
+                stats["annulees"] += va["quantite"] or 0
+
+            # =====================================================
+            # 6. TRI GLOBAL PAR DATE
+            # =====================================================
+            mouvements.sort(
+                key=lambda x: x["date"] or "",
+                reverse=True
+            )
+
+    cur.close()
+    conn.close()
+
+    return render_template(
+        "historique_produit.html",
+        produit=produit,
+        mouvements=mouvements,
+        stats=stats,
+        produit_recherche=produit_recherche
+    )
+
+    
 # ══════════════════════════════════════════════════════════════
 # COMMANDES (issues du futur site web HITNA)
 # ══════════════════════════════════════════════════════════════
