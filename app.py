@@ -3255,6 +3255,144 @@ def supprimer_charge(id):
     return redirect('/admin/charges')
 
 # ══════════════════════════════════════════════════════════════
+# TABLEAU COMPTABLE — résumé mensuel/annuel + registre détaillé
+# (recette = ventes, dépense = achats de stock + charges ; les
+# pertes ne sont PAS des dépenses en argent, donc pas comptées ici,
+# comme pour le bénéfice net déjà calculé sur /admin/charges)
+# ══════════════════════════════════════════════════════════════
+NOMS_MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+             'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+
+def _comptabilite_annees_disponibles():
+    rows = qall('''SELECT DISTINCT to_char(d::timestamp, 'YYYY') FROM (
+            SELECT date_sortie AS d FROM sorties
+            UNION ALL SELECT date_vente FROM archive_ventes
+            UNION ALL SELECT date_entree FROM entrees
+            UNION ALL SELECT date_entree FROM archive_entrees
+            UNION ALL SELECT date_charge FROM charges
+        ) t WHERE d IS NOT NULL AND d <> '' ORDER BY 1 DESC''')
+    annees = [r[0] for r in rows if r[0]]
+    annee_courante = str(datetime.now().year)
+    if annee_courante not in annees:
+        annees.insert(0, annee_courante)
+    return annees
+
+def _comptabilite_resume_mensuel(annee):
+    """Retourne, pour chaque mois de l'année donnée, les totaux
+    Ventes / Achats / Charges / Bénéfice net."""
+    rows_ventes = qall('''SELECT to_char(d::timestamp,'YYYY-MM'), COALESCE(SUM(total),0), COUNT(*)
+        FROM (SELECT date_sortie AS d, total FROM sorties
+              UNION ALL SELECT date_vente AS d, total FROM archive_ventes) t
+        WHERE to_char(d::timestamp,'YYYY') = ? GROUP BY 1''', (annee,))
+    rows_achats = qall('''SELECT to_char(d::timestamp,'YYYY-MM'), COALESCE(SUM(total),0)
+        FROM (SELECT date_entree AS d, total FROM entrees
+              UNION ALL SELECT date_entree AS d, total FROM archive_entrees) t
+        WHERE to_char(d::timestamp,'YYYY') = ? GROUP BY 1''', (annee,))
+    rows_charges = qall('''SELECT to_char(date_charge::timestamp,'YYYY-MM'), COALESCE(SUM(montant),0)
+        FROM charges WHERE to_char(date_charge::timestamp,'YYYY') = ? GROUP BY 1''', (annee,))
+
+    ventes_map = {m: (t, n) for m, t, n in rows_ventes}
+    achats_map = {m: t for m, t in rows_achats}
+    charges_map = {m: t for m, t in rows_charges}
+
+    resultat = []
+    for i in range(1, 13):
+        cle = f"{annee}-{i:02d}"
+        v, nb_v = ventes_map.get(cle, (0, 0))
+        a = achats_map.get(cle, 0)
+        ch = charges_map.get(cle, 0)
+        resultat.append({'mois': NOMS_MOIS[i-1], 'cle': cle, 'nb_ventes': nb_v,
+            'ventes': v or 0, 'achats': a or 0, 'charges': ch or 0,
+            'benefice': (v or 0) - (a or 0) - (ch or 0)})
+    return resultat
+
+def _comptabilite_registre(date_debut, date_fin):
+    """Registre détaillé (grand livre) : une ligne par vente (groupée
+    par panier), par achat de stock et par charge, triées par date,
+    avec un solde cumulé (recettes - dépenses)."""
+    lignes = []
+
+    ventes = qall('''SELECT COALESCE(groupe_vente, 'v'||id::text) AS grp, MIN(date_sortie) AS d,
+                             SUM(total) AS total, MAX(client) AS client
+                      FROM sorties WHERE DATE(date_sortie::timestamp) BETWEEN ? AND ?
+                      GROUP BY grp''', (date_debut, date_fin)) + \
+             qall('''SELECT COALESCE(groupe_vente, 'av'||id::text) AS grp, MIN(date_vente) AS d,
+                             SUM(total) AS total, MAX(client) AS client
+                      FROM archive_ventes WHERE DATE(date_vente::timestamp) BETWEEN ? AND ?
+                      GROUP BY grp''', (date_debut, date_fin))
+    for grp, d, total, client in ventes:
+        lignes.append({'date': d, 'type': 'vente',
+            'libelle': 'Vente' + (f' — {client}' if client else ''),
+            'recette': total or 0, 'depense': 0})
+
+    achats = qall('''SELECT date_entree, total, fournisseur FROM entrees
+                      WHERE DATE(date_entree::timestamp) BETWEEN ? AND ?''', (date_debut, date_fin)) + \
+             qall('''SELECT date_entree, total, fournisseur FROM archive_entrees
+                     WHERE DATE(date_entree::timestamp) BETWEEN ? AND ?''', (date_debut, date_fin))
+    for d, total, fournisseur in achats:
+        lignes.append({'date': d, 'type': 'achat',
+            'libelle': 'Achat de stock' + (f' — {fournisseur}' if fournisseur else ''),
+            'recette': 0, 'depense': total or 0})
+
+    charges = qall('''SELECT date_charge, montant, categorie, libelle FROM charges
+                       WHERE date_charge BETWEEN ? AND ?''', (date_debut, date_fin))
+    for d, montant, categorie, libelle in charges:
+        lignes.append({'date': d, 'type': 'charge', 'libelle': libelle or categorie or 'Charge',
+            'recette': 0, 'depense': montant or 0})
+
+    lignes.sort(key=lambda l: l['date'] or '')
+    solde = 0
+    for l in lignes:
+        solde += (l['recette'] or 0) - (l['depense'] or 0)
+        l['solde'] = solde
+    return lignes
+
+@app.route('/admin/comptabilite')
+def admin_comptabilite():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        vue = request.args.get('vue', 'mensuel')
+        annees_disponibles = _comptabilite_annees_disponibles()
+        annee = request.args.get('annee', annees_disponibles[0] if annees_disponibles else str(datetime.now().year))
+
+        premier_jour_mois = datetime.now().replace(day=1).strftime('%Y-%m-%d')
+        aujourdhui = datetime.now().strftime('%Y-%m-%d')
+        date_debut = request.args.get('date_debut', premier_jour_mois)
+        date_fin = request.args.get('date_fin', aujourdhui)
+
+        resume_mensuel = _comptabilite_resume_mensuel(annee)
+        total_annee = {
+            'ventes': sum(m['ventes'] for m in resume_mensuel),
+            'achats': sum(m['achats'] for m in resume_mensuel),
+            'charges': sum(m['charges'] for m in resume_mensuel),
+            'benefice': sum(m['benefice'] for m in resume_mensuel),
+        }
+
+        registre = _comptabilite_registre(date_debut, date_fin)
+        total_pertes_periode = q1('''SELECT COALESCE(SUM(total),0) FROM (
+                SELECT total FROM pertes WHERE DATE(date_perte::timestamp) BETWEEN ? AND ?
+                UNION ALL
+                SELECT total FROM archive_pertes WHERE DATE(date_perte::timestamp) BETWEEN ? AND ?
+            ) t''', (date_debut, date_fin, date_debut, date_fin))
+        total_pertes_periode = total_pertes_periode[0] if total_pertes_periode else 0
+        total_recette = sum(l['recette'] for l in registre)
+        total_depense = sum(l['depense'] for l in registre)
+
+        return render_template('admin_comptabilite.html', vue=vue,
+            annee=annee, annees_disponibles=annees_disponibles,
+            resume_mensuel=resume_mensuel, total_annee=total_annee,
+            mois_courant_cle=datetime.now().strftime('%Y-%m'),
+            registre=registre, date_debut=date_debut, date_fin=date_fin,
+            total_recette=total_recette, total_depense=total_depense,
+            solde_periode=total_recette - total_depense,
+            total_pertes_periode=total_pertes_periode)
+    except Exception as e:
+        print(f"❌ Erreur admin_comptabilite: {e}")
+        flash('Erreur lors du chargement du tableau comptable')
+        return redirect('/dashboard')
+
+# ══════════════════════════════════════════════════════════════
 # VENTES ANNULÉES — journal (consultation admin)
 # ══════════════════════════════════════════════════════════════
 @app.route('/admin/ventes-annulees')
