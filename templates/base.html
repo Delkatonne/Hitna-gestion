@@ -783,6 +783,11 @@
                     </a>
                 </div>
                 <div class="nav-item">
+                    <a href="/admin/produits/historique" class="nav-link {% if request.endpoint == 'historique_produit' %}active{% endif %}">
+                        <span class="icon"><i class="bi bi-clock-history"></i></span><span>Historique produit</span>
+                    </a>
+                </div>
+                <div class="nav-item">
                     <a href="/admin/produits/corbeille" class="nav-link {% if request.endpoint == 'corbeille_produits' %}active{% endif %}">
                         <span class="icon"><i class="bi bi-trash"></i></span><span>Corbeille produits</span>
                     </a>
@@ -908,12 +913,6 @@
                         <span class="icon"><i class="bi bi-box-arrow-in-down"></i></span><span>Entrées de stock</span>
                     </a>
                 </div>
-                
-                <div class="nav-item">
-                    <a href="/admin_historique_produit.html" class="nav-link {% if request.endpoint == 'admin_historique_produit' %}active{% endif %}">
-                        <span class="icon"><i class="bi bi-cart3"></i></span><span>Historique produit</span>
-                    </a>
-
                 {% endif %}
                 {% if session.permissions and 'commandes' in session.permissions.split(',') %}
                 <div class="nav-item">
