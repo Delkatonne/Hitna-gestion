@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}Historique produit - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-hist {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 25px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    .search-hist .form-group { flex: 1; min-width: 240px; }
+    .search-hist input {
+        width: 100%;
+        padding: 11px 14px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        box-sizing: border-box;
+        font-size: 15px;
+    }
+
+    .stats-hist {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 25px;
+    }
+    .stat-hist {
+        padding: 18px;
+        border-radius: 14px;
+        text-align: center;
+        color: white;
+    }
+    .stat-hist .number { font-size: 24px; font-weight: bold; }
+    .stat-hist .label { font-size: 12px; opacity: 0.9; margin-top: 4px; }
+    .stat-hist.ventes { background: linear-gradient(135deg, #28a745, #20c997); }
+    .stat-hist.achats { background: linear-gradient(135deg, #17a2b8, #138496); }
+    .stat-hist.pertes { background: linear-gradient(135deg, #ffc107, #e0a800); color: #333; }
+    .stat-hist.annule { background: linear-gradient(135deg, #dc3545, #c82333); }
+    .stat-hist.nb { background: linear-gradient(135deg, #1e3c72, #2a5298); }
+
+    .mvt-item {
+        display: flex;
+        gap: 14px;
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 10px;
+        align-items: flex-start;
+    }
+    .mvt-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        flex-shrink: 0;
+        color: white;
+    }
+    .mvt-item.vente .mvt-icon { background: #28a745; }
+    .mvt-item.entree .mvt-icon { background: #17a2b8; }
+    .mvt-item.perte .mvt-icon { background: #ffc107; color: #333; }
+    .mvt-item.annulation .mvt-icon { background: #dc3545; }
+
+    .mvt-body { flex: 1; min-width: 0; }
+    .mvt-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 4px;
+    }
+    .mvt-titre { font-weight: bold; color: #1e3c72; font-size: 14px; }
+    .mvt-date { font-size: 11px; color: #999; }
+    .mvt-montant { font-weight: bold; font-size: 15px; }
+    .mvt-item.vente .mvt-montant { color: #28a745; }
+    .mvt-item.entree .mvt-montant { color: #17a2b8; }
+    .mvt-item.perte .mvt-montant { color: #e0a800; }
+    .mvt-item.annulation .mvt-montant { color: #dc3545; }
+
+    .mvt-details {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        font-size: 12px;
+        color: #666;
+    }
+    .mvt-details span strong { color: #333; }
+    .mvt-badge-palier {
+        background: #fff3cd;
+        color: #856404;
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        margin-left: 6px;
+    }
+    .mvt-recu-link {
+        font-size: 12px;
+        color: #17a2b8;
+        text-decoration: none;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}<i class="bi bi-clock-history"></i> Historique produit{% endblock %}
+{% block page_subtitle %}Tous les mouvements (ventes, entrées, pertes, annulations) d'un produit, classés par date{% endblock %}
+
+{% block content %}
+
+<datalist id="produits-suggestions">
+    {% for s in suggestions %}
+    <option value="{{ s[0] }}">
+    {% endfor %}
+</datalist>
+
+<div class="card">
+    <form method="get" class="search-hist">
+        <div class="form-group">
+            <label><i class="bi bi-search"></i> Nom du produit</label>
+            <input type="text" name="q" list="produits-suggestions" placeholder="Ex: Coca-Cola, Jus Orange..." value="{{ recherche }}" autofocus>
+        </div>
+        <div class="form-group" style="flex: 0 0 auto;">
+            <button type="submit" style="background:#1e3c72; color:white; padding:11px 28px;"><i class="bi bi-search"></i> Rechercher</button>
+        </div>
+        {% if recherche %}
+        <div class="form-group" style="flex: 0 0 auto;">
+            <a href="/admin/produits/historique" style="display:inline-block; background:#6c757d; color:white; padding:11px 20px; border-radius:8px; text-decoration:none;"><i class="bi bi-x-lg"></i> Effacer</a>
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+{% if recherche %}
+    <div class="stats-hist">
+        <div class="stat-hist nb">
+            <div class="number">{{ stats.nb }}</div>
+            <div class="label">Mouvement(s)</div>
+        </div>
+        <div class="stat-hist ventes">
+            <div class="number">{{ "{:,.0f}".format(stats.ventes) }}</div>
+            <div class="label">Ventes (FCFA)</div>
+        </div>
+        <div class="stat-hist achats">
+            <div class="number">{{ "{:,.0f}".format(stats.achats) }}</div>
+            <div class="label">Achats (FCFA)</div>
+        </div>
+        <div class="stat-hist pertes">
+            <div class="number">{{ "{:,.0f}".format(stats.pertes) }}</div>
+            <div class="label">Pertes (FCFA)</div>
+        </div>
+        <div class="stat-hist annule">
+            <div class="number">{{ "{:,.0f}".format(stats.annule) }}</div>
+            <div class="label">Annulé (FCFA)</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title"><i class="bi bi-list-ul"></i> Chronologie — "{{ recherche }}"</h2>
+
+        {% if mouvements %}
+            {% for m in mouvements %}
+            {% set date_aff = m[0].split(' ')[0] if m[0] else '-' %}
+            {% set heure_aff = m[0].split(' ')[1] if m[0] and ' ' in m[0] else '' %}
+            <div class="mvt-item {{ m[1] }}">
+                <div class="mvt-icon">
+                    {% if m[1] == 'vente' %}<i class="bi bi-cart3"></i>
+                    {% elif m[1] == 'entree' %}<i class="bi bi-box-arrow-in-down"></i>
+                    {% elif m[1] == 'perte' %}<i class="bi bi-exclamation-triangle"></i>
+                    {% elif m[1] == 'annulation' %}<i class="bi bi-x-circle"></i>
+                    {% endif %}
+                </div>
+                <div class="mvt-body">
+                    <div class="mvt-header">
+                        <span class="mvt-titre">
+                            {% if m[1] == 'vente' %}Vente
+                            {% elif m[1] == 'entree' %}Entrée de stock
+                            {% elif m[1] == 'perte' %}Perte
+                            {% elif m[1] == 'annulation' %}Vente annulée
+                            {% endif %}
+                            — {{ m[2]|qte }} × {{ m[10] }}
+                            {% if m[9] %}<span class="mvt-badge-palier"><i class="bi bi-box-seam"></i> {{ m[9] }}</span>{% endif %}
+                        </span>
+                        <span class="mvt-date">{{ date_aff }}{% if heure_aff %} à {{ heure_aff }}{% endif %}</span>
+                    </div>
+                    <div class="mvt-details">
+                        <span class="mvt-montant">{{ "{:,.0f}".format(m[4] or 0) }} FCFA</span>
+                        {% if m[1] == 'vente' %}
+                            <span><strong>Client :</strong> {{ m[5] or 'Non renseigné' }}</span>
+                            <span><strong>Vendeur :</strong> {{ m[6] or 'Inconnu' }}</span>
+                            {% if m[8] %}<a href="/vente/recu/{{ m[8] }}" target="_blank" class="mvt-recu-link"><i class="bi bi-receipt"></i> Voir le reçu</a>{% endif %}
+                        {% elif m[1] == 'entree' %}
+                            <span><strong>Fournisseur :</strong> {{ m[5] or 'Non renseigné' }}</span>
+                            <span><strong>Enregistré par :</strong> {{ m[6] or 'Inconnu' }}</span>
+                        {% elif m[1] == 'perte' %}
+                            <span><strong>Motif :</strong> {{ m[7] or 'Non précisé' }}</span>
+                            <span><strong>Enregistré par :</strong> {{ m[6] or 'Inconnu' }}</span>
+                        {% elif m[1] == 'annulation' %}
+                            <span><strong>Vendeur d'origine :</strong> {{ m[5] or 'Inconnu' }}</span>
+                            <span><strong>Annulé par :</strong> {{ m[6] or 'Inconnu' }}</span>
+                            <span><strong>Motif :</strong> {{ m[7] or 'Non précisé' }}</span>
+                            {% if m[8] %}<a href="/vente/recu/{{ m[8] }}" target="_blank" class="mvt-recu-link"><i class="bi bi-receipt"></i> Voir le reçu d'origine</a>{% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p style="text-align:center; color:#999; padding:40px;">
+                <i class="bi bi-inbox"></i> Aucun mouvement trouvé pour "{{ recherche }}"
+            </p>
+        {% endif %}
+    </div>
+{% else %}
+    <div class="card">
+        <p style="text-align:center; color:#999; padding:60px 20px;">
+            <i class="bi bi-search" style="font-size:32px; display:block; margin-bottom:12px;"></i>
+            Tapez le nom d'un produit ci-dessus pour voir tout son historique de mouvements.
+        </p>
+    </div>
+{% endif %}
+
+<div class="nav-links">
+    <a href="/admin/produits"><i class="bi bi-arrow-left"></i> Retour aux produits</a>
+</div>
+{% endblock %}

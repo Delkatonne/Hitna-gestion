@@ -1914,6 +1914,128 @@ def purger_corbeille_produit(id):
         flash('❌ Erreur lors de la suppression définitive')
     return redirect('/admin/produits/corbeille')
 
+# ══════════════════════════════════════════════════════════════
+# HISTORIQUE D'UN PRODUIT — tous ses mouvements (ventes, entrées,
+# pertes, annulations) toutes sources confondues (actif + archivé),
+# classés par date. Fonctionne même pour un produit supprimé, tant
+# qu'il a laissé des traces dans les archives (nom stocké en texte).
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/produits/historique')
+def historique_produit():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        recherche = request.args.get('q', '').strip()
+
+        # Suggestions pour l'autocomplétion : tous les noms de produits
+        # jamais connus du système (actifs, inactifs, ou même supprimés
+        # mais présents dans une archive).
+        suggestions = qall('''
+            SELECT DISTINCT nom FROM (
+                SELECT nom FROM produits
+                UNION SELECT produit_nom FROM archive_ventes
+                UNION SELECT produit_nom FROM archive_entrees
+                UNION SELECT produit_nom FROM archive_pertes
+                UNION SELECT produit_nom FROM ventes_annulees
+                UNION SELECT produit_nom FROM archive_ventes_annulees
+            ) t WHERE nom IS NOT NULL AND nom <> '' ORDER BY nom LIMIT 500''')
+
+        mouvements = []
+        stats = {'ventes': 0, 'achats': 0, 'pertes': 0, 'annule': 0, 'nb': 0}
+
+        if recherche:
+            like = f'%{recherche}%'
+            params8 = (like,) * 8
+
+            mouvements = qall('''
+                SELECT date_col, type_mvt, quantite, prix_unitaire, total,
+                       personne1, personne2, motif, groupe_vente, palier_nom, produit_nom
+                FROM (
+                    -- Ventes actives
+                    SELECT s.date_sortie AS date_col, 'vente' AS type_mvt, s.quantite, s.prix_unitaire, s.total,
+                           s.client AS personne1, u.nom AS personne2, NULL::TEXT AS motif,
+                           s.groupe_vente, s.palier_nom, p.nom AS produit_nom
+                    FROM sorties s JOIN produits p ON s.produit_id = p.id JOIN users u ON s.employe_id = u.id
+                    WHERE p.nom ILIKE ?
+
+                    UNION ALL
+                    -- Ventes archivées
+                    SELECT a.date_vente, 'vente', a.quantite, a.prix_unitaire, a.total,
+                           a.client, a.employe_nom, NULL::TEXT,
+                           a.groupe_vente, a.palier_nom, a.produit_nom
+                    FROM archive_ventes a
+                    WHERE a.produit_nom ILIKE ?
+
+                    UNION ALL
+                    -- Entrées actives
+                    SELECT e.date_entree, 'entree', e.quantite, e.prix_unitaire, e.total,
+                           e.fournisseur, u.nom, NULL::TEXT,
+                           NULL::TEXT, NULL::TEXT, p.nom
+                    FROM entrees e JOIN produits p ON e.produit_id = p.id JOIN users u ON e.employe_id = u.id
+                    WHERE p.nom ILIKE ?
+
+                    UNION ALL
+                    -- Entrées archivées
+                    SELECT a.date_entree, 'entree', a.quantite, a.prix_unitaire, a.total,
+                           a.fournisseur, a.employe_nom, NULL::TEXT,
+                           NULL::TEXT, NULL::TEXT, a.produit_nom
+                    FROM archive_entrees a
+                    WHERE a.produit_nom ILIKE ?
+
+                    UNION ALL
+                    -- Pertes actives
+                    SELECT pe.date_perte, 'perte', pe.quantite, pe.prix_unitaire, pe.total,
+                           NULL::TEXT, u.nom, pe.motif,
+                           NULL::TEXT, NULL::TEXT, p.nom
+                    FROM pertes pe JOIN produits p ON pe.produit_id = p.id JOIN users u ON pe.employe_id = u.id
+                    WHERE p.nom ILIKE ?
+
+                    UNION ALL
+                    -- Pertes archivées
+                    SELECT a.date_perte, 'perte', a.quantite, a.prix_unitaire, a.total,
+                           NULL::TEXT, a.employe_nom, a.motif,
+                           NULL::TEXT, NULL::TEXT, a.produit_nom
+                    FROM archive_pertes a
+                    WHERE a.produit_nom ILIKE ?
+
+                    UNION ALL
+                    -- Ventes annulées (actives)
+                    SELECT va.date_annulation, 'annulation', va.quantite, va.prix_unitaire, va.total,
+                           va.vendeur_original, va.annule_par, va.motif,
+                           va.groupe_vente, va.palier_nom, va.produit_nom
+                    FROM ventes_annulees va
+                    WHERE va.produit_nom ILIKE ?
+
+                    UNION ALL
+                    -- Ventes annulées archivées
+                    SELECT a.date_annulation, 'annulation', a.quantite, a.prix_unitaire, a.total,
+                           a.vendeur_original, a.annule_par, a.motif,
+                           a.groupe_vente, a.palier_nom, a.produit_nom
+                    FROM archive_ventes_annulees a
+                    WHERE a.produit_nom ILIKE ?
+                ) tout_mouvements
+                ORDER BY date_col DESC
+                LIMIT 500''', params8)
+
+            for m in mouvements:
+                type_mvt, total = m[1], (m[4] or 0)
+                stats['nb'] += 1
+                if type_mvt == 'vente':
+                    stats['ventes'] += total
+                elif type_mvt == 'entree':
+                    stats['achats'] += total
+                elif type_mvt == 'perte':
+                    stats['pertes'] += total
+                elif type_mvt == 'annulation':
+                    stats['annule'] += total
+
+        return render_template('admin_historique_produit.html',
+            recherche=recherche, mouvements=mouvements, stats=stats, suggestions=suggestions)
+    except Exception as e:
+        print(f"❌ Erreur historique_produit: {e}")
+        flash("❌ Erreur lors du chargement de l'historique produit")
+        return redirect('/admin/produits')
+
 # ─── ENTRÉES ──────────────────────────────────────────────────
 @app.route('/admin/entrees')
 def entrees_list():
