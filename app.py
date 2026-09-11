@@ -3820,30 +3820,23 @@ def admin_archives():
         if session.get('role') != 'admin':
             return redirect('/login')
         type_arch = request.args.get('type', 'ventes')
-        date_debut = request.args.get('date_debut', '')
-        date_fin = request.args.get('date_fin', '')
-        produit_filtre = request.args.get('produit', '')
+        date_recherche = request.args.get('date', '').strip()
         tri = request.args.get('tri', 'date_desc')
         order = 'DESC' if 'desc' in tri else 'ASC'
+        # Champs conservés pour compatibilité du template (anciens filtres
+        # date_debut/date_fin/produit supprimés — recherche uniquement par
+        # une date précise désormais, appliquée aux 4 onglets à la fois).
+        date_debut = date_fin = produit_filtre = ''
 
         # NOTE : les 4 onglets (Ventes / Entrées / Pertes / Ventes annulées) sont
         # commutés côté client en JavaScript (switchTab), sans rechargement de
         # page. Il faut donc TOUJOURS charger les 4 jeux de données ici — avant,
         # seul le type sélectionné dans l'URL était rempli et les 3 autres
         # onglets restaient vides tant qu'aucune recherche n'était lancée.
-        def _filtre(colonne_date, colonne_produit='produit_nom'):
-            conditions, params = [], []
-            if date_debut:
-                conditions.append(f"{colonne_date} >= %s")
-                params.append(date_debut)
-            if date_fin:
-                conditions.append(f"{colonne_date} <= %s")
-                params.append(date_fin + " 23:59:59")
-            if produit_filtre:
-                conditions.append(f"LOWER({colonne_produit}) LIKE LOWER(%s)")
-                params.append(f'%{produit_filtre}%')
-            where_sql = (" AND " + " AND ".join(conditions)) if conditions else ""
-            return where_sql, tuple(params)
+        def _filtre(colonne_date):
+            if not date_recherche:
+                return "", ()
+            return f" AND {colonne_date}::date = %s", (date_recherche,)
 
         def _query_stricte(sql, params):
             """Comme qall(), mais SANS avaler les erreurs SQL. qall() retourne
@@ -3949,6 +3942,7 @@ def admin_archives():
             date_debut=date_debut, 
             date_fin=date_fin, 
             produit_filtre=produit_filtre, 
+            date_recherche=date_recherche,
             tri=tri,
             type_data=type_arch)
     except Exception as e:
@@ -3981,6 +3975,7 @@ def admin_archives():
             date_debut=date_debut,
             date_fin=date_fin,
             produit_filtre=produit_filtre,
+            date_recherche=date_recherche,
             tri=tri,
             type_data=type_arch)
 

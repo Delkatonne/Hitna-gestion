@@ -449,6 +449,32 @@
     </button>
 </div>
 
+<!-- Recherche par date — unique, s'applique aux 4 onglets -->
+<div class="filters-container">
+    <div class="filter-group">
+        <label>📅 Rechercher à une date précise</label>
+        <input type="date" id="date_recherche" value="{{ date_recherche|default('') }}">
+    </div>
+    <div class="filter-group">
+        <label>🔄 Trier par</label>
+        <select id="tri_select" class="tri-select" onchange="rechercherParDate()">
+            <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
+            <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <button class="search-btn" onclick="rechercherParDate()">🔍 Rechercher</button>
+    </div>
+    {% if date_recherche %}
+    <div class="filter-group">
+        <button class="reset-btn" onclick="resetRecherche()">🔄 Réinitialiser</button>
+    </div>
+    {% endif %}
+</div>
+{% if date_recherche %}
+    <div class="plage-info">📅 Résultats affichés pour le <strong>{{ date_recherche }}</strong> dans les 4 onglets ci-dessus.</div>
+{% endif %}
+
 <!-- Contenu Ventes -->
 <div id="tab-ventes" class="tab-content {% if type_data == 'ventes' %}active{% endif %}">
     {% if plage_ventes and plage_ventes[0] %}
@@ -456,33 +482,6 @@
     {% else %}
         <div class="plage-info vide">📭 Aucune vente archivée pour l'instant — les ventes de la semaine en cours restent dans « Ventes » tant qu'elles n'ont pas été archivées.</div>
     {% endif %}
-    <div class="filters-container">
-        <div class="filter-group">
-            <label>📅 Date de début</label>
-            <input type="date" id="date_debut_ventes" value="{{ date_debut|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>📅 Date de fin</label>
-            <input type="date" id="date_fin_ventes" value="{{ date_fin|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>🔍 Nom du produit</label>
-            <input type="text" id="produit_nom_ventes" placeholder="Rechercher un produit..." value="{{ produit_filtre|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>🔄 Trier par</label>
-            <select id="tri_select_ventes" class="tri-select" onchange="rechercherAvecFiltres('ventes')">
-                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
-                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <button class="search-btn" onclick="rechercherAvecFiltres('ventes')">🔍 Rechercher</button>
-        </div>
-        <div class="filter-group">
-            <button class="reset-btn" onclick="resetRecherche('ventes')">🔄 Réinitialiser</button>
-        </div>
-    </div>
     
     {% if ventes_archive|default([]) %}
         {% set ns = namespace(current_day="", day_total=0, day_count=0) %}
@@ -587,33 +586,6 @@
     {% else %}
         <div class="plage-info vide">📭 Aucune entrée archivée pour l'instant — les entrées de la semaine en cours restent dans le tableau « Entrées » tant qu'elles n'ont pas été archivées.</div>
     {% endif %}
-    <div class="filters-container">
-        <div class="filter-group">
-            <label>📅 Date de début</label>
-            <input type="date" id="date_debut_entrees" value="{{ date_debut|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>📅 Date de fin</label>
-            <input type="date" id="date_fin_entrees" value="{{ date_fin|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>🔍 Nom du produit</label>
-            <input type="text" id="produit_nom_entrees" placeholder="Rechercher un produit..." value="{{ produit_filtre|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>🔄 Trier par</label>
-            <select id="tri_select_entrees" class="tri-select" onchange="rechercherAvecFiltres('entrees')">
-                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
-                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <button class="search-btn" onclick="rechercherAvecFiltres('entrees')">🔍 Rechercher</button>
-        </div>
-        <div class="filter-group">
-            <button class="reset-btn" onclick="resetRecherche('entrees')">🔄 Réinitialiser</button>
-        </div>
-    </div>
     
     {% if entrees_archive|default([]) %}
         {% set ns = namespace(current_day="", day_total=0, day_count=0, day_quantite=0) %}
@@ -714,33 +686,6 @@
     {% else %}
         <div class="plage-info vide">📭 Aucune perte archivée pour l'instant — les pertes de la semaine en cours restent dans le tableau « Pertes » tant qu'elles n'ont pas été archivées.</div>
     {% endif %}
-    <div class="filters-container">
-        <div class="filter-group">
-            <label>📅 Date de début</label>
-            <input type="date" id="date_debut_pertes" value="{{ date_debut|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>📅 Date de fin</label>
-            <input type="date" id="date_fin_pertes" value="{{ date_fin|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>🔍 Nom du produit</label>
-            <input type="text" id="produit_nom_pertes" placeholder="Rechercher un produit..." value="{{ produit_filtre|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>🔄 Trier par</label>
-            <select id="tri_select_pertes" class="tri-select" onchange="rechercherAvecFiltres('pertes')">
-                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
-                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <button class="search-btn" onclick="rechercherAvecFiltres('pertes')">🔍 Rechercher</button>
-        </div>
-        <div class="filter-group">
-            <button class="reset-btn" onclick="resetRecherche('pertes')">🔄 Réinitialiser</button>
-        </div>
-    </div>
     
     {% if pertes_archive|default([]) %}
         {% set ns = namespace(current_day="", day_total=0, day_count=0, day_quantite=0) %}
@@ -849,33 +794,6 @@
     {% else %}
         <div class="plage-info vide">📭 Aucune vente annulée archivée pour l'instant — soit il n'y en a pas eu récemment, soit l'archivage hebdomadaire ne s'est pas encore exécuté depuis la mise en place de cette archive.</div>
     {% endif %}
-    <div class="filters-container">
-        <div class="filter-group">
-            <label>📅 Date de début</label>
-            <input type="date" id="date_debut_annulees" value="{{ date_debut|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>📅 Date de fin</label>
-            <input type="date" id="date_fin_annulees" value="{{ date_fin|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>🔍 Nom du produit</label>
-            <input type="text" id="produit_nom_annulees" placeholder="Rechercher un produit..." value="{{ produit_filtre|default('') }}">
-        </div>
-        <div class="filter-group">
-            <label>🔄 Trier par</label>
-            <select id="tri_select_annulees" class="tri-select" onchange="rechercherAvecFiltres('annulees')">
-                <option value="desc" {% if tri|default('desc') == 'desc' %}selected{% endif %}>📅 Plus récent d'abord</option>
-                <option value="asc" {% if tri|default('desc') == 'asc' %}selected{% endif %}>📅 Moins récent d'abord</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <button class="search-btn" onclick="rechercherAvecFiltres('annulees')">🔍 Rechercher</button>
-        </div>
-        <div class="filter-group">
-            <button class="reset-btn" onclick="resetRecherche('annulees')">🔄 Réinitialiser</button>
-        </div>
-    </div>
 
     {% if annulees_archive|default([]) %}
         {% set ns = namespace(current_day="", day_total=0, day_count=0) %}
@@ -994,30 +912,24 @@
         window.history.pushState({}, '', url);
     }
     
-    function rechercherAvecFiltres(type) {
-        const dateDebut = document.getElementById('date_debut_' + type).value;
-        const dateFin = document.getElementById('date_fin_' + type).value;
-        const produitNom = document.getElementById('produit_nom_' + type).value;
-        const tri = document.getElementById('tri_select_' + type).value;
-        
+    function rechercherParDate() {
+        const date = document.getElementById('date_recherche').value;
+        const tri = document.getElementById('tri_select').value;
+
         const url = new URL(window.location.href);
-        url.searchParams.set('type', type);
-        if (dateDebut) { url.searchParams.set('date_debut', dateDebut); } else { url.searchParams.delete('date_debut'); }
-        if (dateFin) { url.searchParams.set('date_fin', dateFin); } else { url.searchParams.delete('date_fin'); }
-        if (produitNom) { url.searchParams.set('produit', produitNom); } else { url.searchParams.delete('produit'); }
+        url.searchParams.set('type', currentType);
+        if (date) { url.searchParams.set('date', date); } else { url.searchParams.delete('date'); }
         if (tri) { url.searchParams.set('tri', tri); } else { url.searchParams.delete('tri'); }
         url.searchParams.delete('semaine');
         window.location.href = url.toString();
     }
-    
-    function resetRecherche(type) {
+
+    function resetRecherche() {
         const url = new URL(window.location.href);
-        url.searchParams.delete('date_debut');
-        url.searchParams.delete('date_fin');
-        url.searchParams.delete('produit');
+        url.searchParams.delete('date');
         url.searchParams.delete('semaine');
         url.searchParams.delete('tri');
-        url.searchParams.set('type', type);
+        url.searchParams.set('type', currentType);
         window.location.href = url.toString();
     }
     
