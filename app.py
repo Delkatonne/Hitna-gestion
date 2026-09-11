@@ -4455,6 +4455,160 @@ def export_pdf_jour(date):
         flash(f'❌ Erreur lors de l\'export PDF: {str(e)}')
         return redirect('/admin/archives')
 
+# ─── EXPORT PDF POUR UNE DATE RECHERCHÉE DANS LES ARCHIVES ──
+# Contrairement à /export/pdf_jour (tables en cours uniquement), celui-ci
+# combine les tables en cours ET les tables archivées, pour que le bouton
+# fonctionne même sur une date déjà archivée (archivage hebdomadaire).
+@app.route('/export/pdf_archive_jour/<date>')
+def export_pdf_archive_jour(date):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+
+        date_obj = datetime.strptime(date, '%Y-%m-%d')
+        date_str = date_obj.strftime('%d/%m/%Y')
+        date_sql = date_obj.strftime('%Y-%m-%d')
+
+        ventes = qall('''SELECT p.nom, s.quantite, s.prix_unitaire, s.total, s.client, u.nom
+                          FROM sorties s JOIN produits p ON s.produit_id = p.id
+                          LEFT JOIN users u ON s.employe_id = u.id
+                          WHERE DATE(s.date_sortie::timestamp) = ?''', (date_sql,)) + \
+                 qall('''SELECT produit_nom, quantite, prix_unitaire, total, client, employe_nom
+                         FROM archive_ventes WHERE DATE(date_vente::timestamp) = ?''', (date_sql,))
+
+        entrees = qall('''SELECT p.nom, e.quantite, e.prix_unitaire, e.total, e.fournisseur, u.nom
+                           FROM entrees e JOIN produits p ON e.produit_id = p.id
+                           LEFT JOIN users u ON e.employe_id = u.id
+                           WHERE DATE(e.date_entree::timestamp) = ?''', (date_sql,)) + \
+                  qall('''SELECT produit_nom, quantite, prix_unitaire, total, fournisseur, employe_nom
+                          FROM archive_entrees WHERE DATE(date_entree::timestamp) = ?''', (date_sql,))
+
+        pertes = qall('''SELECT p.nom, pe.quantite, pe.prix_unitaire, pe.total, pe.motif, u.nom
+                          FROM pertes pe JOIN produits p ON pe.produit_id = p.id
+                          LEFT JOIN users u ON pe.employe_id = u.id
+                          WHERE DATE(pe.date_perte::timestamp) = ?''', (date_sql,)) + \
+                 qall('''SELECT produit_nom, quantite, prix_unitaire, total, motif, employe_nom
+                         FROM archive_pertes WHERE DATE(date_perte::timestamp) = ?''', (date_sql,))
+
+        annulees = qall('''SELECT produit_nom, quantite, total, client, vendeur_original, motif
+                            FROM ventes_annulees WHERE DATE(date_annulation::timestamp) = ?''', (date_sql,)) + \
+                   qall('''SELECT produit_nom, quantite, total, client, vendeur_original, motif
+                           FROM archive_ventes_annulees WHERE DATE(date_annulation::timestamp) = ?''', (date_sql,))
+
+        total_ventes = sum(v[3] for v in ventes) if ventes else 0
+        total_entrees = sum(e[3] for e in entrees) if entrees else 0
+        total_pertes = sum(p[3] for p in pertes) if pertes else 0
+        total_annulees = sum(a[2] for a in annulees) if annulees else 0
+        nb_ventes, nb_entrees, nb_pertes, nb_annulees = len(ventes), len(entrees), len(pertes), len(annulees)
+
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+
+        y = height - 130
+
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColorRGB(0.3, 0.3, 0.3)
+        c.drawString(50, y, f"📚 Archives — {date_str}")
+        y -= 25
+
+        c.setFont("Helvetica-Bold", 14)
+        c.setFillColorRGB(0.12, 0.24, 0.45)
+        c.drawString(50, y, "📊 RÉSUMÉ DU JOUR")
+        y -= 25
+
+        c.setFont("Helvetica", 11)
+        c.setFillColorRGB(0, 0, 0)
+        c.drawString(50, y, f"💰 Ventes : {nb_ventes} vente(s) - {format_prix(total_ventes)} FCFA")
+        y -= 20
+        c.drawString(50, y, f"📥 Entrées : {nb_entrees} entrée(s) - {format_prix(total_entrees)} FCFA")
+        y -= 20
+        c.drawString(50, y, f"⚠️ Pertes : {nb_pertes} perte(s) - {format_prix(total_pertes)} FCFA")
+        y -= 20
+        c.drawString(50, y, f"🚫 Ventes annulées : {nb_annulees} - {format_prix(total_annulees)} FCFA")
+        y -= 30
+
+        c.setStrokeColorRGB(0.8, 0.8, 0.8)
+        c.setLineWidth(0.5)
+        c.line(50, y, width - 50, y)
+        y -= 20
+
+        X = [50, 180, 220, 300, 380, 440]
+
+        cols_ventes = ["Produit", "Qté", "Prix unit.", "Total", "Client", "Vendeur"]
+        y = _pdf_draw_section(
+            c, width, height, y, "🛒 VENTES", (0.12, 0.24, 0.45),
+            cols_ventes, X, ventes,
+            lambda v: [v[0][:30] if v[0] else "-", str(v[1]), format_prix(v[2]),
+                       format_prix(v[3]), v[4][:15] if v[4] else "-", v[5][:15] if v[5] else "-"],
+            "Aucune vente ce jour."
+        )
+
+        c.showPage()
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        y = height - 100
+        cols_entrees = ["Produit", "Qté", "Prix unit.", "Total", "Fournisseur", "Enreg."]
+        y = _pdf_draw_section(
+            c, width, height, y, "📥 ENTRÉES DE STOCK", (0.12, 0.24, 0.45),
+            cols_entrees, X, entrees,
+            lambda e: [e[0][:30] if e[0] else "-", str(e[1]), format_prix(e[2]),
+                       format_prix(e[3]), e[4][:15] if e[4] else "-", e[5][:15] if e[5] else "-"],
+            "Aucune entrée de stock ce jour."
+        )
+
+        c.showPage()
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        y = height - 100
+        cols_pertes = ["Produit", "Qté", "Prix unit.", "Total", "Motif", "Enreg."]
+        y = _pdf_draw_section(
+            c, width, height, y, "⚠️ PERTES", (0.72, 0.11, 0.11),
+            cols_pertes, X, pertes,
+            lambda p: [p[0][:30] if p[0] else "-", str(p[1]), format_prix(p[2]),
+                       format_prix(p[3]), p[4][:15] if p[4] else "-", p[5][:15] if p[5] else "-"],
+            "Aucune perte ce jour."
+        )
+
+        c.showPage()
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        y = height - 100
+        cols_annulees = ["Produit", "Qté", "Total", "Client", "Vendeur", "Motif"]
+        y = _pdf_draw_section(
+            c, width, height, y, "🚫 VENTES ANNULÉES", (0.72, 0.11, 0.11),
+            cols_annulees, X, annulees,
+            lambda a: [a[0][:25] if a[0] else "-", str(a[1]), format_prix(a[2]),
+                       a[3][:12] if a[3] else "-", a[4][:12] if a[4] else "-", a[5][:15] if a[5] else "-"],
+            "Aucune vente annulée ce jour."
+        )
+
+        if y < 60:
+            c.showPage()
+            add_header_to_pdf(c, width, height)
+            add_logo_to_pdf(c, width, height)
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(0.5, 0.5, 0.5)
+        c.drawString(50, 30, "HITNA - Système de gestion - Rapport généré automatiquement")
+
+        c.save()
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"archives_{date}.pdf",
+            mimetype='application/pdf'
+        )
+
+    except Exception as e:
+        print(f"❌ Erreur export_pdf_archive_jour: {e}")
+        flash(f'❌ Erreur lors de l\'export PDF: {str(e)}')
+        return redirect('/admin/archives')
+
 # ─── EXPORT PDF POUR EMPLOYÉ (POINT DU JOUR) ────────────────
 @app.route('/export/pdf_employe')
 def export_pdf_employe():

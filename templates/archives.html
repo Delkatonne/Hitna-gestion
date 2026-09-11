@@ -3,6 +3,7 @@
 {% block title %}Archives - HITNA{% endblock %}
 
 {% block extra_css %}
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
     .tabs {
         display: flex;
@@ -176,20 +177,6 @@
         flex-wrap: wrap;
     }
     
-    .day-name {
-        background: rgba(255,255,255,0.2);
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-    }
-    
-    .day-total {
-        background: rgba(255,255,255,0.2);
-        padding: 6px 15px;
-        border-radius: 25px;
-        font-size: 14px;
-    }
-    
     .entrees-group, .ventes-group, .pertes-group, .annulees-group {
         background: white;
         border-radius: 12px;
@@ -230,29 +217,6 @@
         font-size: 14px;
     }
     
-    .badge-success {
-        background: #d4edda;
-        color: #155724;
-        padding: 5px 10px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-        display: inline-block;
-    }
-    
-    .motif-badge {
-        display: inline-block;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: bold;
-    }
-    .motif-casse { background: #dc3545; color: white; }
-    .motif-vol { background: #6c757d; color: white; }
-    .motif-peremption { background: #ffc107; color: #333; }
-    .motif-erreur-de-stock { background: #17a2b8; color: white; }
-    .motif-autre { background: #6c757d; color: white; }
-    
     .empty-archive {
         text-align: center;
         padding: 60px 20px;
@@ -269,26 +233,6 @@
         font-family: monospace;
         font-size: 13px;
         color: #666;
-    }
-    
-    .vendeur-admin {
-        background: #ffc107;
-        color: #333;
-        padding: 3px 10px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: bold;
-        display: inline-block;
-    }
-    
-    .vendeur-employe {
-        background: #17a2b8;
-        color: white;
-        padding: 3px 10px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: bold;
-        display: inline-block;
     }
     
     .filter-info {
@@ -371,15 +315,6 @@
 
         .day-date {
             font-size: 13px;
-        }
-
-        .day-total {
-            font-size: 11px;
-        }
-
-        .vendeur-admin, .vendeur-employe {
-            font-size: 10px;
-            padding: 2px 5px;
         }
     }
 
@@ -469,11 +404,15 @@
     <div class="filter-group">
         <button class="reset-btn" onclick="resetRecherche()">🔄 Réinitialiser</button>
     </div>
+    <div class="filter-group">
+        <button class="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-lg" onclick="exporterPdfDate()">📄 Exporter en PDF</button>
+    </div>
     {% endif %}
 </div>
 {% if date_recherche %}
     <div class="plage-info">📅 Résultats affichés pour le <strong>{{ date_recherche }}</strong> dans les 4 onglets ci-dessus.</div>
 {% endif %}
+
 
 <!-- Contenu Ventes -->
 <div id="tab-ventes" class="tab-content {% if type_data == 'ventes' %}active{% endif %}">
@@ -506,7 +445,7 @@
                 <div class="day-separator">
                     <div class="day-date">
                         📅 {{ v_date }}
-                        <span class="day-name">
+                        <span class="bg-white/20 px-3 py-1 rounded-full text-xs">
                             {% if v_date == date_actuelle.split(' ')[0] %}
                                 📍 AUJOURD'HUI
                             {% else %}
@@ -514,7 +453,7 @@
                             {% endif %}
                         </span>
                     </div>
-                    <div class="day-total">
+                    <div class="bg-white/20 px-4 py-1.5 rounded-full text-sm">
                         Total: à calculer
                     </div>
                 </div>
@@ -549,9 +488,9 @@
                     <td>{{ v[6] or '-' }}</td>
                     <td>
                         {% if v[7] %}
-                            <span class="vendeur-employe">👤 {{ v[7] }}</span>
+                            <span class="inline-block bg-cyan-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-full">👤 {{ v[7] }}</span>
                         {% else %}
-                            <span class="vendeur-admin">👑 Inconnu</span>
+                            <span class="inline-block bg-amber-400 text-gray-800 text-[11px] font-bold px-2.5 py-1 rounded-full">👑 Inconnu</span>
                         {% endif %}
                     </td>
                 </tr>
@@ -610,7 +549,7 @@
                 <div class="day-separator">
                     <div class="day-date">
                         📅 {{ e_date }}
-                        <span class="day-name">
+                        <span class="bg-white/20 px-3 py-1 rounded-full text-xs">
                             {% if e_date == date_actuelle.split(' ')[0] %}
                                 📍 AUJOURD'HUI
                             {% else %}
@@ -618,7 +557,7 @@
                             {% endif %}
                         </span>
                     </div>
-                    <div class="day-total">
+                    <div class="bg-white/20 px-4 py-1.5 rounded-full text-sm">
                         Total: à calculer
                     </div>
                 </div>
@@ -648,7 +587,7 @@
                 <tr>
                     <td class="heure-cell">{{ e_time if e_time else '-' }}</td>
                     <td><strong>{{ e[1] if e[1] else 'Produit #' + e[0]|string }}</strong></td>
-                    <td><span class="badge-success">+{{ e[2] }}</span></td>
+                    <td><span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded-full">+{{ e[2] }}</span></td>
                     <td>{{ e[3] }} FCFA</td>
                     <td style="font-weight: bold; color: #28a745;">{{ e[4] }} FCFA</td>
                     <td>{{ e[6] or '-' }}</td>
@@ -710,7 +649,7 @@
                 <div class="day-separator">
                     <div class="day-date">
                         📅 {{ p_date }}
-                        <span class="day-name">
+                        <span class="bg-white/20 px-3 py-1 rounded-full text-xs">
                             {% if p_date == date_actuelle.split(' ')[0] %}
                                 📍 AUJOURD'HUI
                             {% else %}
@@ -718,7 +657,7 @@
                             {% endif %}
                         </span>
                     </div>
-                    <div class="day-total">
+                    <div class="bg-white/20 px-4 py-1.5 rounded-full text-sm">
                         Total: à calculer
                     </div>
                 </div>
@@ -752,7 +691,8 @@
                     <td>{{ p[3] }} FCFA</td>
                     <td style="font-weight: bold; color: #dc3545;">{{ p[4] }} FCFA</td>
                     <td>
-                        <span class="motif-badge motif-{{ p[5]|lower|replace(' ', '-') }}">
+                        {% set motif_classes = {'Casse': 'bg-red-600 text-white', 'Vol': 'bg-gray-500 text-white', 'Péremption': 'bg-amber-400 text-gray-800', 'Erreur de stock': 'bg-cyan-600 text-white'} %}
+                        <span class="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold {{ motif_classes.get(p[5], 'bg-gray-500 text-white') }}">
                             {% if p[5] == 'Casse' %}🔨 Casse
                             {% elif p[5] == 'Vol' %}👤 Vol
                             {% elif p[5] == 'Péremption' %}📅 Péremption
@@ -818,7 +758,7 @@
                 <div class="day-separator">
                     <div class="day-date">
                         📅 {{ a_date }}
-                        <span class="day-name">
+                        <span class="bg-white/20 px-3 py-1 rounded-full text-xs">
                             {% if a_date == date_actuelle.split(' ')[0] %}
                                 📍 AUJOURD'HUI
                             {% else %}
@@ -826,7 +766,7 @@
                             {% endif %}
                         </span>
                     </div>
-                    <div class="day-total">
+                    <div class="bg-white/20 px-4 py-1.5 rounded-full text-sm">
                         Total: à calculer
                     </div>
                 </div>
@@ -931,6 +871,15 @@
         url.searchParams.delete('tri');
         url.searchParams.set('type', currentType);
         window.location.href = url.toString();
+    }
+
+    function exporterPdfDate() {
+        const date = document.getElementById('date_recherche').value;
+        if (!date) {
+            alert('Veuillez sélectionner une date à exporter');
+            return;
+        }
+        window.location.href = '/export/pdf_archive_jour/' + date;
     }
     
     document.addEventListener('DOMContentLoaded', function() {
