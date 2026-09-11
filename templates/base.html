@@ -803,6 +803,11 @@
                     </a>
                 </div>
                 <div class="nav-item">
+                    <a href="/admin/boutiques" class="nav-link {% if request.endpoint == 'admin_boutiques' %}active{% endif %}">
+                        <span class="icon"><i class="bi bi-shop"></i></span><span>Boutiques</span>
+                    </a>
+                </div>
+                <div class="nav-item">
                     <a href="/admin/ventes" class="nav-link {% if request.endpoint == 'admin_ventes' %}active{% endif %}">
                         <span class="icon"><i class="bi bi-cart3"></i></span><span>Ventes</span>
                     </a>
@@ -966,6 +971,17 @@
                 </div>
                 <div class="header-actions">
                     <span id="connectionStatus" style="display: none;"></span>
+                    {% if session.role == 'admin' and boutiques_toutes %}
+                    <div class="boutique-switcher" style="position:relative;">
+                        <select onchange="window.location.href='/admin/boutique-active/' + (this.value || 'toutes')"
+                                style="padding:8px 12px; border-radius:8px; border:2px solid #e0e0e0; font-size:13px; font-weight:600; color:#1e3c72; cursor:pointer;">
+                            <option value="toutes" {% if not boutique_filtre_id %}selected{% endif %}>🏢 Toutes les boutiques</option>
+                            {% for b in boutiques_toutes %}
+                            <option value="{{ b[0] }}" {% if boutique_filtre_id == b[0] %}selected{% endif %}>🏪 {{ b[1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
                     <button id="themeToggle" class="theme-toggle" title="Changer le thème"><i class="bi bi-moon-stars-fill"></i></button>
                     <div class="notification-bell">
                         <button id="notificationBell" class="bell-btn" title="Notifications">

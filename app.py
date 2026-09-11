@@ -179,7 +179,7 @@ BACKUP_TABLES = [
     'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_recap',
     'archive_ventes_annulees',
     'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
-    'ventes_annulees', 'paliers_prix', 'produits_supprimes', 'taches_business_plan',
+    'ventes_annulees', 'paliers_prix', 'produits_supprimes', 'taches_business_plan', 'boutiques',
 ]
 
 def generer_backup_json():
@@ -667,6 +667,49 @@ def init_db():
         c.execute('CREATE INDEX IF NOT EXISTS idx_entrees_date ON entrees(date_entree)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_produits_nom ON produits(nom)')
 
+        # ══════════════════════════════════════════════════════════════
+        # MULTI-BOUTIQUES — chaque boutique a son propre catalogue de
+        # produits. Un employé est rattaché à UNE boutique (ne voit que
+        # la sienne) ; l'admin n'est rattaché à aucune (boutique_id NULL
+        # sur users) et choisit la boutique active via un sélecteur, ou
+        # « Toutes » pour une vue consolidée.
+        # ══════════════════════════════════════════════════════════════
+        c.execute('''CREATE TABLE IF NOT EXISTS boutiques (
+            id SERIAL PRIMARY KEY,
+            nom TEXT UNIQUE NOT NULL,
+            adresse TEXT,
+            telephone TEXT,
+            actif INTEGER DEFAULT 1,
+            date_creation TEXT)''')
+
+        def _ajouter_colonne_boutique(table):
+            try:
+                c.execute("SELECT column_name FROM information_schema.columns WHERE table_name=%s AND column_name='boutique_id'", (table,))
+                if not c.fetchone():
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN boutique_id INTEGER REFERENCES boutiques(id)")
+                    print(f"✅ Colonne 'boutique_id' ajoutée à {table}")
+            except Exception as e:
+                print(f"⚠️ Erreur ajout colonne boutique_id à {table}: {e}")
+
+        for _table_bq in ['produits', 'sorties', 'entrees', 'pertes', 'charges', 'fournisseurs',
+                           'commandes_fournisseurs', 'ventes_annulees', 'users',
+                           'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_ventes_annulees']:
+            _ajouter_colonne_boutique(_table_bq)
+
+        c.execute("SELECT id FROM boutiques ORDER BY id LIMIT 1")
+        row = c.fetchone()
+        if not row:
+            c.execute("INSERT INTO boutiques (nom, actif, date_creation) VALUES (%s,%s,%s) RETURNING id",
+                       ('Boutique principale', 1, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            boutique_defaut_id = c.fetchone()[0]
+            print(f"✅ Boutique par défaut créée (id={boutique_defaut_id})")
+            for _table_bq in ['produits', 'sorties', 'entrees', 'pertes', 'charges', 'fournisseurs',
+                               'commandes_fournisseurs', 'ventes_annulees',
+                               'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_ventes_annulees']:
+                c.execute(f"UPDATE {_table_bq} SET boutique_id=%s WHERE boutique_id IS NULL", (boutique_defaut_id,))
+            c.execute("UPDATE users SET boutique_id=%s WHERE boutique_id IS NULL AND role='employe'", (boutique_defaut_id,))
+            print("✅ Données existantes rattachées à la boutique principale")
+
         c.execute("SELECT COUNT(*) FROM unites_mesure")
         row = c.fetchone()
         if row and row[0] == 0:
@@ -850,6 +893,8 @@ def inject_now():
         if is_admin:
             nm = q1("SELECT COUNT(*) FROM messages_contact WHERE statut='non_lu'")
             ctx['nb_messages_non_lus'] = nm[0] if nm else 0
+            ctx['boutiques_toutes'] = qall("SELECT id, nom FROM boutiques WHERE actif = 1 ORDER BY nom")
+            ctx['boutique_filtre_id'] = session.get('boutique_filtre')
     except Exception:
         ctx['nb_commandes_nouvelles'] = 0
         ctx['nb_messages_non_lus'] = 0
@@ -947,6 +992,27 @@ def check_perm(perm):
         return False
 
 # ──────────────────────────────────────────────────────────────
+# MULTI-BOUTIQUES — boutique active pour filtrer les requêtes.
+# Un employé est toujours limité à SA boutique (session['boutique_id']
+# fixé à la connexion). L'admin choisit une boutique via le sélecteur
+# (session['boutique_filtre']) ou « Toutes » (None = vue consolidée).
+# ──────────────────────────────────────────────────────────────
+def boutique_active():
+    """None = pas de filtre (vue consolidée, admin uniquement).
+    Sinon, l'id de boutique à utiliser dans les requêtes."""
+    if session.get('role') == 'admin':
+        return session.get('boutique_filtre')
+    return session.get('boutique_id')
+
+def boutique_filtre_sql(colonne='boutique_id'):
+    """Retourne (clause_sql, params) à ajouter à une requête existante
+    (après un WHERE/AND déjà présent). Chaîne vide + () si vue consolidée."""
+    bid = boutique_active()
+    if bid is None:
+        return "", ()
+    return f" AND {colonne} = ?", (bid,)
+
+# ──────────────────────────────────────────────────────────────
 # MOTS DE PASSE — bcrypt (salé, résistant au brute-force).
 # Les comptes créés avant cette mise à jour ont un hash SHA-256 non salé
 # (toujours 64 caractères hexadécimaux) ; verify_password() les reconnaît
@@ -997,7 +1063,7 @@ def login():
             password = request.form.get('password', '')
 
             candidats = qall("""
-                SELECT id, nom, actif, role_personnalise, role, permissions, password_hash
+                SELECT id, nom, actif, role_personnalise, role, permissions, password_hash, boutique_id
                 FROM users
                 WHERE role_personnalise = %s OR role = %s
             """, (sel, sel))
@@ -1010,7 +1076,7 @@ def login():
                     rb = 'employe'
                 if rb:
                     candidats = qall("""
-                        SELECT id, nom, actif, role_personnalise, role, permissions, password_hash
+                        SELECT id, nom, actif, role_personnalise, role, permissions, password_hash, boutique_id
                         FROM users
                         WHERE role = %s
                     """, (rb,))
@@ -1032,10 +1098,15 @@ def login():
                     'role': user[4],
                     'user_nom': user[1],
                     'role_affiche': user[3] or ('Administrateur' if user[4] == 'admin' else 'Employé'),
-                    'permissions': user[5]
+                    'permissions': user[5],
+                    'boutique_id': user[7],
+                    'boutique_filtre': None,
                 })
                 
-                flash(f'✅ Bonjour {user[1]} !')
+                if user[4] != 'admin' and not user[7]:
+                    flash(f'⚠️ Bonjour {user[1]} ! Votre compte n\'est rattaché à aucune boutique — demandez à un administrateur de vous en assigner une.')
+                else:
+                    flash(f'✅ Bonjour {user[1]} !')
                 return redirect('/dashboard' if user[4] == 'admin' else '/vente')
             
             login_record_failure(ip)
@@ -1540,7 +1611,8 @@ def produits_list():
         if filtre not in ('actifs', 'inactifs', 'tous'):
             filtre = 'actifs'
         rupture_only = request.args.get('rupture') == '1'
-        cache_key = f'produits_list_{filtre}_{"rupture" if rupture_only else "all"}'
+        bid = boutique_active()
+        cache_key = f'produits_list_{filtre}_{"rupture" if rupture_only else "all"}_{bid or "toutes"}'
         cached_data = get_cached(cache_key, 120)
         if cached_data:
             produits, unites, categories, nb_inactifs, nb_ruptures = cached_data
@@ -1552,6 +1624,10 @@ def produits_list():
                 conditions.append("COALESCE(p.actif, 1) = 0")
             if rupture_only:
                 conditions.append("p.stock <= 0")
+            params_p = []
+            if bid is not None:
+                conditions.append("p.boutique_id = ?")
+                params_p.append(bid)
             where_actif = ("WHERE " + " AND ".join(conditions)) if conditions else ""
             produits = qall(f'''SELECT p.id, p.nom, p.prix, p.stock, p.stock_min,
                                       COALESCE(u.symbole, '') as unite_symbole,
@@ -1568,12 +1644,13 @@ def produits_list():
                                LEFT JOIN unites_mesure u ON p.unite_id = u.id 
                                LEFT JOIN categories_produits c ON p.categorie_id = c.id
                                {where_actif}
-                               ORDER BY p.nom''')
+                               ORDER BY p.nom''', tuple(params_p))
             unites = qall("SELECT id, nom, symbole FROM unites_mesure WHERE actif = 1 ORDER BY nom")
             categories = qall("SELECT id, nom, icone FROM categories_produits WHERE actif = 1 ORDER BY nom")
-            nb_inactifs_row = q1("SELECT COUNT(*) FROM produits WHERE COALESCE(actif,1) = 0")
+            where_bq, params_bq = boutique_filtre_sql('boutique_id')
+            nb_inactifs_row = q1(f"SELECT COUNT(*) FROM produits WHERE COALESCE(actif,1) = 0{where_bq}", params_bq)
             nb_inactifs = nb_inactifs_row[0] if nb_inactifs_row else 0
-            nb_ruptures_row = q1("SELECT COUNT(*) FROM produits WHERE stock <= 0 AND COALESCE(actif,1) = 1")
+            nb_ruptures_row = q1(f"SELECT COUNT(*) FROM produits WHERE stock <= 0 AND COALESCE(actif,1) = 1{where_bq}", params_bq)
             nb_ruptures = nb_ruptures_row[0] if nb_ruptures_row else 0
             set_cached(cache_key, (produits, unites, categories, nb_inactifs, nb_ruptures))
         return render_template('produits.html', produits=produits, unites=unites, categories=categories,
@@ -1611,8 +1688,12 @@ def ajouter_produit():
             if existant:
                 flash(f'❌ Ce code-barres est déjà utilisé par "{existant[0]}"')
                 return redirect('/admin/produits')
-        ok = exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre) VALUES (?,?,?,?,?,?,?,?,?)",
-            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre))
+        boutique_id = boutique_active()
+        if boutique_id is None:
+            flash('❌ Choisissez d\'abord une boutique active (en haut) avant d\'ajouter un produit — le catalogue est propre à chaque boutique')
+            return redirect('/admin/produits')
+        ok = exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, boutique_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, boutique_id))
         if ok:
             flash(f'✅ Produit "{nom}" ajouté ({prix} FCFA)')
             envoyer_notification_a_tous('produit','🆕 Nouveau produit',f'"{nom}" ajouté ({prix} FCFA)','/admin/produits')
@@ -2056,14 +2137,18 @@ def entrees_list():
         if not check_perm('entrees'):
             flash('❌ Permission refusée')
             return redirect('/vente')
-        cache_key = 'entrees_list'
+        bid = boutique_active()
+        cache_key = f'entrees_list_{bid or "toutes"}'
         cached_data = get_cached(cache_key, 30)
         if cached_data:
             entrees, produits = cached_data
         else:
-            entrees = qall('''SELECT e.id,p.nom,e.quantite,e.prix_unitaire,e.total,e.date_entree,e.fournisseur
-                FROM entrees e JOIN produits p ON e.produit_id=p.id ORDER BY e.date_entree DESC LIMIT 30''')
-            produits = qall("SELECT id,nom,stock,COALESCE(vente_fractionnable,0) FROM produits ORDER BY nom")
+            where_bq, params_bq = boutique_filtre_sql('e.boutique_id')
+            entrees = qall(f'''SELECT e.id,p.nom,e.quantite,e.prix_unitaire,e.total,e.date_entree,e.fournisseur
+                FROM entrees e JOIN produits p ON e.produit_id=p.id
+                WHERE 1=1{where_bq} ORDER BY e.date_entree DESC LIMIT 30''', params_bq)
+            where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
+            produits = qall(f"SELECT id,nom,stock,COALESCE(vente_fractionnable,0) FROM produits WHERE 1=1{where_bq2} ORDER BY nom", params_bq2)
             set_cached(cache_key, (entrees, produits))
         return render_template('entrees.html', entrees=entrees, produits=produits)
     except Exception as e:
@@ -2115,7 +2200,7 @@ def _traiter_vente_cart(cart, client, employe_id, telephone=None):
             continue
         if pid <= 0 or qty_selection <= 0:
             continue
-        p = q1("SELECT nom, prix, stock, vente_fractionnable FROM produits WHERE id=?", (pid,))
+        p = q1("SELECT nom, prix, stock, vente_fractionnable, boutique_id FROM produits WHERE id=?", (pid,))
         if not p:
             erreurs.append(f'Produit #{pid} introuvable')
             continue
@@ -2143,9 +2228,9 @@ def _traiter_vente_cart(cart, client, employe_id, telephone=None):
             continue
 
         insert_ok = exe("""INSERT INTO sorties
-            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id, palier_nom)
-            VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (pid, qty_base, prix_unitaire, total, now, client, employe_id, groupe_vente, client_id, palier_nom))
+            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id, palier_nom, boutique_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (pid, qty_base, prix_unitaire, total, now, client, employe_id, groupe_vente, client_id, palier_nom, p[4]))
         if not insert_ok:
             erreurs.append(f'Échec d\'enregistrement pour "{p[0]}" (erreur serveur)')
             continue
@@ -2167,7 +2252,7 @@ def _annuler_vente(groupe_vente, annule_par_id, motif=None):
     Retourne (ok: bool, message: str)."""
     motif = (motif or '').strip() or 'Non précisé'
     lignes = qall('''SELECT s.id, s.produit_id, s.quantite, p.nom, DATE(s.date_sortie),
-                             s.prix_unitaire, s.total, s.client, s.date_sortie, u.nom, s.palier_nom
+                             s.prix_unitaire, s.total, s.client, s.date_sortie, u.nom, s.palier_nom, s.boutique_id
                       FROM sorties s JOIN produits p ON s.produit_id = p.id
                       JOIN users u ON s.employe_id = u.id
                       WHERE s.groupe_vente = ?''', (groupe_vente,))
@@ -2184,13 +2269,13 @@ def _annuler_vente(groupe_vente, annule_par_id, motif=None):
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     noms = []
-    for ligne_id, produit_id, quantite, nom_produit, _, prix_unitaire, total, client, date_sortie, vendeur, palier_nom in lignes:
+    for ligne_id, produit_id, quantite, nom_produit, _, prix_unitaire, total, client, date_sortie, vendeur, palier_nom, boutique_id in lignes:
         exe('''INSERT INTO ventes_annulees
                (groupe_vente, produit_nom, quantite, prix_unitaire, total, client,
-                vendeur_original, date_vente_original, date_annulation, annule_par, palier_nom, motif)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
+                vendeur_original, date_vente_original, date_annulation, annule_par, palier_nom, motif, boutique_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (groupe_vente, nom_produit, quantite, prix_unitaire, total, client,
-             vendeur, date_sortie, now, nom_annuleur, palier_nom, motif))
+             vendeur, date_sortie, now, nom_annuleur, palier_nom, motif, boutique_id))
         exe("UPDATE produits SET stock = stock + ? WHERE id = ?", (quantite, produit_id))
         exe("DELETE FROM sorties WHERE id = ?", (ligne_id,))
         noms.append(f'{format_qte(quantite)} x {palier_nom}' if palier_nom else f'{format_qte(quantite)} x {nom_produit}')
@@ -2206,15 +2291,15 @@ def _traiter_entree(pid, qty, pu, fournisseur, employe_id):
         return False, 'Données invalides'
     if pid <= 0 or qty <= 0 or pu <= 0:
         return False, 'Données invalides'
-    p = q1("SELECT nom, vente_fractionnable FROM produits WHERE id=?", (pid,))
+    p = q1("SELECT nom, vente_fractionnable, boutique_id FROM produits WHERE id=?", (pid,))
     if not p:
         return False, f'Produit #{pid} introuvable'
     if not p[1] and qty != int(qty):
         return False, f'"{p[0]}" ne peut être reçu qu\'en quantité entière'
     total = round(qty * pu)
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    insert_ok = exe("INSERT INTO entrees (produit_id,quantite,prix_unitaire,total,date_entree,fournisseur,employe_id) VALUES (?,?,?,?,?,?,?)",
-        (pid, qty, pu, total, now, fournisseur or '', employe_id))
+    insert_ok = exe("INSERT INTO entrees (produit_id,quantite,prix_unitaire,total,date_entree,fournisseur,employe_id,boutique_id) VALUES (?,?,?,?,?,?,?,?)",
+        (pid, qty, pu, total, now, fournisseur or '', employe_id, p[2]))
     if not insert_ok:
         return False, f'❌ Échec d\'enregistrement de l\'entrée pour "{p[0]}" (erreur serveur)'
     exe("UPDATE produits SET stock=stock+? WHERE id=?", (qty, pid))
@@ -2231,7 +2316,7 @@ def _traiter_perte(pid, qty, motif, employe_id):
         return False, 'Données invalides'
     if pid <= 0 or qty <= 0:
         return False, 'Données invalides'
-    p = q1("SELECT nom,prix,stock,vente_fractionnable FROM produits WHERE id=?", (pid,))
+    p = q1("SELECT nom,prix,stock,vente_fractionnable,boutique_id FROM produits WHERE id=?", (pid,))
     if not p:
         return False, f'Produit #{pid} introuvable'
     if not p[3] and qty != int(qty):
@@ -2240,8 +2325,8 @@ def _traiter_perte(pid, qty, motif, employe_id):
         return False, f'Stock insuffisant ! {format_qte(p[2])} unités de {p[0]}'
     total = round(qty * p[1])
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    insert_ok = exe("INSERT INTO pertes (produit_id,quantite,prix_unitaire,total,motif,date_perte,employe_id) VALUES (?,?,?,?,?,?,?)",
-        (pid, qty, p[1], total, motif or 'Non précisé', now, employe_id))
+    insert_ok = exe("INSERT INTO pertes (produit_id,quantite,prix_unitaire,total,motif,date_perte,employe_id,boutique_id) VALUES (?,?,?,?,?,?,?,?)",
+        (pid, qty, p[1], total, motif or 'Non précisé', now, employe_id, p[4]))
     if not insert_ok:
         return False, f'❌ Échec d\'enregistrement de la perte pour "{p[0]}" (erreur serveur)'
     exe("UPDATE produits SET stock=GREATEST(0,stock-?) WHERE id=?", (qty, pid))
@@ -2377,12 +2462,14 @@ def vente():
             except Exception as e:
                 flash(f'❌ Erreur lors de la vente: {str(e)}')
             return redirect('/vente')
-        cache_key = 'vente_data'
+        bid = boutique_active()
+        cache_key = f'vente_data_{bid or "toutes"}'
         cached_data = get_cached(cache_key, 30)
         if cached_data:
             produits, historique, stats_vendeurs, total_general, paliers = cached_data
         else:
-            produits = qall('''SELECT p.id, p.nom, p.prix, p.stock,
+            where_bqp, params_bqp = boutique_filtre_sql('p.boutique_id')
+            produits = qall(f'''SELECT p.id, p.nom, p.prix, p.stock,
                                        COALESCE(u.symbole,'') as unite_symbole,
                                        COALESCE(u.nom,'') as unite_nom,
                                        p.valeur_unite,
@@ -2390,19 +2477,21 @@ def vente():
                                        COALESCE(p.code_barre, '') as code_barre
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
-                                WHERE p.stock>0 AND COALESCE(p.actif,1)=1 ORDER BY p.nom''')
-            historique = qall('''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente, s.palier_nom
+                                WHERE p.stock>0 AND COALESCE(p.actif,1)=1{where_bqp} ORDER BY p.nom''', params_bqp)
+            where_bqs, params_bqs = boutique_filtre_sql('s.boutique_id')
+            historique = qall(f'''SELECT s.id, p.nom, s.quantite, s.total, s.date_sortie, s.client, u.nom, u.role, s.groupe_vente, s.palier_nom
                 FROM sorties s 
                 JOIN produits p ON s.produit_id = p.id 
                 JOIN users u ON s.employe_id = u.id
-                WHERE DATE(s.date_sortie) = CURRENT_DATE 
-                ORDER BY s.date_sortie DESC LIMIT 20''')
-            stats_vendeurs = qall('''SELECT u.role, COUNT(s.id), COALESCE(SUM(s.total), 0)
+                WHERE DATE(s.date_sortie) = CURRENT_DATE{where_bqs}
+                ORDER BY s.date_sortie DESC LIMIT 20''', params_bqs)
+            stats_vendeurs = qall(f'''SELECT u.role, COUNT(s.id), COALESCE(SUM(s.total), 0)
                 FROM sorties s 
                 JOIN users u ON s.employe_id = u.id
-                WHERE DATE(s.date_sortie) = CURRENT_DATE 
-                GROUP BY u.role''')
-            total_general = q1("SELECT COALESCE(SUM(total), 0), COUNT(*) FROM sorties WHERE DATE(date_sortie) = CURRENT_DATE")
+                WHERE DATE(s.date_sortie) = CURRENT_DATE{where_bqs}
+                GROUP BY u.role''', params_bqs)
+            where_bqs2, params_bqs2 = boutique_filtre_sql('boutique_id')
+            total_general = q1(f"SELECT COALESCE(SUM(total), 0), COUNT(*) FROM sorties WHERE DATE(date_sortie) = CURRENT_DATE{where_bqs2}", params_bqs2)
             if not total_general:
                 total_general = (0, 0)
             paliers = _paliers_par_produit()
@@ -2634,34 +2723,39 @@ def dashboard():
             return redirect('/login')
         archiver_si_necessaire()
         verifier_alertes_stock()
-        cache_key = 'dashboard_data'
+        bid = boutique_active()
+        cache_key = f'dashboard_data_{bid or "toutes"}'
         cached_data = get_cached(cache_key, 60)
         if cached_data:
             (total_jour, nb_produits, stock_total, nb_stock_bas, 
              stock_bas, top_produits, stats_vendeurs,
              ventes_7_jours, ventes_par_heure) = cached_data
         else:
-            total_jour = q1("SELECT COALESCE(SUM(total),0) FROM sorties WHERE DATE(date_sortie)=CURRENT_DATE")
+            where_s, params_s = boutique_filtre_sql('boutique_id')
+            where_p, params_p = boutique_filtre_sql('boutique_id')
+            total_jour = q1(f"SELECT COALESCE(SUM(total),0) FROM sorties WHERE DATE(date_sortie)=CURRENT_DATE{where_s}", params_s)
             total_jour = total_jour[0] if total_jour else 0
-            nb_produits = q1("SELECT COUNT(*) FROM produits")
+            nb_produits = q1(f"SELECT COUNT(*) FROM produits WHERE 1=1{where_p}", params_p)
             nb_produits = nb_produits[0] if nb_produits else 0
-            stock_total = q1("SELECT COALESCE(SUM(stock),0) FROM produits")
+            stock_total = q1(f"SELECT COALESCE(SUM(stock),0) FROM produits WHERE 1=1{where_p}", params_p)
             stock_total = stock_total[0] if stock_total else 0
-            nb_stock_bas = q1("SELECT COUNT(*) FROM produits WHERE stock<=stock_min")
+            nb_stock_bas = q1(f"SELECT COUNT(*) FROM produits WHERE stock<=stock_min{where_p}", params_p)
             nb_stock_bas = nb_stock_bas[0] if nb_stock_bas else 0
-            stock_bas = qall("SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min LIMIT 20")
-            top_produits = qall('''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
+            stock_bas = qall(f"SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min{where_p} LIMIT 20", params_p)
+            where_p2, params_p2 = boutique_filtre_sql('p.boutique_id')
+            top_produits = qall(f'''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
                 FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
-                GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 5''')
-            stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
+                WHERE 1=1{where_p2}
+                GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 5''', params_p2)
+            stats_vendeurs = qall(f'''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
                 FROM sorties s JOIN users u ON s.employe_id=u.id
-                WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
-            ventes_7_jours = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0)
-                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
-                GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
-            ventes_par_heure = qall('''SELECT EXTRACT(HOUR FROM date_sortie::timestamp)::int,COALESCE(SUM(total),0)
-                FROM sorties WHERE DATE(date_sortie::timestamp) = CURRENT_DATE
-                GROUP BY 1 ORDER BY 1''')
+                WHERE DATE(s.date_sortie)=CURRENT_DATE{where_s} GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''', params_s)
+            ventes_7_jours = qall(f'''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0)
+                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'{where_s}
+                GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''', params_s)
+            ventes_par_heure = qall(f'''SELECT EXTRACT(HOUR FROM date_sortie::timestamp)::int,COALESCE(SUM(total),0)
+                FROM sorties WHERE DATE(date_sortie::timestamp) = CURRENT_DATE{where_s}
+                GROUP BY 1 ORDER BY 1''', params_s)
             set_cached(cache_key, (total_jour, nb_produits, stock_total, nb_stock_bas, 
                                    stock_bas, top_produits, stats_vendeurs,
                                    ventes_7_jours, ventes_par_heure))
@@ -2683,13 +2777,16 @@ def pertes_list():
         if not check_perm('pertes'):
             flash('❌ Permission refusée')
             return redirect('/vente')
-        pertes = qall('''SELECT p.id,pr.nom,p.quantite,p.prix_unitaire,p.total,p.motif,p.date_perte,u.nom
+        where_bq, params_bq = boutique_filtre_sql('p.boutique_id')
+        pertes = qall(f'''SELECT p.id,pr.nom,p.quantite,p.prix_unitaire,p.total,p.motif,p.date_perte,u.nom
             FROM pertes p JOIN produits pr ON p.produit_id=pr.id JOIN users u ON p.employe_id=u.id
-            ORDER BY p.date_perte DESC LIMIT 100''')
-        produits = qall("SELECT id,nom,prix,stock,COALESCE(vente_fractionnable,0) FROM produits ORDER BY nom")
-        s_auj = q1("SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE DATE(date_perte)=CURRENT_DATE")
+            WHERE 1=1{where_bq}
+            ORDER BY p.date_perte DESC LIMIT 100''', params_bq)
+        where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
+        produits = qall(f"SELECT id,nom,prix,stock,COALESCE(vente_fractionnable,0) FROM produits WHERE 1=1{where_bq2} ORDER BY nom", params_bq2)
+        s_auj = q1(f"SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE DATE(date_perte)=CURRENT_DATE{where_bq}", params_bq)
         s_auj = s_auj if s_auj else (0,0,0)
-        s_mois = q1("SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE date_perte::timestamp >= NOW() - INTERVAL '30 days'")
+        s_mois = q1(f"SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE date_perte::timestamp >= NOW() - INTERVAL '30 days'{where_bq}", params_bq)
         s_mois = s_mois if s_mois else (0,0,0)
         return render_template('admin_pertes.html', pertes=pertes, produits=produits,
                                stats_aujourdhui=s_auj, stats_mois=s_mois)
@@ -2808,10 +2905,13 @@ def admin_acteurs():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        acteurs = qall('''SELECT id,nom,role,role_personnalise,password_hash,
-            COALESCE(actif,1),COALESCE(motif_absence,''),COALESCE(permissions,'vente'),COALESCE(email,'')
-            FROM users ORDER BY role DESC,actif DESC,id''')
-        return render_template('admin_acteurs.html', acteurs=acteurs)
+        acteurs = qall('''SELECT u.id,u.nom,u.role,u.role_personnalise,u.password_hash,
+            COALESCE(u.actif,1),COALESCE(u.motif_absence,''),COALESCE(u.permissions,'vente'),
+            COALESCE(u.email,''), u.boutique_id, COALESCE(b.nom,'')
+            FROM users u LEFT JOIN boutiques b ON u.boutique_id = b.id
+            ORDER BY u.role DESC,u.actif DESC,u.id''')
+        boutiques = qall("SELECT id, nom FROM boutiques WHERE actif = 1 ORDER BY nom")
+        return render_template('admin_acteurs.html', acteurs=acteurs, boutiques=boutiques)
     except Exception as e:
         print(f"❌ Erreur admin_acteurs: {e}")
         flash('Erreur lors du chargement des acteurs')
@@ -2827,13 +2927,17 @@ def ajouter_acteur():
         rp = request.form.get('role_personnalise', '')
         mdp = request.form.get('mot_de_passe', '')
         email = request.form.get('email', '')
+        boutique_id = request.form.get('boutique_id')
+        boutique_id = int(boutique_id) if (boutique_id and rb != 'admin') else None
         if not nom or not mdp:
             flash('❌ Nom et mot de passe obligatoires')
             return redirect('/admin/acteurs')
+        if rb != 'admin' and not boutique_id:
+            flash('⚠️ Acteur créé, mais sans boutique assignée — il ne verra aucun produit tant qu\'une boutique ne lui sera pas assignée')
         ph = hash_password(mdp)
         perms = 'admin' if rb == 'admin' else 'vente'
-        exe("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions,email) VALUES (?,?,?,?,1,?,?)",
-            (rb,rp,ph,nom,perms,email))
+        exe("INSERT INTO users (role,role_personnalise,password_hash,nom,actif,permissions,email,boutique_id) VALUES (?,?,?,?,1,?,?,?)",
+            (rb,rp,ph,nom,perms,email,boutique_id))
         flash(f'✅ Acteur "{nom}" créé')
     except Exception as e:
         print(f"❌ Erreur ajouter_acteur: {e}")
@@ -2851,8 +2955,10 @@ def modifier_acteur(id):
         perms = ','.join(request.form.getlist('permissions')) or 'vente'
         actif = int(request.form.get('actif', 1))
         motif = request.form.get('motif_absence', '')
-        exe("UPDATE users SET nom=?,role_personnalise=?,email=?,permissions=?,actif=?,motif_absence=? WHERE id=?",
-            (nom,rp,email,perms,actif,motif,id))
+        boutique_id = request.form.get('boutique_id')
+        boutique_id = int(boutique_id) if boutique_id else None
+        exe("UPDATE users SET nom=?,role_personnalise=?,email=?,permissions=?,actif=?,motif_absence=?,boutique_id=? WHERE id=?",
+            (nom,rp,email,perms,actif,motif,boutique_id,id))
         if request.form.get('new_password'):
             exe("UPDATE users SET password_hash=? WHERE id=?",
                 (hash_password(request.form['new_password']),id))
@@ -2861,6 +2967,102 @@ def modifier_acteur(id):
         print(f"❌ Erreur modifier_acteur: {e}")
         flash('❌ Erreur lors de la modification')
     return redirect('/admin/acteurs')
+
+# ══════════════════════════════════════════════════════════════
+# BOUTIQUES — gestion multi-boutiques
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/boutiques')
+def admin_boutiques():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        boutiques = qall('''SELECT b.id, b.nom, b.adresse, b.telephone, b.actif,
+                                    (SELECT COUNT(*) FROM produits p WHERE p.boutique_id = b.id) AS nb_produits,
+                                    (SELECT COUNT(*) FROM users u WHERE u.boutique_id = b.id AND u.role = 'employe') AS nb_employes
+                             FROM boutiques b ORDER BY b.nom''')
+        return render_template('admin_boutiques.html', boutiques=boutiques,
+            boutique_active=session.get('boutique_filtre'))
+    except Exception as e:
+        print(f"❌ Erreur admin_boutiques: {e}")
+        flash('Erreur lors du chargement des boutiques')
+        return redirect('/dashboard')
+
+@app.route('/admin/boutiques/ajouter', methods=['POST'])
+def ajouter_boutique():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nom = request.form.get('nom', '').strip()
+        adresse = request.form.get('adresse', '').strip()
+        telephone = request.form.get('telephone', '').strip()
+        if not nom:
+            flash('❌ Le nom de la boutique est obligatoire')
+            return redirect('/admin/boutiques')
+        existant = q1("SELECT id FROM boutiques WHERE LOWER(nom) = LOWER(?)", (nom,))
+        if existant:
+            flash(f'❌ Une boutique nommée "{nom}" existe déjà')
+            return redirect('/admin/boutiques')
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe("INSERT INTO boutiques (nom, adresse, telephone, actif, date_creation) VALUES (?,?,?,?,?)",
+            (nom, adresse or None, telephone or None, 1, now))
+        flash(f'✅ Boutique "{nom}" créée')
+    except Exception as e:
+        print(f"❌ Erreur ajouter_boutique: {e}")
+        flash('❌ Erreur lors de la création de la boutique')
+    return redirect('/admin/boutiques')
+
+@app.route('/admin/boutiques/modifier/<int:id>', methods=['POST'])
+def modifier_boutique(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        nom = request.form.get('nom', '').strip()
+        adresse = request.form.get('adresse', '').strip()
+        telephone = request.form.get('telephone', '').strip()
+        if not nom:
+            flash('❌ Le nom de la boutique est obligatoire')
+            return redirect('/admin/boutiques')
+        exe("UPDATE boutiques SET nom=?, adresse=?, telephone=? WHERE id=?",
+            (nom, adresse or None, telephone or None, id))
+        flash(f'✅ Boutique "{nom}" modifiée')
+    except Exception as e:
+        print(f"❌ Erreur modifier_boutique: {e}")
+        flash('❌ Erreur lors de la modification')
+    return redirect('/admin/boutiques')
+
+@app.route('/admin/boutiques/desactiver/<int:id>')
+def desactiver_boutique(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        b = q1("SELECT nom, actif FROM boutiques WHERE id=?", (id,))
+        if b:
+            nouveau_statut = 0 if b[1] else 1
+            exe("UPDATE boutiques SET actif=? WHERE id=?", (nouveau_statut, id))
+            flash(f'✅ Boutique "{b[0]}" {"réactivée" if nouveau_statut else "désactivée"}')
+    except Exception as e:
+        print(f"❌ Erreur desactiver_boutique: {e}")
+        flash('❌ Erreur')
+    return redirect('/admin/boutiques')
+
+@app.route('/admin/boutique-active/<valeur>')
+def changer_boutique_active(valeur):
+    """Change la boutique active pour l'admin (sélecteur). 'toutes' = vue consolidée."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        if valeur == 'toutes':
+            session['boutique_filtre'] = None
+            flash('🏢 Vue consolidée — toutes les boutiques')
+        else:
+            b = q1("SELECT nom FROM boutiques WHERE id=?", (int(valeur),))
+            if b:
+                session['boutique_filtre'] = int(valeur)
+                flash(f'🏪 Boutique active : {b[0]}')
+        clear_cache()
+    except Exception as e:
+        print(f"❌ Erreur changer_boutique_active: {e}")
+    return redirect(request.referrer or '/dashboard')
 
 @app.route('/admin/acteurs/permissions/<int:id>', methods=['POST'])
 def modifier_permissions_acteur(id):
@@ -2995,7 +3197,8 @@ def admin_fournisseurs():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        fournisseurs = qall("SELECT * FROM fournisseurs ORDER BY nom")
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        fournisseurs = qall(f"SELECT * FROM fournisseurs WHERE 1=1{where_bq} ORDER BY nom", params_bq)
         return render_template('admin_fournisseurs.html', fournisseurs=fournisseurs)
     except Exception as e:
         print(f"❌ Erreur admin_fournisseurs: {e}")
@@ -3015,12 +3218,16 @@ def ajouter_fournisseur():
         if not nom:
             flash('❌ Le nom du fournisseur est obligatoire')
             return redirect('/admin/fournisseurs')
-        exe("INSERT INTO fournisseurs (nom,produits,telephone,email,adresse) VALUES (?,?,?,?,?)",
-            (nom,produits,telephone,email,adresse))
+        boutique_id = boutique_active()
+        if boutique_id is None:
+            flash('❌ Choisissez d\'abord une boutique active (en haut) avant d\'ajouter un fournisseur')
+            return redirect('/admin/fournisseurs')
+        exe("INSERT INTO fournisseurs (nom,produits,telephone,email,adresse,boutique_id) VALUES (?,?,?,?,?,?)",
+            (nom,produits,telephone,email,adresse,boutique_id))
         flash('✅ Fournisseur ajouté')
     except Exception as e:
         print(f"❌ Erreur ajouter_fournisseur: {e}")
-        flash('❌ Erreur lors de l\'ajout du fournisseur')
+        flash('❌ Erreur lors de l\'ajout du fournisseur — vérifiez qu\'aucun fournisseur n\'a déjà exactement ce nom')
     return redirect('/admin/fournisseurs')
 
 @app.route('/admin/fournisseurs/modifier/<int:id>', methods=['POST'])
@@ -3070,21 +3277,27 @@ def commandes_fournisseurs_list():
                          cf.statut, cf.notes, cf.fournisseur_id, cf.produit_id
                   FROM commandes_fournisseurs cf
                   LEFT JOIN fournisseurs f ON cf.fournisseur_id = f.id
-                  LEFT JOIN produits p ON cf.produit_id = p.id'''
-        params = ()
+                  LEFT JOIN produits p ON cf.produit_id = p.id
+                  WHERE 1=1'''
+        params = []
         if filtre_statut:
-            sql += " WHERE cf.statut = ?"
-            params = (filtre_statut,)
+            sql += " AND cf.statut = ?"
+            params.append(filtre_statut)
+        where_bq, params_bq = boutique_filtre_sql('cf.boutique_id')
+        sql += where_bq
+        params += list(params_bq)
         sql += " ORDER BY (cf.statut = 'commandé') DESC, cf.date_livraison_prevue ASC NULLS LAST, cf.id DESC"
 
-        commandes = qall(sql, params)
-        fournisseurs = qall("SELECT id, nom FROM fournisseurs ORDER BY nom")
-        produits = qall("SELECT id, nom FROM produits ORDER BY nom")
-        nb_en_attente = q1("SELECT COUNT(*) FROM commandes_fournisseurs WHERE statut='commandé'")
+        commandes = qall(sql, tuple(params))
+        where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
+        fournisseurs = qall(f"SELECT id, nom FROM fournisseurs WHERE 1=1{where_bq2} ORDER BY nom", params_bq2)
+        produits = qall(f"SELECT id, nom FROM produits WHERE 1=1{where_bq2} ORDER BY nom", params_bq2)
+        where_bq3, params_bq3 = boutique_filtre_sql('boutique_id')
+        nb_en_attente = q1(f"SELECT COUNT(*) FROM commandes_fournisseurs WHERE statut='commandé'{where_bq3}", params_bq3)
         nb_en_attente = nb_en_attente[0] if nb_en_attente else 0
-        nb_en_retard = q1('''SELECT COUNT(*) FROM commandes_fournisseurs
+        nb_en_retard = q1(f'''SELECT COUNT(*) FROM commandes_fournisseurs
                               WHERE statut='commandé' AND date_livraison_prevue IS NOT NULL
-                              AND DATE(date_livraison_prevue) < CURRENT_DATE''')
+                              AND DATE(date_livraison_prevue) < CURRENT_DATE{where_bq3}''', params_bq3)
         nb_en_retard = nb_en_retard[0] if nb_en_retard else 0
 
         return render_template('admin_commandes_fournisseurs.html', commandes=commandes,
@@ -3113,13 +3326,18 @@ def ajouter_commande_fournisseur():
             flash('❌ Fournisseur, produit et quantité sont obligatoires')
             return redirect('/admin/commandes-fournisseurs')
 
+        boutique_id = boutique_active()
+        if boutique_id is None:
+            flash('❌ Choisissez d\'abord une boutique active (en haut) avant de passer une commande')
+            return redirect('/admin/commandes-fournisseurs')
+
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         exe('''INSERT INTO commandes_fournisseurs
                (fournisseur_id, produit_id, quantite, prix_unitaire, date_commande,
-                date_livraison_prevue, statut, notes, employe_id, date_creation)
-               VALUES (?,?,?,?,?,?,'commandé',?,?,?)''',
+                date_livraison_prevue, statut, notes, employe_id, date_creation, boutique_id)
+               VALUES (?,?,?,?,?,?,'commandé',?,?,?,?)''',
             (fournisseur_id, produit_id, quantite, prix_unitaire, date_commande,
-             date_livraison_prevue, notes, session.get('user_id', 1), now))
+             date_livraison_prevue, notes, session.get('user_id', 1), now, boutique_id))
         flash('✅ Commande fournisseur enregistrée')
     except Exception as e:
         print(f"❌ Erreur ajouter_commande_fournisseur: {e}")
@@ -3200,22 +3418,26 @@ def charges_list():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        charges = qall('''SELECT c.id, c.categorie, c.libelle, c.montant, c.date_charge,
+        where_bq, params_bq = boutique_filtre_sql('c.boutique_id')
+        charges = qall(f'''SELECT c.id, c.categorie, c.libelle, c.montant, c.date_charge,
                                   c.recurrente, u.nom
                            FROM charges c LEFT JOIN users u ON c.employe_id = u.id
-                           ORDER BY c.date_charge DESC, c.id DESC LIMIT 200''')
+                           WHERE 1=1{where_bq}
+                           ORDER BY c.date_charge DESC, c.id DESC LIMIT 200''', params_bq)
 
-        stats_mois = q1('''SELECT COUNT(*), COALESCE(SUM(montant),0) FROM charges
-                            WHERE DATE(date_charge) >= DATE_TRUNC('month', CURRENT_DATE)::date''')
-        par_categorie = qall('''SELECT categorie, COALESCE(SUM(montant),0) FROM charges
-                                 WHERE DATE(date_charge) >= DATE_TRUNC('month', CURRENT_DATE)::date
-                                 GROUP BY categorie ORDER BY 2 DESC''')
+        where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
+        stats_mois = q1(f'''SELECT COUNT(*), COALESCE(SUM(montant),0) FROM charges
+                            WHERE DATE(date_charge) >= DATE_TRUNC('month', CURRENT_DATE)::date{where_bq2}''', params_bq2)
+        par_categorie = qall(f'''SELECT categorie, COALESCE(SUM(montant),0) FROM charges
+                                 WHERE DATE(date_charge) >= DATE_TRUNC('month', CURRENT_DATE)::date{where_bq2}
+                                 GROUP BY categorie ORDER BY 2 DESC''', params_bq2)
 
         # Bénéfice net du mois = (Ventes - Achats de stock) - Charges du mois
-        marge_mois = q1('''SELECT
-                COALESCE((SELECT SUM(total) FROM sorties WHERE DATE(date_sortie) >= DATE_TRUNC('month', CURRENT_DATE)::date),0),
-                COALESCE((SELECT SUM(total) FROM entrees WHERE DATE(date_entree) >= DATE_TRUNC('month', CURRENT_DATE)::date),0)
-            ''')
+        where_bq3, params_bq3 = boutique_filtre_sql('boutique_id')
+        marge_mois = q1(f'''SELECT
+                COALESCE((SELECT SUM(total) FROM sorties WHERE DATE(date_sortie) >= DATE_TRUNC('month', CURRENT_DATE)::date{where_bq3}),0),
+                COALESCE((SELECT SUM(total) FROM entrees WHERE DATE(date_entree) >= DATE_TRUNC('month', CURRENT_DATE)::date{where_bq3}),0)
+            ''', params_bq3 + params_bq3)
         ventes_mois = marge_mois[0] if marge_mois else 0
         achats_mois = marge_mois[1] if marge_mois else 0
         charges_mois = stats_mois[1] if stats_mois else 0
@@ -3243,10 +3465,14 @@ def ajouter_charge():
         if montant <= 0:
             flash('❌ Le montant doit être supérieur à 0')
             return redirect('/admin/charges')
+        boutique_id = boutique_active()
+        if boutique_id is None:
+            flash('❌ Choisissez d\'abord une boutique active (en haut) avant d\'enregistrer une charge')
+            return redirect('/admin/charges')
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        exe('''INSERT INTO charges (categorie, libelle, montant, date_charge, recurrente, employe_id, date_creation)
-               VALUES (?,?,?,?,?,?,?)''',
-            (categorie, libelle or categorie, montant, date_charge, recurrente, session.get('user_id', 1), now))
+        exe('''INSERT INTO charges (categorie, libelle, montant, date_charge, recurrente, employe_id, date_creation, boutique_id)
+               VALUES (?,?,?,?,?,?,?,?)''',
+            (categorie, libelle or categorie, montant, date_charge, recurrente, session.get('user_id', 1), now, boutique_id))
         flash(f'✅ Charge enregistrée : {libelle or categorie} — {montant:,} FCFA'.replace(',', ' '))
     except Exception as e:
         print(f"❌ Erreur ajouter_charge: {e}")
@@ -3276,33 +3502,37 @@ def supprimer_charge(id):
 NOMS_MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
              'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
-def _comptabilite_annees_disponibles():
-    rows = qall('''SELECT DISTINCT to_char(d::timestamp, 'YYYY') FROM (
-            SELECT date_sortie AS d FROM sorties
-            UNION ALL SELECT date_vente FROM archive_ventes
-            UNION ALL SELECT date_entree FROM entrees
-            UNION ALL SELECT date_entree FROM archive_entrees
-            UNION ALL SELECT date_charge FROM charges
-        ) t WHERE d IS NOT NULL AND d <> '' ORDER BY 1 DESC''')
+def _comptabilite_annees_disponibles(bid=None):
+    filtre = " AND boutique_id = %s" if bid is not None else ""
+    params = (bid, bid, bid, bid, bid) if bid is not None else ()
+    rows = qall(f'''SELECT DISTINCT to_char(d::timestamp, 'YYYY') FROM (
+            SELECT date_sortie AS d FROM sorties WHERE 1=1{filtre}
+            UNION ALL SELECT date_vente FROM archive_ventes WHERE 1=1{filtre}
+            UNION ALL SELECT date_entree FROM entrees WHERE 1=1{filtre}
+            UNION ALL SELECT date_entree FROM archive_entrees WHERE 1=1{filtre}
+            UNION ALL SELECT date_charge FROM charges WHERE 1=1{filtre}
+        ) t WHERE d IS NOT NULL AND d <> '' ORDER BY 1 DESC''', params)
     annees = [r[0] for r in rows if r[0]]
     annee_courante = str(datetime.now().year)
     if annee_courante not in annees:
         annees.insert(0, annee_courante)
     return annees
 
-def _comptabilite_resume_mensuel(annee):
+def _comptabilite_resume_mensuel(annee, bid=None):
     """Retourne, pour chaque mois de l'année donnée, les totaux
     Ventes / Achats / Charges / Bénéfice net."""
-    rows_ventes = qall('''SELECT to_char(d::timestamp,'YYYY-MM'), COALESCE(SUM(total),0), COUNT(*)
-        FROM (SELECT date_sortie AS d, total FROM sorties
-              UNION ALL SELECT date_vente AS d, total FROM archive_ventes) t
-        WHERE to_char(d::timestamp,'YYYY') = ? GROUP BY 1''', (annee,))
-    rows_achats = qall('''SELECT to_char(d::timestamp,'YYYY-MM'), COALESCE(SUM(total),0)
-        FROM (SELECT date_entree AS d, total FROM entrees
-              UNION ALL SELECT date_entree AS d, total FROM archive_entrees) t
-        WHERE to_char(d::timestamp,'YYYY') = ? GROUP BY 1''', (annee,))
-    rows_charges = qall('''SELECT to_char(date_charge::timestamp,'YYYY-MM'), COALESCE(SUM(montant),0)
-        FROM charges WHERE to_char(date_charge::timestamp,'YYYY') = ? GROUP BY 1''', (annee,))
+    filtre = " AND boutique_id = ?" if bid is not None else ""
+    extra1 = (bid,) if bid is not None else ()
+    rows_ventes = qall(f'''SELECT to_char(d::timestamp,'YYYY-MM'), COALESCE(SUM(total),0), COUNT(*)
+        FROM (SELECT date_sortie AS d, total, boutique_id FROM sorties
+              UNION ALL SELECT date_vente AS d, total, boutique_id FROM archive_ventes) t
+        WHERE to_char(d::timestamp,'YYYY') = ?{filtre} GROUP BY 1''', (annee,) + extra1)
+    rows_achats = qall(f'''SELECT to_char(d::timestamp,'YYYY-MM'), COALESCE(SUM(total),0)
+        FROM (SELECT date_entree AS d, total, boutique_id FROM entrees
+              UNION ALL SELECT date_entree AS d, total, boutique_id FROM archive_entrees) t
+        WHERE to_char(d::timestamp,'YYYY') = ?{filtre} GROUP BY 1''', (annee,) + extra1)
+    rows_charges = qall(f'''SELECT to_char(date_charge::timestamp,'YYYY-MM'), COALESCE(SUM(montant),0)
+        FROM charges WHERE to_char(date_charge::timestamp,'YYYY') = ?{filtre} GROUP BY 1''', (annee,) + extra1)
 
     ventes_map = {m: (t, n) for m, t, n in rows_ventes}
     achats_map = {m: t for m, t in rows_achats}
@@ -3319,36 +3549,38 @@ def _comptabilite_resume_mensuel(annee):
             'benefice': (v or 0) - (a or 0) - (ch or 0)})
     return resultat
 
-def _comptabilite_registre(date_debut, date_fin):
+def _comptabilite_registre(date_debut, date_fin, bid=None):
     """Registre détaillé (grand livre) : une ligne par vente (groupée
     par panier), par achat de stock et par charge, triées par date,
     avec un solde cumulé (recettes - dépenses)."""
     lignes = []
+    filtre = " AND boutique_id = ?" if bid is not None else ""
+    extra = (bid,) if bid is not None else ()
 
-    ventes = qall('''SELECT COALESCE(groupe_vente, 'v'||id::text) AS grp, MIN(date_sortie) AS d,
+    ventes = qall(f'''SELECT COALESCE(groupe_vente, 'v'||id::text) AS grp, MIN(date_sortie) AS d,
                              SUM(total) AS total, MAX(client) AS client
-                      FROM sorties WHERE DATE(date_sortie::timestamp) BETWEEN ? AND ?
-                      GROUP BY grp''', (date_debut, date_fin)) + \
-             qall('''SELECT COALESCE(groupe_vente, 'av'||id::text) AS grp, MIN(date_vente) AS d,
+                      FROM sorties WHERE DATE(date_sortie::timestamp) BETWEEN ? AND ?{filtre}
+                      GROUP BY grp''', (date_debut, date_fin) + extra) + \
+             qall(f'''SELECT COALESCE(groupe_vente, 'av'||id::text) AS grp, MIN(date_vente) AS d,
                              SUM(total) AS total, MAX(client) AS client
-                      FROM archive_ventes WHERE DATE(date_vente::timestamp) BETWEEN ? AND ?
-                      GROUP BY grp''', (date_debut, date_fin))
+                      FROM archive_ventes WHERE DATE(date_vente::timestamp) BETWEEN ? AND ?{filtre}
+                      GROUP BY grp''', (date_debut, date_fin) + extra)
     for grp, d, total, client in ventes:
         lignes.append({'date': d, 'type': 'vente',
             'libelle': 'Vente' + (f' — {client}' if client else ''),
             'recette': total or 0, 'depense': 0})
 
-    achats = qall('''SELECT date_entree, total, fournisseur FROM entrees
-                      WHERE DATE(date_entree::timestamp) BETWEEN ? AND ?''', (date_debut, date_fin)) + \
-             qall('''SELECT date_entree, total, fournisseur FROM archive_entrees
-                     WHERE DATE(date_entree::timestamp) BETWEEN ? AND ?''', (date_debut, date_fin))
+    achats = qall(f'''SELECT date_entree, total, fournisseur FROM entrees
+                      WHERE DATE(date_entree::timestamp) BETWEEN ? AND ?{filtre}''', (date_debut, date_fin) + extra) + \
+             qall(f'''SELECT date_entree, total, fournisseur FROM archive_entrees
+                     WHERE DATE(date_entree::timestamp) BETWEEN ? AND ?{filtre}''', (date_debut, date_fin) + extra)
     for d, total, fournisseur in achats:
         lignes.append({'date': d, 'type': 'achat',
             'libelle': 'Achat de stock' + (f' — {fournisseur}' if fournisseur else ''),
             'recette': 0, 'depense': total or 0})
 
-    charges = qall('''SELECT date_charge, montant, categorie, libelle FROM charges
-                       WHERE date_charge BETWEEN ? AND ?''', (date_debut, date_fin))
+    charges = qall(f'''SELECT date_charge, montant, categorie, libelle FROM charges
+                       WHERE date_charge BETWEEN ? AND ?{filtre}''', (date_debut, date_fin) + extra)
     for d, montant, categorie, libelle in charges:
         lignes.append({'date': d, 'type': 'charge', 'libelle': libelle or categorie or 'Charge',
             'recette': 0, 'depense': montant or 0})
@@ -3365,8 +3597,9 @@ def admin_comptabilite():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
+        bid = boutique_active()
         vue = request.args.get('vue', 'mensuel')
-        annees_disponibles = _comptabilite_annees_disponibles()
+        annees_disponibles = _comptabilite_annees_disponibles(bid)
         annee = request.args.get('annee', annees_disponibles[0] if annees_disponibles else str(datetime.now().year))
 
         premier_jour_mois = datetime.now().replace(day=1).strftime('%Y-%m-%d')
@@ -3374,7 +3607,7 @@ def admin_comptabilite():
         date_debut = request.args.get('date_debut', premier_jour_mois)
         date_fin = request.args.get('date_fin', aujourdhui)
 
-        resume_mensuel = _comptabilite_resume_mensuel(annee)
+        resume_mensuel = _comptabilite_resume_mensuel(annee, bid)
         total_annee = {
             'ventes': sum(m['ventes'] for m in resume_mensuel),
             'achats': sum(m['achats'] for m in resume_mensuel),
@@ -3382,12 +3615,13 @@ def admin_comptabilite():
             'benefice': sum(m['benefice'] for m in resume_mensuel),
         }
 
-        registre = _comptabilite_registre(date_debut, date_fin)
-        total_pertes_periode = q1('''SELECT COALESCE(SUM(total),0) FROM (
-                SELECT total FROM pertes WHERE DATE(date_perte::timestamp) BETWEEN ? AND ?
+        registre = _comptabilite_registre(date_debut, date_fin, bid)
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        total_pertes_periode = q1(f'''SELECT COALESCE(SUM(total),0) FROM (
+                SELECT total, boutique_id FROM pertes WHERE DATE(date_perte::timestamp) BETWEEN ? AND ?
                 UNION ALL
-                SELECT total FROM archive_pertes WHERE DATE(date_perte::timestamp) BETWEEN ? AND ?
-            ) t''', (date_debut, date_fin, date_debut, date_fin))
+                SELECT total, boutique_id FROM archive_pertes WHERE DATE(date_perte::timestamp) BETWEEN ? AND ?
+            ) t WHERE 1=1{where_bq}''', (date_debut, date_fin, date_debut, date_fin) + params_bq)
         total_pertes_periode = total_pertes_periode[0] if total_pertes_periode else 0
         total_recette = sum(l['recette'] for l in registre)
         total_depense = sum(l['depense'] for l in registre)
