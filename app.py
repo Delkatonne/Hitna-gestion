@@ -681,15 +681,18 @@ def init_db():
             telephone TEXT,
             actif INTEGER DEFAULT 1,
             date_creation TEXT)''')
+        conn.commit()
 
         def _ajouter_colonne_boutique(table):
             try:
                 c.execute("SELECT column_name FROM information_schema.columns WHERE table_name=%s AND column_name='boutique_id'", (table,))
                 if not c.fetchone():
                     c.execute(f"ALTER TABLE {table} ADD COLUMN boutique_id INTEGER REFERENCES boutiques(id)")
+                    conn.commit()
                     print(f"✅ Colonne 'boutique_id' ajoutée à {table}")
             except Exception as e:
                 print(f"⚠️ Erreur ajout colonne boutique_id à {table}: {e}")
+                conn.rollback()
 
         for _table_bq in ['produits', 'sorties', 'entrees', 'pertes', 'charges', 'fournisseurs',
                            'commandes_fournisseurs', 'ventes_annulees', 'users',
@@ -703,11 +706,27 @@ def init_db():
                        ('Boutique principale', 1, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             boutique_defaut_id = c.fetchone()[0]
             print(f"✅ Boutique par défaut créée (id={boutique_defaut_id})")
+            # On valide tout de suite la création de la boutique par défaut ET
+            # les colonnes boutique_id ajoutées plus haut, AVANT de toucher au
+            # remplissage des anciennes données : ainsi, si une table pose
+            # problème ci-dessous (ex: réplication logique sans replica identity),
+            # ça n'annule plus jamais ce qui est déjà acquis.
+            conn.commit()
             for _table_bq in ['produits', 'sorties', 'entrees', 'pertes', 'charges', 'fournisseurs',
                                'commandes_fournisseurs', 'ventes_annulees',
                                'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_ventes_annulees']:
-                c.execute(f"UPDATE {_table_bq} SET boutique_id=%s WHERE boutique_id IS NULL", (boutique_defaut_id,))
-            c.execute("UPDATE users SET boutique_id=%s WHERE boutique_id IS NULL AND role='employe'", (boutique_defaut_id,))
+                try:
+                    c.execute(f"UPDATE {_table_bq} SET boutique_id=%s WHERE boutique_id IS NULL", (boutique_defaut_id,))
+                    conn.commit()
+                except Exception as e:
+                    print(f"⚠️ Impossible de rattacher les anciennes données de '{_table_bq}' à la boutique par défaut : {e}")
+                    conn.rollback()
+            try:
+                c.execute("UPDATE users SET boutique_id=%s WHERE boutique_id IS NULL AND role='employe'", (boutique_defaut_id,))
+                conn.commit()
+            except Exception as e:
+                print(f"⚠️ Impossible de rattacher les employés existants à la boutique par défaut : {e}")
+                conn.rollback()
             print("✅ Données existantes rattachées à la boutique principale")
 
         c.execute("SELECT COUNT(*) FROM unites_mesure")
