@@ -179,7 +179,7 @@ BACKUP_TABLES = [
     'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_recap',
     'archive_ventes_annulees',
     'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
-    'ventes_annulees', 'paliers_prix', 'produits_supprimes',
+    'ventes_annulees', 'paliers_prix', 'produits_supprimes', 'taches_business_plan',
 ]
 
 def generer_backup_json():
@@ -439,6 +439,19 @@ def init_db():
             nom TEXT UNIQUE,
             icone TEXT DEFAULT '📦',
             actif INTEGER DEFAULT 1)''')
+
+        # ── BUSINESS PLAN — tâches que l'admin se planifie, à cocher
+        #    une fois réalisées (checklist de suivi des objectifs).
+        c.execute('''CREATE TABLE IF NOT EXISTS taches_business_plan (
+            id SERIAL PRIMARY KEY,
+            titre TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            priorite TEXT DEFAULT 'normale',
+            date_echeance TEXT,
+            statut TEXT DEFAULT 'a_faire',
+            date_creation TEXT,
+            date_validation TEXT,
+            employe_id INTEGER)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS paliers_prix (
             id SERIAL PRIMARY KEY,
@@ -3391,6 +3404,105 @@ def admin_comptabilite():
         print(f"❌ Erreur admin_comptabilite: {e}")
         flash('Erreur lors du chargement du tableau comptable')
         return redirect('/dashboard')
+
+# ══════════════════════════════════════════════════════════════
+# BUSINESS PLAN — tâches planifiées par l'admin, à cocher/valider
+# une fois réalisées.
+# ══════════════════════════════════════════════════════════════
+PRIORITES_TACHE = ['basse', 'normale', 'haute']
+
+@app.route('/admin/business-plan')
+def admin_business_plan():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        taches_a_faire = qall('''SELECT t.id, t.titre, t.description, t.priorite, t.date_echeance,
+                                         t.date_creation, u.nom
+                                  FROM taches_business_plan t LEFT JOIN users u ON t.employe_id = u.id
+                                  WHERE t.statut = 'a_faire'
+                                  ORDER BY CASE t.priorite WHEN 'haute' THEN 0 WHEN 'normale' THEN 1 ELSE 2 END,
+                                           t.date_echeance ASC NULLS LAST, t.id DESC''')
+        taches_faites = qall('''SELECT t.id, t.titre, t.description, t.priorite, t.date_echeance,
+                                        t.date_validation, u.nom
+                                 FROM taches_business_plan t LEFT JOIN users u ON t.employe_id = u.id
+                                 WHERE t.statut = 'fait'
+                                 ORDER BY t.date_validation DESC LIMIT 100''')
+        nb_a_faire = len(taches_a_faire)
+        nb_faites = q1("SELECT COUNT(*) FROM taches_business_plan WHERE statut='fait'")
+        nb_faites = nb_faites[0] if nb_faites else 0
+        today_iso = datetime.now().strftime('%Y-%m-%d')
+        return render_template('admin_business_plan.html', taches_a_faire=taches_a_faire,
+            taches_faites=taches_faites, nb_a_faire=nb_a_faire, nb_faites=nb_faites,
+            today_iso=today_iso)
+    except Exception as e:
+        print(f"❌ Erreur admin_business_plan: {e}")
+        flash('Erreur lors du chargement du business plan')
+        return redirect('/dashboard')
+
+@app.route('/admin/business-plan/ajouter', methods=['POST'])
+def ajouter_tache_business_plan():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        titre = request.form.get('titre', '').strip()
+        description = request.form.get('description', '').strip()
+        priorite = request.form.get('priorite', 'normale')
+        if priorite not in PRIORITES_TACHE:
+            priorite = 'normale'
+        date_echeance = request.form.get('date_echeance') or None
+        if not titre:
+            flash('❌ Le titre de la tâche est obligatoire')
+            return redirect('/admin/business-plan')
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe('''INSERT INTO taches_business_plan
+               (titre, description, priorite, date_echeance, statut, date_creation, employe_id)
+               VALUES (?,?,?,?,?,?,?)''',
+            (titre, description or None, priorite, date_echeance, 'a_faire', now, session.get('user_id', 1)))
+        flash(f'✅ Tâche planifiée : {titre}')
+    except Exception as e:
+        print(f"❌ Erreur ajouter_tache_business_plan: {e}")
+        flash('❌ Erreur lors de l\'ajout de la tâche')
+    return redirect('/admin/business-plan')
+
+@app.route('/admin/business-plan/valider/<int:id>', methods=['POST'])
+def valider_tache_business_plan(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe("UPDATE taches_business_plan SET statut='fait', date_validation=? WHERE id=?", (now, id))
+        flash('✅ Tâche marquée comme réalisée')
+    except Exception as e:
+        print(f"❌ Erreur valider_tache_business_plan: {e}")
+        flash('❌ Erreur lors de la validation')
+    return redirect('/admin/business-plan')
+
+@app.route('/admin/business-plan/reouvrir/<int:id>', methods=['POST'])
+def reouvrir_tache_business_plan(id):
+    """Annule la validation par erreur : la tâche redevient « à faire »."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        exe("UPDATE taches_business_plan SET statut='a_faire', date_validation=NULL WHERE id=?", (id,))
+        flash('↩️ Tâche remise « à faire »')
+    except Exception as e:
+        print(f"❌ Erreur reouvrir_tache_business_plan: {e}")
+        flash('❌ Erreur lors de la réouverture')
+    return redirect('/admin/business-plan')
+
+@app.route('/admin/business-plan/supprimer/<int:id>')
+def supprimer_tache_business_plan(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        t = q1("SELECT titre FROM taches_business_plan WHERE id=?", (id,))
+        if t:
+            exe("DELETE FROM taches_business_plan WHERE id=?", (id,))
+            flash(f'🗑️ Tâche "{t[0]}" supprimée')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_tache_business_plan: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/business-plan')
 
 # ══════════════════════════════════════════════════════════════
 # VENTES ANNULÉES — journal (consultation admin)

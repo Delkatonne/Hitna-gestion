@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Business Plan - HITNA{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    .stats-bp {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+    .stat-bp { padding: 20px; border-radius: 15px; text-align: center; color: white; }
+    .stat-bp .number { font-size: 28px; font-weight: bold; }
+    .stat-bp.attente { background: linear-gradient(135deg, #ffc107, #e0a800); color: #333; }
+    .stat-bp.fait { background: linear-gradient(135deg, #28a745, #20c997); }
+
+    .form-tache {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+    }
+    .form-tache .form-row { display: flex; gap: 15px; flex-wrap: wrap; }
+    .form-tache .form-group { flex: 1; min-width: 160px; }
+    .form-tache select, .form-tache input, .form-tache textarea {
+        width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; box-sizing: border-box;
+    }
+
+    .tache-item {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 10px;
+    }
+    .tache-item.fait { opacity: 0.7; background: #f8f9fa; }
+    .tache-check-form { flex-shrink: 0; padding-top: 2px; }
+    .tache-check-form button {
+        width: 26px; height: 26px; border-radius: 50%;
+        border: 2px solid #28a745; background: white; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; color: #28a745; font-size: 14px; padding: 0;
+    }
+    .tache-check-form.fait button { background: #28a745; color: white; }
+    .tache-body { flex: 1; min-width: 0; }
+    .tache-titre { font-weight: bold; color: #1e3c72; font-size: 15px; }
+    .tache-item.fait .tache-titre { text-decoration: line-through; color: #888; }
+    .tache-desc { font-size: 13px; color: #666; margin-top: 4px; }
+    .tache-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: #999; margin-top: 8px; align-items: center; }
+    .tache-actions { flex-shrink: 0; display: flex; gap: 6px; align-items: flex-start; }
+
+    @media (max-width: 768px) {
+        .form-tache .form-row { flex-direction: column; }
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}<i class="bi bi-flag-fill"></i> Business Plan{% endblock %}
+{% block page_subtitle %}Planifiez vos tâches et cochez-les une fois réalisées{% endblock %}
+
+{% block content %}
+
+<div class="stats-bp">
+    <div class="stat-bp attente">
+        <h3><i class="bi bi-hourglass-split"></i> À faire</h3>
+        <div class="number">{{ nb_a_faire }}</div>
+    </div>
+    <div class="stat-bp fait">
+        <h3><i class="bi bi-check-circle-fill"></i> Réalisées</h3>
+        <div class="number">{{ nb_faites }}</div>
+    </div>
+</div>
+
+<!-- Formulaire d'ajout -->
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Planifier une tâche</h2>
+    <form method="post" action="/admin/business-plan/ajouter" class="form-tache">
+        <div class="form-row">
+            <div class="form-group" style="flex:2;">
+                <label><i class="bi bi-pencil-square"></i> Titre</label>
+                <input type="text" name="titre" required placeholder="Ex: Négocier un meilleur prix avec le fournisseur X">
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-flag"></i> Priorité</label>
+                <select name="priorite">
+                    <option value="basse">Basse</option>
+                    <option value="normale" selected>Normale</option>
+                    <option value="haute">Haute</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-calendar-event"></i> Échéance (optionnel)</label>
+                <input type="date" name="date_echeance" min="{{ today_iso }}">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group" style="flex:3;">
+                <label><i class="bi bi-card-text"></i> Description (optionnel)</label>
+                <textarea name="description" rows="2" placeholder="Détails, étapes, objectif..."></textarea>
+            </div>
+            <div class="form-group" style="display:flex; align-items:flex-end;">
+                <button type="submit" style="background:#28a745; width:100%;"><i class="bi bi-save"></i> Ajouter</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- À faire -->
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-list-task"></i> À faire ({{ nb_a_faire }})</h2>
+    {% if taches_a_faire %}
+        {% for t in taches_a_faire %}
+        {% set en_retard = t[4] and t[4] < today_iso %}
+        <div class="tache-item">
+            <form method="post" action="/admin/business-plan/valider/{{ t[0] }}" class="tache-check-form"
+                  onsubmit="return confirm('Marquer cette tâche comme réalisée ?')">
+                <button type="submit" title="Marquer comme réalisée"></button>
+            </form>
+            <div class="tache-body">
+                <div class="tache-titre">{{ t[1] }}</div>
+                {% if t[2] %}<div class="tache-desc">{{ t[2] }}</div>{% endif %}
+                <div class="tache-meta">
+                    {% if t[3] == 'haute' %}
+                        <span class="inline-block bg-red-100 text-red-700 text-[11px] font-bold px-2.5 py-1 rounded-full">🔴 Priorité haute</span>
+                    {% elif t[3] == 'basse' %}
+                        <span class="inline-block bg-gray-100 text-gray-600 text-[11px] font-bold px-2.5 py-1 rounded-full">⚪ Priorité basse</span>
+                    {% else %}
+                        <span class="inline-block bg-blue-100 text-blue-700 text-[11px] font-bold px-2.5 py-1 rounded-full">🔵 Priorité normale</span>
+                    {% endif %}
+                    {% if t[4] %}
+                        <span class="inline-block {% if en_retard %}bg-red-100 text-red-700{% else %}bg-amber-100 text-amber-800{% endif %} text-[11px] font-bold px-2.5 py-1 rounded-full">
+                            {% if en_retard %}⚠️ En retard — {{ t[4] }}{% else %}📅 Échéance {{ t[4] }}{% endif %}
+                        </span>
+                    {% endif %}
+                    <span>Planifiée le {{ t[5].split(' ')[0] if t[5] else '-' }}{% if t[6] %} par {{ t[6] }}{% endif %}</span>
+                </div>
+            </div>
+            <div class="tache-actions">
+                <a href="/admin/business-plan/supprimer/{{ t[0] }}"
+                   onclick="return confirm('Supprimer cette tâche ?')"
+                   class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i></a>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align:center; color:#999; padding:40px;"><i class="bi bi-inbox"></i> Aucune tâche planifiée pour le moment</p>
+    {% endif %}
+</div>
+
+<!-- Réalisées -->
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-check2-all"></i> Réalisées ({{ nb_faites }})</h2>
+    {% if taches_faites %}
+        {% for t in taches_faites %}
+        <div class="tache-item fait">
+            <form method="post" action="/admin/business-plan/reouvrir/{{ t[0] }}" class="tache-check-form fait"
+                  onsubmit="return confirm('Remettre cette tâche en « à faire » ?')">
+                <button type="submit" title="Remettre à faire"><i class="bi bi-check-lg"></i></button>
+            </form>
+            <div class="tache-body">
+                <div class="tache-titre">{{ t[1] }}</div>
+                {% if t[2] %}<div class="tache-desc">{{ t[2] }}</div>{% endif %}
+                <div class="tache-meta">
+                    <span class="inline-block bg-green-100 text-green-800 text-[11px] font-bold px-2.5 py-1 rounded-full">✅ Réalisée le {{ t[5].split(' ')[0] if t[5] else '-' }}</span>
+                    {% if t[6] %}<span>par {{ t[6] }}</span>{% endif %}
+                </div>
+            </div>
+            <div class="tache-actions">
+                <a href="/admin/business-plan/supprimer/{{ t[0] }}"
+                   onclick="return confirm('Supprimer cette tâche ?')"
+                   class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i></a>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align:center; color:#999; padding:40px;"><i class="bi bi-inbox"></i> Aucune tâche réalisée pour le moment</p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+</div>
+{% endblock %}
