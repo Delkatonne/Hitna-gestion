@@ -180,6 +180,7 @@ BACKUP_TABLES = [
     'archive_ventes_annulees',
     'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
     'ventes_annulees', 'paliers_prix', 'produits_supprimes', 'taches_business_plan', 'boutiques',
+    'livraisons_clients',
 ]
 
 def generer_backup_json():
@@ -343,6 +344,22 @@ def init_db():
             employe_id INTEGER,
             date_creation TEXT)''')
 
+        # ── LIVRAISONS CLIENTS — suivi de ce qui doit être livré à un
+        #    client : quand c'est prévu, et quand ça a été livré.
+        c.execute('''CREATE TABLE IF NOT EXISTS livraisons_clients (
+            id SERIAL PRIMARY KEY,
+            client_nom TEXT NOT NULL,
+            telephone TEXT,
+            adresse TEXT,
+            details TEXT DEFAULT '',
+            date_livraison_prevue TEXT,
+            date_livraison_reelle TEXT,
+            statut TEXT DEFAULT 'a_livrer',
+            livreur TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            employe_id INTEGER,
+            date_creation TEXT)''')
+
         c.execute('''CREATE TABLE IF NOT EXISTS notifications (
             id SERIAL PRIMARY KEY, user_id INTEGER, type TEXT,
             title TEXT, message TEXT, lien TEXT,
@@ -417,6 +434,16 @@ def init_db():
             telephone TEXT UNIQUE,
             adresse TEXT DEFAULT '',
             date_creation TEXT)''')
+        conn.commit()
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='clients' AND column_name='notes'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE clients ADD COLUMN notes TEXT DEFAULT ''")
+                conn.commit()
+                print("✅ Colonne 'notes' ajoutée à clients")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne notes à clients: {e}")
+            conn.rollback()
 
         # ── VENTES ANNULÉES — journal de toutes les ventes annulées,
         #    conservé même après suppression de la vente d'origine.
@@ -695,7 +722,7 @@ def init_db():
                 conn.rollback()
 
         for _table_bq in ['produits', 'sorties', 'entrees', 'pertes', 'charges', 'fournisseurs',
-                           'commandes_fournisseurs', 'ventes_annulees', 'users',
+                           'commandes_fournisseurs', 'ventes_annulees', 'users', 'livraisons_clients',
                            'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_ventes_annulees']:
             _ajouter_colonne_boutique(_table_bq)
 
@@ -713,7 +740,7 @@ def init_db():
             # ça n'annule plus jamais ce qui est déjà acquis.
             conn.commit()
             for _table_bq in ['produits', 'sorties', 'entrees', 'pertes', 'charges', 'fournisseurs',
-                               'commandes_fournisseurs', 'ventes_annulees',
+                               'commandes_fournisseurs', 'ventes_annulees', 'livraisons_clients',
                                'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_ventes_annulees']:
                 try:
                     c.execute(f"UPDATE {_table_bq} SET boutique_id=%s WHERE boutique_id IS NULL", (boutique_defaut_id,))
@@ -3467,6 +3494,170 @@ def supprimer_commande_fournisseur(id):
     return redirect('/admin/commandes-fournisseurs')
 
 # ══════════════════════════════════════════════════════════════
+# LIVRAISONS CLIENTS — savoir quand un client doit recevoir sa
+# livraison, et suivre si c'est fait. (Se combine à "Commandes
+# fournisseurs" pour former le suivi complet des livraisons.)
+# ══════════════════════════════════════════════════════════════
+STATUTS_LIVRAISON_CLIENT = ['a_livrer', 'livree', 'annulee']
+
+@app.route('/admin/livraisons')
+def admin_livraisons():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        vue = request.args.get('vue', 'clients')
+        today_iso = datetime.now().strftime('%Y-%m-%d')
+
+        # ── Onglet Clients ──
+        filtre_statut = request.args.get('statut', '')
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        sql = '''SELECT id, client_nom, telephone, adresse, details,
+                        date_livraison_prevue, date_livraison_reelle, statut, livreur, notes
+                 FROM livraisons_clients WHERE 1=1'''
+        params = []
+        if filtre_statut:
+            sql += " AND statut = ?"
+            params.append(filtre_statut)
+        sql += where_bq
+        params += list(params_bq)
+        sql += " ORDER BY (statut = 'a_livrer') DESC, date_livraison_prevue ASC NULLS LAST, id DESC"
+        livraisons_clients = qall(sql, tuple(params))
+
+        nb_a_livrer = q1(f"SELECT COUNT(*) FROM livraisons_clients WHERE statut='a_livrer'{where_bq}", params_bq)
+        nb_a_livrer = nb_a_livrer[0] if nb_a_livrer else 0
+        nb_aujourdhui = q1(f'''SELECT COUNT(*) FROM livraisons_clients
+                              WHERE statut='a_livrer' AND date_livraison_prevue = ?{where_bq}''',
+                              (today_iso,) + params_bq)
+        nb_aujourdhui = nb_aujourdhui[0] if nb_aujourdhui else 0
+        nb_retard_clients = q1(f'''SELECT COUNT(*) FROM livraisons_clients
+                              WHERE statut='a_livrer' AND date_livraison_prevue IS NOT NULL
+                              AND date_livraison_prevue < ?{where_bq}''', (today_iso,) + params_bq)
+        nb_retard_clients = nb_retard_clients[0] if nb_retard_clients else 0
+
+        # ── Onglet Fournisseurs (déjà existant, réutilisé ici) ──
+        where_bq2, params_bq2 = boutique_filtre_sql('cf.boutique_id')
+        livraisons_fournisseurs = qall(f'''SELECT cf.id, f.nom, p.nom, cf.quantite, cf.prix_unitaire,
+                         cf.date_commande, cf.date_livraison_prevue, cf.date_livraison_reelle,
+                         cf.statut, cf.notes
+                  FROM commandes_fournisseurs cf
+                  LEFT JOIN fournisseurs f ON cf.fournisseur_id = f.id
+                  LEFT JOIN produits p ON cf.produit_id = p.id
+                  WHERE 1=1{where_bq2}
+                  ORDER BY (cf.statut = 'commandé') DESC, cf.date_livraison_prevue ASC NULLS LAST, cf.id DESC''', params_bq2)
+        where_bq3, params_bq3 = boutique_filtre_sql('boutique_id')
+        nb_fourn_attente = q1(f"SELECT COUNT(*) FROM commandes_fournisseurs WHERE statut='commandé'{where_bq3}", params_bq3)
+        nb_fourn_attente = nb_fourn_attente[0] if nb_fourn_attente else 0
+        nb_fourn_retard = q1(f'''SELECT COUNT(*) FROM commandes_fournisseurs
+                              WHERE statut='commandé' AND date_livraison_prevue IS NOT NULL
+                              AND date_livraison_prevue < ?{where_bq3}''', (today_iso,) + params_bq3)
+        nb_fourn_retard = nb_fourn_retard[0] if nb_fourn_retard else 0
+
+        return render_template('admin_livraisons.html', vue=vue, today_iso=today_iso,
+            livraisons_clients=livraisons_clients, filtre_statut=filtre_statut,
+            nb_a_livrer=nb_a_livrer, nb_aujourdhui=nb_aujourdhui, nb_retard_clients=nb_retard_clients,
+            livraisons_fournisseurs=livraisons_fournisseurs,
+            nb_fourn_attente=nb_fourn_attente, nb_fourn_retard=nb_fourn_retard)
+    except Exception as e:
+        print(f"❌ Erreur admin_livraisons: {e}")
+        flash('Erreur lors du chargement des livraisons')
+        return redirect('/dashboard')
+
+@app.route('/admin/livraisons/ajouter', methods=['POST'])
+def ajouter_livraison_client():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        client_nom = request.form.get('client_nom', '').strip()
+        telephone = request.form.get('telephone', '').strip()
+        adresse = request.form.get('adresse', '').strip()
+        details = request.form.get('details', '').strip()
+        date_livraison_prevue = request.form.get('date_livraison_prevue') or None
+        livreur = request.form.get('livreur', '').strip()
+        notes = request.form.get('notes', '').strip()
+
+        if not client_nom:
+            flash('❌ Le nom du client est obligatoire')
+            return redirect('/admin/livraisons')
+
+        boutique_id = boutique_active()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe('''INSERT INTO livraisons_clients
+               (client_nom, telephone, adresse, details, date_livraison_prevue,
+                statut, livreur, notes, employe_id, date_creation, boutique_id)
+               VALUES (?,?,?,?,?,'a_livrer',?,?,?,?,?)''',
+            (client_nom, telephone or None, adresse or None, details or None, date_livraison_prevue,
+             livreur or None, notes or None, session.get('user_id', 1), now, boutique_id))
+        flash(f'✅ Livraison programmée pour "{client_nom}"' +
+              (f' le {date_livraison_prevue}' if date_livraison_prevue else ''))
+    except Exception as e:
+        print(f"❌ Erreur ajouter_livraison_client: {e}")
+        flash('❌ Erreur lors de l\'enregistrement de la livraison')
+    return redirect('/admin/livraisons')
+
+@app.route('/admin/livraisons/livrer/<int:id>', methods=['POST'])
+def livrer_livraison_client(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        date_livraison_reelle = request.form.get('date_livraison_reelle') or datetime.now().strftime('%Y-%m-%d')
+        exe("UPDATE livraisons_clients SET statut='livree', date_livraison_reelle=? WHERE id=?",
+            (date_livraison_reelle, id))
+        flash('✅ Livraison marquée comme effectuée')
+    except Exception as e:
+        print(f"❌ Erreur livrer_livraison_client: {e}")
+        flash('❌ Erreur lors de la mise à jour')
+    return redirect('/admin/livraisons')
+
+@app.route('/admin/livraisons/modifier/<int:id>', methods=['POST'])
+def modifier_livraison_client(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        client_nom = request.form.get('client_nom', '').strip()
+        telephone = request.form.get('telephone', '').strip()
+        adresse = request.form.get('adresse', '').strip()
+        details = request.form.get('details', '').strip()
+        date_livraison_prevue = request.form.get('date_livraison_prevue') or None
+        livreur = request.form.get('livreur', '').strip()
+        notes = request.form.get('notes', '').strip()
+        if not client_nom:
+            flash('❌ Le nom du client est obligatoire')
+            return redirect('/admin/livraisons')
+        exe('''UPDATE livraisons_clients SET client_nom=?, telephone=?, adresse=?, details=?,
+               date_livraison_prevue=?, livreur=?, notes=? WHERE id=?''',
+            (client_nom, telephone or None, adresse or None, details or None,
+             date_livraison_prevue, livreur or None, notes or None, id))
+        flash('✅ Livraison modifiée')
+    except Exception as e:
+        print(f"❌ Erreur modifier_livraison_client: {e}")
+        flash('❌ Erreur lors de la modification')
+    return redirect('/admin/livraisons')
+
+@app.route('/admin/livraisons/annuler/<int:id>')
+def annuler_livraison_client(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        exe("UPDATE livraisons_clients SET statut='annulee' WHERE id=? AND statut='a_livrer'", (id,))
+        flash('🚫 Livraison annulée')
+    except Exception as e:
+        print(f"❌ Erreur annuler_livraison_client: {e}")
+        flash('❌ Erreur lors de l\'annulation')
+    return redirect('/admin/livraisons')
+
+@app.route('/admin/livraisons/supprimer/<int:id>')
+def supprimer_livraison_client(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        exe("DELETE FROM livraisons_clients WHERE id=?", (id,))
+        flash('🗑️ Livraison supprimée')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_livraison_client: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/livraisons')
+
+# ══════════════════════════════════════════════════════════════
 # CHARGES (loyer, salaires, factures...) — bénéfice net
 # ══════════════════════════════════════════════════════════════
 CATEGORIES_CHARGES = ['Loyer', 'Salaires', 'Facture (eau/électricité/internet)', 'Transport', 'Entretien', 'Impôts/Taxes', 'Autre']
@@ -4012,39 +4203,99 @@ def clients_list():
         if session.get('role') != 'admin':
             return redirect('/login')
         recherche = request.args.get('q', '').strip()
+        tri = request.args.get('tri', 'depense')
+        inactif_jours = request.args.get('inactif', '').strip()
 
         sql = '''SELECT c.id, c.nom, c.telephone, c.adresse,
                         COALESCE(cur.nb,0) + COALESCE(arch.nb,0) as nb_achats,
                         COALESCE(cur.total,0) + COALESCE(arch.total,0) as total_depense,
-                        GREATEST(cur.dernier, arch.dernier) as dernier_achat
+                        GREATEST(cur.dernier, arch.dernier) as dernier_achat,
+                        COALESCE(c.notes, '') as notes
                  FROM clients c
                  LEFT JOIN (SELECT client_id, COUNT(*) nb, SUM(total) total, MAX(date_sortie) dernier
                             FROM sorties WHERE client_id IS NOT NULL GROUP BY client_id) cur ON cur.client_id = c.id
                  LEFT JOIN (SELECT client_id, COUNT(*) nb, SUM(total) total, MAX(date_vente) dernier
                             FROM archive_ventes WHERE client_id IS NOT NULL GROUP BY client_id) arch ON arch.client_id = c.id'''
-        params = ()
+        conditions = []
+        params = []
         if recherche:
-            sql += " WHERE c.nom ILIKE ? OR c.telephone ILIKE ?"
+            conditions.append("(c.nom ILIKE ? OR c.telephone ILIKE ?)")
             like = f'%{recherche}%'
-            params = (like, like)
-        sql += " ORDER BY total_depense DESC NULLS LAST"
+            params += [like, like]
+        if inactif_jours:
+            try:
+                jours = int(inactif_jours)
+                conditions.append("(GREATEST(cur.dernier, arch.dernier) IS NULL OR GREATEST(cur.dernier, arch.dernier)::timestamp < NOW() - INTERVAL '1 day' * ?)")
+                params.append(jours)
+            except ValueError:
+                pass
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        ordres = {
+            'depense': 'total_depense DESC NULLS LAST',
+            'achats': 'nb_achats DESC NULLS LAST',
+            'recent': 'dernier_achat DESC NULLS LAST',
+            'ancien': 'dernier_achat ASC NULLS LAST',
+        }
+        sql += f" ORDER BY {ordres.get(tri, ordres['depense'])}"
 
-        clients = qall(sql, params)
+        clients = qall(sql, tuple(params))
         nb_clients = q1("SELECT COUNT(*) FROM clients")
         nb_clients = nb_clients[0] if nb_clients else 0
 
-        return render_template('admin_clients.html', clients=clients, recherche=recherche, nb_clients=nb_clients)
+        return render_template('admin_clients.html', clients=clients, recherche=recherche,
+            nb_clients=nb_clients, tri=tri, inactif_jours=inactif_jours)
     except Exception as e:
         print(f"❌ Erreur clients_list: {e}")
         flash('Erreur lors du chargement des clients')
         return redirect('/dashboard')
+
+@app.route('/export/excel_clients')
+def export_excel_clients():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        clients = qall('''SELECT c.nom, c.telephone, c.adresse,
+                                  COALESCE(cur.nb,0) + COALESCE(arch.nb,0) as nb_achats,
+                                  COALESCE(cur.total,0) + COALESCE(arch.total,0) as total_depense,
+                                  GREATEST(cur.dernier, arch.dernier) as dernier_achat,
+                                  COALESCE(c.notes, '') as notes,
+                                  c.date_creation
+                           FROM clients c
+                           LEFT JOIN (SELECT client_id, COUNT(*) nb, SUM(total) total, MAX(date_sortie) dernier
+                                      FROM sorties WHERE client_id IS NOT NULL GROUP BY client_id) cur ON cur.client_id = c.id
+                           LEFT JOIN (SELECT client_id, COUNT(*) nb, SUM(total) total, MAX(date_vente) dernier
+                                      FROM archive_ventes WHERE client_id IS NOT NULL GROUP BY client_id) arch ON arch.client_id = c.id
+                           ORDER BY total_depense DESC NULLS LAST''')
+
+        wb = Workbook()
+        wb.remove(wb.active)
+        lignes = [(c[0], c[1], c[2] or '', c[3] or 0, round(c[4] or 0), c[5].split(' ')[0] if c[5] else '',
+                   c[6] or '', c[7].split(' ')[0] if c[7] else '') for c in clients]
+        ws = _feuille_excel(wb, "Clients",
+            ["Nom", "Téléphone", "Adresse", "Nb achats", "Total dépensé (FCFA)", "Dernier achat", "Notes", "Client depuis"],
+            lignes, largeurs=[22, 16, 24, 12, 20, 14, 30, 14])
+        for row_cells in ws.iter_rows(min_row=2, min_col=5, max_col=5):
+            for cell in row_cells:
+                cell.number_format = '#,##0'
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        nom_fichier = f"Clients_HITNA_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+        return send_file(buf, as_attachment=True, download_name=nom_fichier,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    except Exception as e:
+        print(f"❌ Erreur export_excel_clients: {e}")
+        flash('❌ Erreur lors de l\'export des clients')
+        return redirect('/admin/clients')
 
 @app.route('/admin/clients/<int:id>')
 def fiche_client(id):
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        client = q1("SELECT id, nom, telephone, adresse, date_creation FROM clients WHERE id=?", (id,))
+        client = q1("SELECT id, nom, telephone, adresse, date_creation, COALESCE(notes,'') FROM clients WHERE id=?", (id,))
         if not client:
             flash('❌ Client introuvable')
             return redirect('/admin/clients')
@@ -4058,17 +4309,25 @@ def fiche_client(id):
                           WHERE a.client_id=?
                           ORDER BY 1 DESC''', (id, id))
 
-        stats = q1('''SELECT COUNT(*), COALESCE(SUM(total),0) FROM (
-                          SELECT total FROM sorties WHERE client_id=?
+        stats = q1('''SELECT COUNT(*), COALESCE(SUM(total),0), MAX(dernier) FROM (
+                          SELECT total, date_sortie AS dernier FROM sorties WHERE client_id=?
                           UNION ALL
-                          SELECT total FROM archive_ventes WHERE client_id=?
+                          SELECT total, date_vente AS dernier FROM archive_ventes WHERE client_id=?
                       ) t''', (id, id))
         nb_achats = stats[0] if stats else 0
         total_depense = stats[1] if stats else 0
+        dernier_achat = stats[2] if stats else None
         panier_moyen = round(total_depense / nb_achats) if nb_achats else 0
+        jours_inactivite = None
+        if dernier_achat:
+            try:
+                jours_inactivite = (datetime.now() - datetime.strptime(dernier_achat.split(' ')[0], '%Y-%m-%d')).days
+            except (ValueError, AttributeError):
+                jours_inactivite = None
 
         return render_template('admin_clients_fiche.html', client=client, achats=achats,
-            nb_achats=nb_achats, total_depense=total_depense, panier_moyen=panier_moyen)
+            nb_achats=nb_achats, total_depense=total_depense, panier_moyen=panier_moyen,
+            jours_inactivite=jours_inactivite)
     except Exception as e:
         print(f"❌ Erreur fiche_client: {e}")
         flash('Erreur lors du chargement de la fiche client')
@@ -4093,6 +4352,19 @@ def modifier_client(id):
     except Exception as e:
         print(f"❌ Erreur modifier_client: {e}")
         flash('❌ Erreur lors de la modification')
+    return redirect(f'/admin/clients/{id}')
+
+@app.route('/admin/clients/notes/<int:id>', methods=['POST'])
+def modifier_notes_client(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        notes = request.form.get('notes', '').strip()
+        exe("UPDATE clients SET notes=? WHERE id=?", (notes, id))
+        flash('✅ Note enregistrée')
+    except Exception as e:
+        print(f"❌ Erreur modifier_notes_client: {e}")
+        flash('❌ Erreur lors de l\'enregistrement de la note')
     return redirect(f'/admin/clients/{id}')
 
 @app.route('/admin/clients/supprimer/<int:id>')

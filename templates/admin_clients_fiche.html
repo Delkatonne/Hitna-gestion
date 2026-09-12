@@ -3,6 +3,7 @@
 {% block title %}{{ client[1] }} - Fiche client - HITNA{% endblock %}
 
 {% block extra_css %}
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
     .client-header {
         display: flex;
@@ -31,6 +32,16 @@
         border: 2px solid #e0e0e0;
         border-radius: 8px;
     }
+    .contact-links { display: flex; gap: 8px; margin-top: 8px; }
+    .contact-links a {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 7px 14px; border-radius: 20px; color: white;
+        text-decoration: none; font-size: 13px; font-weight: 600;
+    }
+    .notes-form textarea {
+        width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px;
+        box-sizing: border-box; font-family: inherit; font-size: 14px; resize: vertical; min-height: 80px;
+    }
 </style>
 {% endblock %}
 
@@ -45,6 +56,17 @@
             <p><i class="bi bi-telephone-fill"></i> <strong>{{ client[2] }}</strong></p>
             {% if client[3] %}<p><i class="bi bi-geo-alt-fill"></i> {{ client[3] }}</p>{% endif %}
             <p style="color:#999; font-size:12px;">Client depuis le {{ client[4].split(' ')[0] if client[4] else '-' }}</p>
+            {% if jours_inactivite is not none %}
+                {% if jours_inactivite > 30 %}
+                <p style="margin-top:6px;"><span class="inline-block bg-red-100 text-red-700 text-[11px] font-bold px-2.5 py-1 rounded-full"><i class="bi bi-exclamation-triangle-fill"></i> Inactif depuis {{ jours_inactivite }} jours</span></p>
+                {% else %}
+                <p style="margin-top:6px;"><span class="inline-block bg-green-100 text-green-800 text-[11px] font-bold px-2.5 py-1 rounded-full"><i class="bi bi-check-circle-fill"></i> Actif ({{ jours_inactivite }} j depuis le dernier achat)</span></p>
+                {% endif %}
+            {% endif %}
+            <div class="contact-links">
+                <a href="tel:{{ client[2] }}" style="background:#1e3c72;"><i class="bi bi-telephone-fill"></i> Appeler</a>
+                <a href="https://wa.me/{{ client[2]|replace(' ', '')|replace('-', '')|replace('+', '') }}" target="_blank" style="background:#25D366;"><i class="bi bi-whatsapp"></i> WhatsApp</a>
+            </div>
         </div>
         <div>
             <button type="button" class="btn-small" style="background:#ffc107;" onclick="document.getElementById('editForm').style.display = document.getElementById('editForm').style.display === 'flex' ? 'none' : 'flex'"><i class="bi bi-pencil-square"></i> Modifier</button>
@@ -59,6 +81,15 @@
         <input type="tel" name="telephone" value="{{ client[2] }}" placeholder="Téléphone" required>
         <input type="text" name="adresse" value="{{ client[3] or '' }}" placeholder="Adresse">
         <button type="submit" style="background:#28a745;"><i class="bi bi-check-circle-fill"></i> Enregistrer</button>
+    </form>
+</div>
+
+<!-- Note / étiquette -->
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-sticky"></i> Note interne</h2>
+    <form method="post" action="/admin/clients/notes/{{ client[0] }}" class="notes-form" style="display:flex; flex-direction:column; gap:10px;">
+        <textarea name="notes" placeholder="Ex: VIP, grossiste, préfère être livré le matin...">{{ client[5] or '' }}</textarea>
+        <button type="submit" style="background:#1e3c72; color:white; align-self:flex-start; padding:9px 20px;"><i class="bi bi-save"></i> Enregistrer la note</button>
     </form>
 </div>
 
