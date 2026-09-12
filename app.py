@@ -963,8 +963,9 @@ def verifier_alertes_stock():
             return
         _last_alertes_check = now_ts
 
-        produits = qall('''SELECT p.id,p.nom,p.stock,COALESCE(a.seuil,p.stock_min,5)
+        produits = qall('''SELECT p.id,p.nom,p.stock,COALESCE(a.seuil,p.stock_min,5), COALESCE(b.nom,'')
             FROM produits p LEFT JOIN alertes_produits a ON p.id=a.produit_id AND a.actif=1
+            LEFT JOIN boutiques b ON p.boutique_id = b.id
             WHERE p.stock<=COALESCE(a.seuil,p.stock_min,5)''')
         if not produits:
             return
@@ -987,8 +988,9 @@ def verifier_alertes_stock():
         for p in produits:
             for a in admins:
                 if (a[0], p[0]) not in deja_set:
+                    boutique_suffixe = f' — {p[4]}' if p[4] else ''
                     creer_notification(a[0],'stock_bas','⚠️ Stock bas',
-                        f'Le produit "{p[1]}" n\'a plus que {p[2]} unités (seuil: {p[3]})','/admin/produits')
+                        f'Le produit "{p[1]}"{boutique_suffixe} n\'a plus que {p[2]} unités (seuil: {p[3]})','/admin/produits')
     except Exception as e:
         print(f"❌ Erreur verifier_alertes_stock: {e}")
 
@@ -2043,24 +2045,31 @@ def historique_produit():
         # Suggestions pour l'autocomplétion : tous les noms de produits
         # jamais connus du système (actifs, inactifs, ou même supprimés
         # mais présents dans une archive).
-        suggestions = qall('''
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        suggestions = qall(f'''
             SELECT DISTINCT nom FROM (
-                SELECT nom FROM produits
-                UNION SELECT produit_nom FROM archive_ventes
-                UNION SELECT produit_nom FROM archive_entrees
-                UNION SELECT produit_nom FROM archive_pertes
-                UNION SELECT produit_nom FROM ventes_annulees
-                UNION SELECT produit_nom FROM archive_ventes_annulees
-            ) t WHERE nom IS NOT NULL AND nom <> '' ORDER BY nom LIMIT 500''')
+                SELECT nom, boutique_id FROM produits
+                UNION SELECT produit_nom, boutique_id FROM archive_ventes
+                UNION SELECT produit_nom, boutique_id FROM archive_entrees
+                UNION SELECT produit_nom, boutique_id FROM archive_pertes
+                UNION SELECT produit_nom, boutique_id FROM ventes_annulees
+                UNION SELECT produit_nom, boutique_id FROM archive_ventes_annulees
+            ) t WHERE nom IS NOT NULL AND nom <> ''{where_bq} ORDER BY nom LIMIT 500''', params_bq)
 
         mouvements = []
         stats = {'ventes': 0, 'achats': 0, 'pertes': 0, 'annule': 0, 'nb': 0}
 
         if recherche:
             like = f'%{recherche}%'
-            params8 = (like,) * 8
+            bid = boutique_active()
+            c_s = " AND s.boutique_id=?" if bid is not None else ""
+            c_a = " AND a.boutique_id=?" if bid is not None else ""
+            c_e = " AND e.boutique_id=?" if bid is not None else ""
+            c_pe = " AND pe.boutique_id=?" if bid is not None else ""
+            c_va = " AND va.boutique_id=?" if bid is not None else ""
+            params8 = (like, bid) * 8 if bid is not None else (like,) * 8
 
-            mouvements = qall('''
+            mouvements = qall(f'''
                 SELECT date_col, type_mvt, quantite, prix_unitaire, total,
                        personne1, personne2, motif, groupe_vente, palier_nom, produit_nom
                 FROM (
@@ -2069,7 +2078,7 @@ def historique_produit():
                            s.client AS personne1, u.nom AS personne2, NULL::TEXT AS motif,
                            s.groupe_vente, s.palier_nom, p.nom AS produit_nom
                     FROM sorties s JOIN produits p ON s.produit_id = p.id JOIN users u ON s.employe_id = u.id
-                    WHERE p.nom ILIKE ?
+                    WHERE p.nom ILIKE ?{c_s}
 
                     UNION ALL
                     -- Ventes archivées
@@ -2077,7 +2086,7 @@ def historique_produit():
                            a.client, a.employe_nom, NULL::TEXT,
                            a.groupe_vente, a.palier_nom, a.produit_nom
                     FROM archive_ventes a
-                    WHERE a.produit_nom ILIKE ?
+                    WHERE a.produit_nom ILIKE ?{c_a}
 
                     UNION ALL
                     -- Entrées actives
@@ -2085,7 +2094,7 @@ def historique_produit():
                            e.fournisseur, u.nom, NULL::TEXT,
                            NULL::TEXT, NULL::TEXT, p.nom
                     FROM entrees e JOIN produits p ON e.produit_id = p.id JOIN users u ON e.employe_id = u.id
-                    WHERE p.nom ILIKE ?
+                    WHERE p.nom ILIKE ?{c_e}
 
                     UNION ALL
                     -- Entrées archivées
@@ -2093,7 +2102,7 @@ def historique_produit():
                            a.fournisseur, a.employe_nom, NULL::TEXT,
                            NULL::TEXT, NULL::TEXT, a.produit_nom
                     FROM archive_entrees a
-                    WHERE a.produit_nom ILIKE ?
+                    WHERE a.produit_nom ILIKE ?{c_a}
 
                     UNION ALL
                     -- Pertes actives
@@ -2101,7 +2110,7 @@ def historique_produit():
                            NULL::TEXT, u.nom, pe.motif,
                            NULL::TEXT, NULL::TEXT, p.nom
                     FROM pertes pe JOIN produits p ON pe.produit_id = p.id JOIN users u ON pe.employe_id = u.id
-                    WHERE p.nom ILIKE ?
+                    WHERE p.nom ILIKE ?{c_pe}
 
                     UNION ALL
                     -- Pertes archivées
@@ -2109,7 +2118,7 @@ def historique_produit():
                            NULL::TEXT, a.employe_nom, a.motif,
                            NULL::TEXT, NULL::TEXT, a.produit_nom
                     FROM archive_pertes a
-                    WHERE a.produit_nom ILIKE ?
+                    WHERE a.produit_nom ILIKE ?{c_a}
 
                     UNION ALL
                     -- Ventes annulées (actives)
@@ -2117,7 +2126,7 @@ def historique_produit():
                            va.vendeur_original, va.annule_par, va.motif,
                            va.groupe_vente, va.palier_nom, va.produit_nom
                     FROM ventes_annulees va
-                    WHERE va.produit_nom ILIKE ?
+                    WHERE va.produit_nom ILIKE ?{c_va}
 
                     UNION ALL
                     -- Ventes annulées archivées
@@ -2125,7 +2134,7 @@ def historique_produit():
                            a.vendeur_original, a.annule_par, a.motif,
                            a.groupe_vente, a.palier_nom, a.produit_nom
                     FROM archive_ventes_annulees a
-                    WHERE a.produit_nom ILIKE ?
+                    WHERE a.produit_nom ILIKE ?{c_a}
                 ) tout_mouvements
                 ORDER BY date_col DESC
                 LIMIT 500''', params8)
@@ -2412,12 +2421,13 @@ def admin_ventes():
             else:
                 flash('❌ Aucun produit n\'a pu être vendu')
             return redirect('/admin/ventes')
-        cache_key = 'admin_ventes_data'
+        cache_key = f'admin_ventes_data_{boutique_active() or "toutes"}'
         cached_data = get_cached(cache_key, 30)
         if cached_data:
             produits, historique, stats_vendeurs, paliers = cached_data
         else:
-            produits = qall('''SELECT p.id, p.nom, p.prix, p.stock,
+            where_p, params_p = boutique_filtre_sql('p.boutique_id')
+            produits = qall(f'''SELECT p.id, p.nom, p.prix, p.stock,
                                        COALESCE(u.symbole,'') as unite_symbole,
                                        COALESCE(u.nom,'') as unite_nom,
                                        p.valeur_unite,
@@ -2425,13 +2435,15 @@ def admin_ventes():
                                        COALESCE(p.code_barre, '') as code_barre
                                 FROM produits p
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
-                                WHERE p.stock>0 AND COALESCE(p.actif,1)=1 ORDER BY p.nom''')
-            historique = qall('''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente,s.palier_nom
+                                WHERE p.stock>0 AND COALESCE(p.actif,1)=1{where_p} ORDER BY p.nom''', params_p)
+            where_s, params_s = boutique_filtre_sql('s.boutique_id')
+            historique = qall(f'''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente,s.palier_nom
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
-                ORDER BY s.date_sortie DESC LIMIT 20''')
-            stats_vendeurs = qall('''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
+                WHERE 1=1{where_s}
+                ORDER BY s.date_sortie DESC LIMIT 20''', params_s)
+            stats_vendeurs = qall(f'''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
                 FROM sorties s JOIN users u ON s.employe_id=u.id
-                WHERE DATE(s.date_sortie)=CURRENT_DATE GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''')
+                WHERE DATE(s.date_sortie)=CURRENT_DATE{where_s} GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''', params_s)
             paliers = _paliers_par_produit()
             set_cached(cache_key, (produits, historique, stats_vendeurs, paliers))
         return render_template('admin_ventes.html', produits=produits, historique=historique, stats_vendeurs=stats_vendeurs,
@@ -2985,6 +2997,33 @@ def modifier_acteur(id):
     except Exception as e:
         print(f"❌ Erreur modifier_acteur: {e}")
         flash('❌ Erreur lors de la modification')
+    return redirect('/admin/acteurs')
+
+@app.route('/admin/acteurs/modifier_boutique/<int:id>', methods=['POST'])
+def modifier_boutique_acteur(id):
+    """Change la boutique assignée à un employé (n'affecte pas les admins,
+    qui ne sont rattachés à aucune boutique et voient tout)."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        boutique_id = request.form.get('boutique_id')
+        boutique_id = int(boutique_id) if boutique_id else None
+        u = q1("SELECT nom, role FROM users WHERE id=?", (id,))
+        if not u:
+            flash('❌ Acteur introuvable')
+            return redirect('/admin/acteurs')
+        if u[1] == 'admin':
+            flash('ℹ️ Un administrateur voit toutes les boutiques, aucune assignation nécessaire')
+            return redirect('/admin/acteurs')
+        exe("UPDATE users SET boutique_id=? WHERE id=?", (boutique_id, id))
+        if boutique_id:
+            b = q1("SELECT nom FROM boutiques WHERE id=?", (boutique_id,))
+            flash(f'✅ "{u[0]}" rattaché à la boutique {b[0] if b else ""}')
+        else:
+            flash(f'⚠️ "{u[0]}" n\'est plus rattaché à aucune boutique — il ne verra aucun produit')
+    except Exception as e:
+        print(f"❌ Erreur modifier_boutique_acteur: {e}")
+        flash('❌ Erreur lors de la modification de la boutique')
     return redirect('/admin/acteurs')
 
 # ══════════════════════════════════════════════════════════════
@@ -4132,31 +4171,37 @@ def admin_stats():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        cache_key = 'stats_data'
+        bid = boutique_active()
+        cache_key = f'stats_data_{bid or "toutes"}'
         cached_data = get_cached(cache_key, 120)
         if cached_data:
             ventes_jour, ventes_mois, top_produits, marge, marge_produits, charges_totales = cached_data
         else:
-            ventes_jour = qall('''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*)
-                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
-                GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''')
-            ventes_mois = qall('''SELECT TO_CHAR(date_sortie::timestamp,'YYYY-MM'),COALESCE(SUM(total),0),COUNT(*)
-                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '6 months'
-                GROUP BY 1 ORDER BY 1''')
-            top_produits = qall('''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
+            where_s, params_s = boutique_filtre_sql('boutique_id')
+            ventes_jour = qall(f'''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*)
+                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'{where_s}
+                GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''', params_s)
+            ventes_mois = qall(f'''SELECT TO_CHAR(date_sortie::timestamp,'YYYY-MM'),COALESCE(SUM(total),0),COUNT(*)
+                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '6 months'{where_s}
+                GROUP BY 1 ORDER BY 1''', params_s)
+            where_p, params_p = boutique_filtre_sql('p.boutique_id')
+            top_produits = qall(f'''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
                 FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
-                GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 10''')
-            marge = q1('''SELECT COALESCE((SELECT SUM(total) FROM sorties),0),
-                                 COALESCE((SELECT SUM(total) FROM entrees),0)''')
+                WHERE 1=1{where_p}
+                GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 10''', params_p)
+            marge = q1(f'''SELECT COALESCE((SELECT SUM(total) FROM sorties WHERE 1=1{where_s}),0),
+                                 COALESCE((SELECT SUM(total) FROM entrees WHERE 1=1{where_s}),0)''', params_s + params_s)
             marge = marge if marge else (0,0)
-            charges_totales = q1("SELECT COALESCE(SUM(montant),0) FROM charges")
+            where_c, params_c = boutique_filtre_sql('boutique_id')
+            charges_totales = q1(f"SELECT COALESCE(SUM(montant),0) FROM charges WHERE 1=1{where_c}", params_c)
             charges_totales = charges_totales[0] if charges_totales else 0
-            marge_produits = qall('''SELECT p.nom,COALESCE(SUM(s.total),0),COALESCE(SUM(e.total),0),
+            marge_produits = qall(f'''SELECT p.nom,COALESCE(SUM(s.total),0),COALESCE(SUM(e.total),0),
                 COALESCE(SUM(s.total),0)-COALESCE(SUM(e.total),0)
                 FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
-                LEFT JOIN entrees e ON p.id=e.produit_id GROUP BY p.id,p.nom
+                LEFT JOIN entrees e ON p.id=e.produit_id WHERE 1=1{where_p}
+                GROUP BY p.id,p.nom
                 HAVING COALESCE(SUM(s.total),0)+COALESCE(SUM(e.total),0)>0
-                ORDER BY 4 DESC LIMIT 10''')
+                ORDER BY 4 DESC LIMIT 10''', params_p)
             set_cached(cache_key, (ventes_jour, ventes_mois, top_produits, marge, marge_produits, charges_totales))
         return render_template('admin_stats.html', ventes_jour=ventes_jour, ventes_mois=ventes_mois,
             top_produits=top_produits, marge_totale=marge, marge_produits=marge_produits,
@@ -4194,6 +4239,12 @@ def admin_recus():
             params.append(f'%{client_filtre}%')
             conditions_arch.append("client ILIKE %s")
             params_arch.append(f'%{client_filtre}%')
+        bid = boutique_active()
+        if bid is not None:
+            conditions.append("boutique_id = %s")
+            params.append(bid)
+            conditions_arch.append("boutique_id = %s")
+            params_arch.append(bid)
 
         where_sql = " AND ".join(conditions)
         where_sql_arch = " AND ".join(conditions_arch)
@@ -4337,9 +4388,17 @@ def admin_archives():
         # seul le type sélectionné dans l'URL était rempli et les 3 autres
         # onglets restaient vides tant qu'aucune recherche n'était lancée.
         def _filtre(colonne_date):
-            if not date_recherche:
+            clauses, p = [], []
+            if date_recherche:
+                clauses.append(f"{colonne_date}::date = %s")
+                p.append(date_recherche)
+            bid = boutique_active()
+            if bid is not None:
+                clauses.append("boutique_id = %s")
+                p.append(bid)
+            if not clauses:
                 return "", ()
-            return f" AND {colonne_date}::date = %s", (date_recherche,)
+            return " AND " + " AND ".join(clauses), tuple(p)
 
         def _query_stricte(sql, params):
             """Comme qall(), mais SANS avaler les erreurs SQL. qall() retourne
@@ -4400,19 +4459,20 @@ def admin_archives():
 
         # Plage de dates réellement disponible par type — permet de voir tout
         # de suite si "aucun résultat" vient du filtre ou d'une archive vide.
-        plage_ventes = q1("SELECT MIN(date_vente), MAX(date_vente) FROM archive_ventes") or (None, None)
-        plage_entrees = q1("SELECT MIN(date_entree), MAX(date_entree) FROM archive_entrees") or (None, None)
-        plage_pertes = q1("SELECT MIN(date_perte), MAX(date_perte) FROM archive_pertes") or (None, None)
-        plage_annulees = q1("SELECT MIN(date_annulation), MAX(date_annulation) FROM archive_ventes_annulees") or (None, None)
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        plage_ventes = q1(f"SELECT MIN(date_vente), MAX(date_vente) FROM archive_ventes WHERE 1=1{where_bq}", params_bq) or (None, None)
+        plage_entrees = q1(f"SELECT MIN(date_entree), MAX(date_entree) FROM archive_entrees WHERE 1=1{where_bq}", params_bq) or (None, None)
+        plage_pertes = q1(f"SELECT MIN(date_perte), MAX(date_perte) FROM archive_pertes WHERE 1=1{where_bq}", params_bq) or (None, None)
+        plage_annulees = q1(f"SELECT MIN(date_annulation), MAX(date_annulation) FROM archive_ventes_annulees WHERE 1=1{where_bq}", params_bq) or (None, None)
 
         rows_par_type = {'ventes': ventes_archive, 'entrees': entrees_archive,
                           'pertes': pertes_archive, 'annulees': annulees_archive}
         rows = rows_par_type.get(type_arch, ventes_archive)
 
-        nb_ventes_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_ventes") or (0,0)
-        nb_entrees_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_entrees") or (0,0)
-        nb_pertes_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_pertes") or (0,0)
-        nb_annulees_arch = q1("SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_ventes_annulees") or (0,0)
+        nb_ventes_arch = q1(f"SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_ventes WHERE 1=1{where_bq}", params_bq) or (0,0)
+        nb_entrees_arch = q1(f"SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_entrees WHERE 1=1{where_bq}", params_bq) or (0,0)
+        nb_pertes_arch = q1(f"SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_pertes WHERE 1=1{where_bq}", params_bq) or (0,0)
+        nb_annulees_arch = q1(f"SELECT COUNT(*),COALESCE(SUM(total),0) FROM archive_ventes_annulees WHERE 1=1{where_bq}", params_bq) or (0,0)
 
         total_ca_archive = nb_ventes_arch[1] if nb_ventes_arch else 0
         total_achats_archive = nb_entrees_arch[1] if nb_entrees_arch else 0
@@ -5353,12 +5413,14 @@ def admin_alertes_produits():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        produits = qall('''SELECT p.id, p.nom, p.stock, p.stock_min,
+        where_bq, params_bq = boutique_filtre_sql('p.boutique_id')
+        produits = qall(f'''SELECT p.id, p.nom, p.stock, p.stock_min,
                                    COALESCE(a.seuil, p.stock_min, 5) as seuil,
                                    COALESCE(a.actif, 1) as actif
                             FROM produits p
                             LEFT JOIN alertes_produits a ON p.id = a.produit_id
-                            ORDER BY p.nom''')
+                            WHERE 1=1{where_bq}
+                            ORDER BY p.nom''', params_bq)
         return render_template('admin_alertes_produits.html', produits=produits)
     except Exception as e:
         print(f"❌ Erreur admin_alertes_produits: {e}")
