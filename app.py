@@ -2585,12 +2585,14 @@ def vente():
 
 def _recuperer_lignes_recu(groupe_vente):
     """Retourne (lignes, archivee) pour un groupe_vente, en cherchant d'abord dans
-    sorties (ventes récentes) puis dans archive_ventes (ventes archivées)."""
+    sorties (ventes récentes) puis dans archive_ventes (ventes archivées).
+    Chaque ligne se termine par le nom de la boutique où l'achat a eu lieu."""
     lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                             s.date_sortie, s.client, u.nom, s.palier_nom
+                             s.date_sortie, s.client, u.nom, s.palier_nom, COALESCE(b.nom, '')
                       FROM sorties s
                       JOIN produits p ON s.produit_id = p.id
                       JOIN users u ON s.employe_id = u.id
+                      LEFT JOIN boutiques b ON s.boutique_id = b.id
                       WHERE s.groupe_vente = ?
                       ORDER BY s.id''', (groupe_vente,))
     if not lignes:
@@ -2598,21 +2600,23 @@ def _recuperer_lignes_recu(groupe_vente):
         # juste après l'enregistrement de la vente, on retente une fois.
         sleep(0.4)
         lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                                 s.date_sortie, s.client, u.nom, s.palier_nom
+                                 s.date_sortie, s.client, u.nom, s.palier_nom, COALESCE(b.nom, '')
                           FROM sorties s
                           JOIN produits p ON s.produit_id = p.id
                           JOIN users u ON s.employe_id = u.id
+                          LEFT JOIN boutiques b ON s.boutique_id = b.id
                           WHERE s.groupe_vente = ?
                           ORDER BY s.id''', (groupe_vente,))
     archivee = False
     if not lignes:
         # La vente n'est plus dans "sorties" : elle a peut-être été archivée
         # (archivage hebdomadaire). On cherche alors dans archive_ventes.
-        lignes_archive = qall('''SELECT produit_id, produit_nom, quantite, prix_unitaire, total,
-                                         date_vente, client, employe_nom, palier_nom
-                                  FROM archive_ventes
-                                  WHERE groupe_vente = ?
-                                  ORDER BY id''', (groupe_vente,))
+        lignes_archive = qall('''SELECT a.produit_id, a.produit_nom, a.quantite, a.prix_unitaire, a.total,
+                                         a.date_vente, a.client, a.employe_nom, a.palier_nom, COALESCE(b.nom, '')
+                                  FROM archive_ventes a
+                                  LEFT JOIN boutiques b ON a.boutique_id = b.id
+                                  WHERE a.groupe_vente = ?
+                                  ORDER BY a.id''', (groupe_vente,))
         if lignes_archive:
             lignes = lignes_archive
             archivee = True
@@ -2666,6 +2670,7 @@ def recu_vente(groupe_vente):
             client=lignes[0][6],
             vendeur=lignes[0][7],
             date_vente=lignes[0][5],
+            boutique_nom=lignes[0][9],
             archivee=archivee)
     except Exception as e:
         print(f"❌ Erreur recu_vente: {e}")
@@ -2689,10 +2694,11 @@ def export_pdf_recu(groupe_vente):
         client = lignes[0][6] or 'Non renseigné'
         vendeur = lignes[0][7]
         date_vente = lignes[0][5]
+        boutique_nom = lignes[0][9]
 
         # Format ticket compact (largeur réduite, hauteur adaptée au contenu)
         largeur = 226  # ~8cm
-        hauteur = 330 + len(lignes) * 16
+        hauteur = 330 + len(lignes) * 16 + (14 if boutique_nom else 0)
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=(largeur, hauteur))
 
@@ -2729,6 +2735,9 @@ def export_pdf_recu(groupe_vente):
 
         c.setFont("Helvetica", 8)
         c.setFillColorRGB(0.2, 0.2, 0.2)
+        if boutique_nom:
+            c.drawString(10, y, f"Boutique: {boutique_nom}")
+            y -= 12
         c.drawString(10, y, f"Date: {date_vente}")
         y -= 12
         c.drawString(10, y, f"Vendeur: {vendeur}")
@@ -2967,7 +2976,8 @@ def api_stock_bas():
     if 'user_id' not in session:
         return jsonify({'error': 'Non autorisé'}), 401
     try:
-        rows = qall("SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min")
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        rows = qall(f"SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min{where_bq}", params_bq)
         return jsonify([{'nom':r[0],'stock':r[1],'stock_min':r[2]} for r in rows])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -4541,16 +4551,20 @@ def admin_recus():
         where_sql = " AND ".join(conditions)
         where_sql_arch = " AND ".join(conditions_arch)
 
-        recus = qall(f'''SELECT groupe_vente, client, MIN(date_sortie) as date_v,
-                                 SUM(total) as total_v, COUNT(*) as nb_lignes, false as archivee
-                          FROM sorties WHERE {where_sql}
-                          GROUP BY groupe_vente, client
+        recus = qall(f'''SELECT s.groupe_vente, s.client, MIN(s.date_sortie) as date_v,
+                                 SUM(s.total) as total_v, COUNT(*) as nb_lignes, false as archivee,
+                                 MAX(COALESCE(b.nom, '')) as boutique_nom
+                          FROM sorties s LEFT JOIN boutiques b ON s.boutique_id = b.id
+                          WHERE {where_sql}
+                          GROUP BY s.groupe_vente, s.client
                           ORDER BY date_v DESC LIMIT 100''', tuple(params))
 
-        recus_archives = qall(f'''SELECT groupe_vente, client, MIN(date_vente) as date_v,
-                                          SUM(total) as total_v, COUNT(*) as nb_lignes, true as archivee
-                                   FROM archive_ventes WHERE {where_sql_arch}
-                                   GROUP BY groupe_vente, client
+        recus_archives = qall(f'''SELECT a.groupe_vente, a.client, MIN(a.date_vente) as date_v,
+                                          SUM(a.total) as total_v, COUNT(*) as nb_lignes, true as archivee,
+                                          MAX(COALESCE(b.nom, '')) as boutique_nom
+                                   FROM archive_ventes a LEFT JOIN boutiques b ON a.boutique_id = b.id
+                                   WHERE {where_sql_arch}
+                                   GROUP BY a.groupe_vente, a.client
                                    ORDER BY date_v DESC LIMIT 100''', tuple(params_arch))
 
         tous_recus = sorted(list(recus) + list(recus_archives), key=lambda r: r[2] or '', reverse=True)[:150]
@@ -4621,10 +4635,11 @@ def rapport_journalier_jour(jour):
         where_e, params_e = boutique_filtre_sql('e.boutique_id')
         where_pe, params_pe = boutique_filtre_sql('pe.boutique_id')
         ventes_jour = qall(f'''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                                      s.date_sortie, s.client, u.nom, s.groupe_vente
+                                      s.date_sortie, s.client, u.nom, s.groupe_vente, s.palier_nom, COALESCE(b.nom, '')
                                FROM sorties s
                                JOIN produits p ON s.produit_id = p.id
                                JOIN users u ON s.employe_id = u.id
+                               LEFT JOIN boutiques b ON s.boutique_id = b.id
                                WHERE DATE(s.date_sortie) = ?{where_s}
                                ORDER BY s.date_sortie ASC''', (jour,) + params_s)
         entrees_jour = qall(f'''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total,
@@ -4671,12 +4686,13 @@ def admin_archives():
             return redirect('/login')
         type_arch = request.args.get('type', 'ventes')
         date_recherche = request.args.get('date', '').strip()
+        produit_filtre = request.args.get('produit', '').strip()
         tri = request.args.get('tri', 'date_desc')
         order = 'DESC' if 'desc' in tri else 'ASC'
         # Champs conservés pour compatibilité du template (anciens filtres
-        # date_debut/date_fin/produit supprimés — recherche uniquement par
-        # une date précise désormais, appliquée aux 4 onglets à la fois).
-        date_debut = date_fin = produit_filtre = ''
+        # date_debut/date_fin supprimés — recherche par date précise et/ou
+        # par nom de produit désormais, appliquée aux 4 onglets à la fois).
+        date_debut = date_fin = ''
 
         # NOTE : les 4 onglets (Ventes / Entrées / Pertes / Ventes annulées) sont
         # commutés côté client en JavaScript (switchTab), sans rechargement de
@@ -4688,6 +4704,9 @@ def admin_archives():
             if date_recherche:
                 clauses.append(f"{colonne_date}::date = %s")
                 p.append(date_recherche)
+            if produit_filtre:
+                clauses.append("produit_nom ILIKE %s")
+                p.append(f'%{produit_filtre}%')
             bid = boutique_active()
             if bid is not None:
                 clauses.append("boutique_id = %s")
@@ -4852,44 +4871,46 @@ def admin_archive_jour(jour):
         return redirect('/login')
     try:
         motif = jour + '%'
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
 
-        ventes_jour = qall('''SELECT id, produit_nom, quantite, prix_unitaire, total,
+        ventes_jour = qall(f'''SELECT id, produit_nom, quantite, prix_unitaire, total,
                                date_vente, client, employe_nom, groupe_vente, palier_nom
                                FROM archive_ventes
-                               WHERE date_vente LIKE %s
-                               ORDER BY date_vente ASC''', (motif,))
+                               WHERE date_vente LIKE ?{where_bq}
+                               ORDER BY date_vente ASC''', (motif,) + params_bq)
 
-        entrees_jour = qall('''SELECT id, produit_nom, quantite, prix_unitaire, total,
+        entrees_jour = qall(f'''SELECT id, produit_nom, quantite, prix_unitaire, total,
                                 date_entree, fournisseur, employe_nom
                                 FROM archive_entrees
-                                WHERE date_entree LIKE %s
-                                ORDER BY date_entree ASC''', (motif,))
+                                WHERE date_entree LIKE ?{where_bq}
+                                ORDER BY date_entree ASC''', (motif,) + params_bq)
 
-        pertes_jour = qall('''SELECT id, produit_nom, quantite, prix_unitaire, total,
+        pertes_jour = qall(f'''SELECT id, produit_nom, quantite, prix_unitaire, total,
                                motif, date_perte, employe_nom
                                FROM archive_pertes
-                               WHERE date_perte LIKE %s
-                               ORDER BY date_perte ASC''', (motif,))
+                               WHERE date_perte LIKE ?{where_bq}
+                               ORDER BY date_perte ASC''', (motif,) + params_bq)
 
-        annulees_jour = qall('''SELECT id, groupe_vente, produit_nom, quantite, prix_unitaire, total,
+        annulees_jour = qall(f'''SELECT id, groupe_vente, produit_nom, quantite, prix_unitaire, total,
                                  client, vendeur_original, date_vente_original, date_annulation,
                                  annule_par, motif
                                  FROM archive_ventes_annulees
-                                 WHERE date_annulation LIKE %s
-                                 ORDER BY date_annulation ASC''', (motif,))
+                                 WHERE date_annulation LIKE ?{where_bq}
+                                 ORDER BY date_annulation ASC''', (motif,) + params_bq)
 
-        stats_ventes = q1('SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_ventes WHERE date_vente LIKE %s', (motif,)) or (0, 0, 0)
-        stats_entrees = q1('SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_entrees WHERE date_entree LIKE %s', (motif,)) or (0, 0, 0)
-        stats_pertes = q1('SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_pertes WHERE date_perte LIKE %s', (motif,)) or (0, 0, 0)
-        stats_annulees = q1('SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_ventes_annulees WHERE date_annulation LIKE %s', (motif,)) or (0, 0, 0)
+        stats_ventes = q1(f'SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_ventes WHERE date_vente LIKE ?{where_bq}', (motif,) + params_bq) or (0, 0, 0)
+        stats_entrees = q1(f'SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_entrees WHERE date_entree LIKE ?{where_bq}', (motif,) + params_bq) or (0, 0, 0)
+        stats_pertes = q1(f'SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_pertes WHERE date_perte LIKE ?{where_bq}', (motif,) + params_bq) or (0, 0, 0)
+        stats_annulees = q1(f'SELECT COUNT(*), COALESCE(SUM(quantite),0), COALESCE(SUM(total),0) FROM archive_ventes_annulees WHERE date_annulation LIKE ?{where_bq}', (motif,) + params_bq) or (0, 0, 0)
 
         # Si ce jour n'est pas encore archivé, il est peut-être encore dans les
         # tables actives (semaine en cours) — on renvoie directement vers le
         # rapport journalier "live" pour ce jour au lieu de dire juste "rien ici".
         if not (ventes_jour or entrees_jour or pertes_jour or annulees_jour):
-            en_direct = q1("SELECT 1 FROM sorties WHERE DATE(date_sortie::timestamp) = %s", (jour,)) \
-                     or q1("SELECT 1 FROM entrees WHERE DATE(date_entree::timestamp) = %s", (jour,)) \
-                     or q1("SELECT 1 FROM pertes WHERE DATE(date_perte::timestamp) = %s", (jour,))
+            where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
+            en_direct = q1(f"SELECT 1 FROM sorties WHERE DATE(date_sortie::timestamp) = ?{where_bq2}", (jour,) + params_bq2) \
+                     or q1(f"SELECT 1 FROM entrees WHERE DATE(date_entree::timestamp) = ?{where_bq2}", (jour,) + params_bq2) \
+                     or q1(f"SELECT 1 FROM pertes WHERE DATE(date_perte::timestamp) = ?{where_bq2}", (jour,) + params_bq2)
             if en_direct:
                 return redirect(f'/rapport-journalier/{jour}')
             flash(f"ℹ️ Aucune donnée trouvée pour le {jour} — ni dans les archives, ni dans les données en cours.")

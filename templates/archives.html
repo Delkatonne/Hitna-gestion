@@ -384,11 +384,15 @@
     </button>
 </div>
 
-<!-- Recherche par date — unique, s'applique aux 4 onglets -->
+<!-- Recherche par date et/ou par produit — unique, s'applique aux 4 onglets -->
 <div class="filters-container">
     <div class="filter-group">
         <label>📅 Rechercher à une date précise</label>
         <input type="date" id="date_recherche" value="{{ date_recherche|default('') }}">
+    </div>
+    <div class="filter-group">
+        <label>📦 Rechercher par nom de produit</label>
+        <input type="text" id="produit_recherche" placeholder="Ex: Coca-Cola, Riz..." value="{{ produit_filtre|default('') }}" onkeydown="if(event.key==='Enter'){event.preventDefault(); rechercherParDate();}">
     </div>
     <div class="filter-group">
         <label>🔄 Trier par</label>
@@ -400,17 +404,21 @@
     <div class="filter-group">
         <button class="search-btn" onclick="rechercherParDate()">🔍 Rechercher</button>
     </div>
-    {% if date_recherche %}
+    {% if date_recherche or produit_filtre %}
     <div class="filter-group">
         <button class="reset-btn" onclick="resetRecherche()">🔄 Réinitialiser</button>
     </div>
+    {% endif %}
+    {% if date_recherche %}
     <div class="filter-group">
         <button class="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-lg" onclick="exporterPdfDate()">📄 Exporter en PDF</button>
     </div>
     {% endif %}
 </div>
-{% if date_recherche %}
-    <div class="plage-info">📅 Résultats affichés pour le <strong>{{ date_recherche }}</strong> dans les 4 onglets ci-dessus.</div>
+{% if date_recherche or produit_filtre %}
+    <div class="plage-info">
+        📅 Résultats affichés{% if date_recherche %} pour le <strong>{{ date_recherche }}</strong>{% endif %}{% if produit_filtre %} pour les produits contenant <strong>« {{ produit_filtre }} »</strong>{% endif %} dans les 4 onglets ci-dessus.
+    </div>
 {% endif %}
 
 
@@ -854,11 +862,13 @@
     
     function rechercherParDate() {
         const date = document.getElementById('date_recherche').value;
+        const produit = document.getElementById('produit_recherche').value.trim();
         const tri = document.getElementById('tri_select').value;
 
         const url = new URL(window.location.href);
         url.searchParams.set('type', currentType);
         if (date) { url.searchParams.set('date', date); } else { url.searchParams.delete('date'); }
+        if (produit) { url.searchParams.set('produit', produit); } else { url.searchParams.delete('produit'); }
         if (tri) { url.searchParams.set('tri', tri); } else { url.searchParams.delete('tri'); }
         url.searchParams.delete('semaine');
         window.location.href = url.toString();
@@ -867,6 +877,7 @@
     function resetRecherche() {
         const url = new URL(window.location.href);
         url.searchParams.delete('date');
+        url.searchParams.delete('produit');
         url.searchParams.delete('semaine');
         url.searchParams.delete('tri');
         url.searchParams.set('type', currentType);

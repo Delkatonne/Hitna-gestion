@@ -131,6 +131,7 @@
             </div>
 
             <div class="recu-meta">
+                {% if boutique_nom %}<div><span><i class="bi bi-shop"></i> Boutique</span><span>{{ boutique_nom }}</span></div>{% endif %}
                 <div><span><i class="bi bi-calendar-event"></i> Date</span><span>{{ date_vente }}</span></div>
                 <div><span><i class="bi bi-person"></i> Vendeur</span><span>{{ vendeur }}</span></div>
                 <div><span><i class="bi bi-hand-index-thumb"></i> Client</span><span>{{ client if client else 'Non renseigné' }}</span></div>

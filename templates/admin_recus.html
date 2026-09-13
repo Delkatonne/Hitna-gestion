@@ -108,7 +108,7 @@
                 <h3>{{ r[1] or 'Client non renseigné' }}
                     {% if r[5] %}<span class="badge-archive">archivé</span>{% endif %}
                 </h3>
-                <p><i class="bi bi-calendar-event"></i> {{ r[2] }} · {{ r[4] }} article(s) · <i class="bi bi-cash-coin"></i> {{ "{:,.0f}".format(r[3]) }} FCFA · <i class="bi bi-credit-card-fill"></i> {{ r[6] or 'Espèces' }}</p>
+                <p><i class="bi bi-calendar-event"></i> {{ r[2] }} · {{ r[4] }} article(s) · <i class="bi bi-cash-coin"></i> {{ "{:,.0f}".format(r[3]) }} FCFA{% if r[6] %} · <i class="bi bi-shop"></i> {{ r[6] }}{% endif %}</p>
             </div>
             <div class="actions">
                 <a href="/vente/recu/{{ r[0] }}" target="_blank" style="background:#17a2b8; color:white;"><i class="bi bi-eye-fill"></i> Voir</a>
