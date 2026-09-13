@@ -613,7 +613,7 @@
                     <td>{{ v[2]|qte }}</td>
                     <td style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(v[3]) }} FCFA</td>
                     <td>
-                        {% if '<i class="bi bi-award-fill"></i>' in v[5] %}
+                        {% if v[9] == 'admin' %}
                             <span class="vendeur-admin">{{ v[5] }}</span>
                         {% else %}
                             <span class="vendeur-employe">{{ v[5] }}</span>

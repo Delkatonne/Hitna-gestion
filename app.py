@@ -665,7 +665,6 @@ def init_db():
             nb_mouvements INTEGER DEFAULT 0,
             date_suppression TEXT,
             supprime_par TEXT)''')
-
         # 2) Passage des colonnes de stock/quantité en NUMERIC pour
         #    pouvoir stocker des demi-cartons, quarts, etc. Les valeurs
         #    entières existantes (ex: 20) deviennent 20.000 — aucune
@@ -723,8 +722,25 @@ def init_db():
 
         for _table_bq in ['produits', 'sorties', 'entrees', 'pertes', 'charges', 'fournisseurs',
                            'commandes_fournisseurs', 'ventes_annulees', 'users', 'livraisons_clients',
+                           'produits_supprimes',
                            'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_ventes_annulees']:
             _ajouter_colonne_boutique(_table_bq)
+
+        # ── FOURNISSEURS — le nom était unique GLOBALEMENT (toutes boutiques
+        #    confondues), ce qui empêche deux boutiques différentes d'avoir
+        #    chacune un fournisseur du même nom. On remplace cette contrainte
+        #    par une contrainte unique sur (nom, boutique_id).
+        try:
+            c.execute("ALTER TABLE fournisseurs DROP CONSTRAINT IF EXISTS fournisseurs_nom_key")
+            c.execute('''SELECT 1 FROM information_schema.table_constraints
+                         WHERE table_name='fournisseurs' AND constraint_name='fournisseurs_nom_boutique_key' ''')
+            if not c.fetchone():
+                c.execute("ALTER TABLE fournisseurs ADD CONSTRAINT fournisseurs_nom_boutique_key UNIQUE (nom, boutique_id)")
+                print("✅ Fournisseurs : nom désormais unique par boutique (plus global)")
+            conn.commit()
+        except Exception as e:
+            print(f"⚠️ Erreur migration contrainte fournisseurs: {e}")
+            conn.rollback()
 
         c.execute("SELECT id FROM boutiques ORDER BY id LIMIT 1")
         row = c.fetchone()
@@ -1809,7 +1825,7 @@ def _snapshot_produit_avant_suppression(id, supprime_par_id):
     Permet de tout restaurer en cas d'erreur (ex: mauvais produit sélectionné)."""
     try:
         produit = q1('''SELECT nom, prix, stock, stock_min, unite_id, categorie_id,
-                                valeur_unite, vente_fractionnable, code_barre
+                                valeur_unite, vente_fractionnable, code_barre, boutique_id
                          FROM produits WHERE id=?''', (id,))
         if not produit:
             return
@@ -1833,9 +1849,9 @@ def _snapshot_produit_avant_suppression(id, supprime_par_id):
         nom_supprimeur = supprimeur[0] if supprimeur else 'Inconnu'
         nb_mouvements = len(sorties) + len(entrees) + len(pertes)
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        exe('''INSERT INTO produits_supprimes (nom, donnees_json, nb_mouvements, date_suppression, supprime_par)
-               VALUES (?,?,?,?,?)''',
-            (produit[0], json.dumps(snapshot), nb_mouvements, now, nom_supprimeur))
+        exe('''INSERT INTO produits_supprimes (nom, donnees_json, nb_mouvements, date_suppression, supprime_par, boutique_id)
+               VALUES (?,?,?,?,?,?)''',
+            (produit[0], json.dumps(snapshot), nb_mouvements, now, nom_supprimeur, produit[9]))
     except Exception as e:
         print(f"⚠️ Erreur snapshot avant suppression du produit #{id}: {e}")
 
@@ -1849,7 +1865,7 @@ def _restaurer_produit_depuis_corbeille(corbeille_id):
     try:
         data = json.loads(row[1])
         p = data.get('produit', [])
-        nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre = (p + [None]*9)[:9]
+        nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, boutique_id = (p + [None]*10)[:10]
     except Exception as e:
         return False, f"❌ Instantané corrompu, restauration impossible ({e})"
 
@@ -1862,23 +1878,23 @@ def _restaurer_produit_depuis_corbeille(corbeille_id):
             code_barre = None
 
     new_id = exe('''INSERT INTO produits
-                     (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, actif)
-                     VALUES (?,?,?,?,?,?,?,?,?,1)''',
-                 (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre),
+                     (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, actif, boutique_id)
+                     VALUES (?,?,?,?,?,?,?,?,?,1,?)''',
+                 (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, boutique_id),
                  returning=True)
     if not new_id:
         return False, "❌ Échec de la recréation du produit"
 
     for s in data.get('sorties', []):
         exe('''INSERT INTO sorties
-               (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id, palier_nom)
-               VALUES (?,?,?,?,?,?,?,?,?,?)''', (new_id, *s))
+               (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id, palier_nom, boutique_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)''', (new_id, *s, boutique_id))
     for e in data.get('entrees', []):
-        exe('''INSERT INTO entrees (produit_id, quantite, prix_unitaire, total, date_entree, fournisseur, employe_id)
-               VALUES (?,?,?,?,?,?,?)''', (new_id, *e))
+        exe('''INSERT INTO entrees (produit_id, quantite, prix_unitaire, total, date_entree, fournisseur, employe_id, boutique_id)
+               VALUES (?,?,?,?,?,?,?,?)''', (new_id, *e, boutique_id))
     for pe in data.get('pertes', []):
-        exe('''INSERT INTO pertes (produit_id, quantite, prix_unitaire, total, motif, date_perte, employe_id)
-               VALUES (?,?,?,?,?,?,?)''', (new_id, *pe))
+        exe('''INSERT INTO pertes (produit_id, quantite, prix_unitaire, total, motif, date_perte, employe_id, boutique_id)
+               VALUES (?,?,?,?,?,?,?,?)''', (new_id, *pe, boutique_id))
     for pal in data.get('paliers', []):
         exe('''INSERT INTO paliers_prix (produit_id, nom, quantite, prix, actif, ordre)
                VALUES (?,?,?,?,?,?)''', (new_id, *pal))
@@ -2022,8 +2038,9 @@ def corbeille_produits():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        entrees = qall('''SELECT id, nom, nb_mouvements, date_suppression, supprime_par
-                           FROM produits_supprimes ORDER BY date_suppression DESC''')
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        entrees = qall(f'''SELECT id, nom, nb_mouvements, date_suppression, supprime_par
+                           FROM produits_supprimes WHERE 1=1{where_bq} ORDER BY date_suppression DESC''', params_bq)
         return render_template('admin_corbeille_produits.html', entrees=entrees)
     except Exception as e:
         print(f"❌ Erreur corbeille_produits: {e}")
@@ -2464,7 +2481,7 @@ def admin_ventes():
                                 LEFT JOIN unites_mesure u ON p.unite_id = u.id
                                 WHERE p.stock>0 AND COALESCE(p.actif,1)=1{where_p} ORDER BY p.nom''', params_p)
             where_s, params_s = boutique_filtre_sql('s.boutique_id')
-            historique = qall(f'''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente,s.palier_nom
+            historique = qall(f'''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente,s.palier_nom,u.role
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
                 WHERE 1=1{where_s}
                 ORDER BY s.date_sortie DESC LIMIT 20''', params_s)
@@ -4062,38 +4079,39 @@ def export_excel_comptable():
         dernier_jour = calendar.monthrange(annee, mois)[1]
         date_fin = f'{annee:04d}-{mois:02d}-{dernier_jour:02d}'
         periode = (date_debut, date_fin, date_debut, date_fin)
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
 
-        ventes = qall('''SELECT s.date_sortie, p.nom, s.quantite, s.prix_unitaire, s.total, s.client, u.nom
+        ventes = qall(f'''SELECT s.date_sortie, p.nom, s.quantite, s.prix_unitaire, s.total, s.client, u.nom
                           FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
-                          WHERE DATE(s.date_sortie) BETWEEN ? AND ?
+                          WHERE DATE(s.date_sortie) BETWEEN ? AND ?{where_bq.replace('boutique_id', 's.boutique_id')}
                           UNION ALL
                           SELECT a.date_vente, a.produit_nom, a.quantite, a.prix_unitaire, a.total, a.client, a.employe_nom
                           FROM archive_ventes a
-                          WHERE DATE(a.date_vente) BETWEEN ? AND ?
-                          ORDER BY 1''', periode)
+                          WHERE DATE(a.date_vente) BETWEEN ? AND ?{where_bq.replace('boutique_id', 'a.boutique_id')}
+                          ORDER BY 1''', periode[:2] + params_bq + periode[2:] + params_bq)
 
-        achats = qall('''SELECT e.date_entree, p.nom, e.quantite, e.prix_unitaire, e.total, e.fournisseur, u.nom
+        achats = qall(f'''SELECT e.date_entree, p.nom, e.quantite, e.prix_unitaire, e.total, e.fournisseur, u.nom
                           FROM entrees e JOIN produits p ON e.produit_id=p.id JOIN users u ON e.employe_id=u.id
-                          WHERE DATE(e.date_entree) BETWEEN ? AND ?
+                          WHERE DATE(e.date_entree) BETWEEN ? AND ?{where_bq.replace('boutique_id', 'e.boutique_id')}
                           UNION ALL
                           SELECT a.date_entree, a.produit_nom, a.quantite, a.prix_unitaire, a.total, a.fournisseur, a.employe_nom
                           FROM archive_entrees a
-                          WHERE DATE(a.date_entree) BETWEEN ? AND ?
-                          ORDER BY 1''', periode)
+                          WHERE DATE(a.date_entree) BETWEEN ? AND ?{where_bq.replace('boutique_id', 'a.boutique_id')}
+                          ORDER BY 1''', periode[:2] + params_bq + periode[2:] + params_bq)
 
-        pertes = qall('''SELECT p2.date_perte, pr.nom, p2.quantite, p2.motif, p2.total, u.nom
+        pertes = qall(f'''SELECT p2.date_perte, pr.nom, p2.quantite, p2.motif, p2.total, u.nom
                           FROM pertes p2 JOIN produits pr ON p2.produit_id=pr.id JOIN users u ON p2.employe_id=u.id
-                          WHERE DATE(p2.date_perte) BETWEEN ? AND ?
+                          WHERE DATE(p2.date_perte) BETWEEN ? AND ?{where_bq.replace('boutique_id', 'p2.boutique_id')}
                           UNION ALL
                           SELECT a.date_perte, a.produit_nom, a.quantite, a.motif, a.total, a.employe_nom
                           FROM archive_pertes a
-                          WHERE DATE(a.date_perte) BETWEEN ? AND ?
-                          ORDER BY 1''', periode)
+                          WHERE DATE(a.date_perte) BETWEEN ? AND ?{where_bq.replace('boutique_id', 'a.boutique_id')}
+                          ORDER BY 1''', periode[:2] + params_bq + periode[2:] + params_bq)
 
-        charges = qall('''SELECT c.date_charge, c.categorie, c.libelle, c.montant, COALESCE(u.nom,'-')
+        charges = qall(f'''SELECT c.date_charge, c.categorie, c.libelle, c.montant, COALESCE(u.nom,'-')
                            FROM charges c LEFT JOIN users u ON c.employe_id=u.id
-                           WHERE DATE(c.date_charge) BETWEEN ? AND ?
-                           ORDER BY c.date_charge''', (date_debut, date_fin))
+                           WHERE DATE(c.date_charge) BETWEEN ? AND ?{where_bq.replace('boutique_id', 'c.boutique_id')}
+                           ORDER BY c.date_charge''', (date_debut, date_fin) + params_bq)
 
         total_ventes = sum(float(v[4] or 0) for v in ventes)
         total_achats = sum(float(a[4] or 0) for a in achats)
@@ -4396,12 +4414,14 @@ def admin_reapprovisionnement():
 
         date_limite = (datetime.now() - timedelta(days=JOURS_PERIODE)).strftime('%Y-%m-%d')
 
-        produits = qall('''SELECT id, nom, stock, stock_min FROM produits
-                            WHERE COALESCE(actif,1)=1 ORDER BY nom''')
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        produits = qall(f'''SELECT id, nom, stock, stock_min FROM produits
+                            WHERE COALESCE(actif,1)=1{where_bq} ORDER BY nom''', params_bq)
 
         ventes_par_produit = {}
-        for row in qall('''SELECT produit_id, COALESCE(SUM(quantite),0)
-                            FROM sorties WHERE date_sortie >= ? GROUP BY produit_id''', (date_limite,)):
+        where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
+        for row in qall(f'''SELECT produit_id, COALESCE(SUM(quantite),0)
+                            FROM sorties WHERE date_sortie >= ?{where_bq2} GROUP BY produit_id''', (date_limite,) + params_bq2):
             ventes_par_produit[row[0]] = float(row[1])
 
         produits_urgents, produits_ok, produits_sans_vente = [], [], []
@@ -4555,15 +4575,16 @@ def rapport_journalier():
         if 'user_id' not in session:
             return redirect('/login')
 
-        ventes_j = qall('''SELECT DATE(date_sortie::timestamp) as jour, COUNT(*), COALESCE(SUM(total),0)
-            FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'
-            GROUP BY jour''')
-        entrees_j = qall('''SELECT DATE(date_entree::timestamp) as jour, COUNT(*), COALESCE(SUM(total),0)
-            FROM entrees WHERE date_entree::timestamp >= NOW() - INTERVAL '7 days'
-            GROUP BY jour''')
-        pertes_j = qall('''SELECT DATE(date_perte::timestamp) as jour, COUNT(*), COALESCE(SUM(total),0)
-            FROM pertes WHERE date_perte::timestamp >= NOW() - INTERVAL '7 days'
-            GROUP BY jour''')
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        ventes_j = qall(f'''SELECT DATE(date_sortie::timestamp) as jour, COUNT(*), COALESCE(SUM(total),0)
+            FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'{where_bq}
+            GROUP BY jour''', params_bq)
+        entrees_j = qall(f'''SELECT DATE(date_entree::timestamp) as jour, COUNT(*), COALESCE(SUM(total),0)
+            FROM entrees WHERE date_entree::timestamp >= NOW() - INTERVAL '7 days'{where_bq}
+            GROUP BY jour''', params_bq)
+        pertes_j = qall(f'''SELECT DATE(date_perte::timestamp) as jour, COUNT(*), COALESCE(SUM(total),0)
+            FROM pertes WHERE date_perte::timestamp >= NOW() - INTERVAL '7 days'{where_bq}
+            GROUP BY jour''', params_bq)
 
         jours_data = {}
         def _ensure(js):
@@ -4596,27 +4617,30 @@ def rapport_journalier_jour(jour):
         if 'user_id' not in session:
             return redirect('/login')
 
-        ventes_jour = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total,
+        where_s, params_s = boutique_filtre_sql('s.boutique_id')
+        where_e, params_e = boutique_filtre_sql('e.boutique_id')
+        where_pe, params_pe = boutique_filtre_sql('pe.boutique_id')
+        ventes_jour = qall(f'''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total,
                                       s.date_sortie, s.client, u.nom, s.groupe_vente
                                FROM sorties s
                                JOIN produits p ON s.produit_id = p.id
                                JOIN users u ON s.employe_id = u.id
-                               WHERE DATE(s.date_sortie) = ?
-                               ORDER BY s.date_sortie ASC''', (jour,))
-        entrees_jour = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total,
+                               WHERE DATE(s.date_sortie) = ?{where_s}
+                               ORDER BY s.date_sortie ASC''', (jour,) + params_s)
+        entrees_jour = qall(f'''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total,
                                        e.date_entree, e.fournisseur, u.nom
                                 FROM entrees e
                                 JOIN produits p ON e.produit_id = p.id
                                 JOIN users u ON e.employe_id = u.id
-                                WHERE DATE(e.date_entree) = ?
-                                ORDER BY e.date_entree ASC''', (jour,))
-        pertes_jour = qall('''SELECT pe.id, p.nom, pe.quantite, pe.prix_unitaire, pe.total,
+                                WHERE DATE(e.date_entree) = ?{where_e}
+                                ORDER BY e.date_entree ASC''', (jour,) + params_e)
+        pertes_jour = qall(f'''SELECT pe.id, p.nom, pe.quantite, pe.prix_unitaire, pe.total,
                                       pe.motif, pe.date_perte, u.nom
                                FROM pertes pe
                                JOIN produits p ON pe.produit_id = p.id
                                JOIN users u ON pe.employe_id = u.id
-                               WHERE DATE(pe.date_perte) = ?
-                               ORDER BY pe.date_perte ASC''', (jour,))
+                               WHERE DATE(pe.date_perte) = ?{where_pe}
+                               ORDER BY pe.date_perte ASC''', (jour,) + params_pe)
 
         stats_ventes = (len(ventes_jour), sum(v[2] for v in ventes_jour), sum(v[4] for v in ventes_jour))
         stats_entrees = (len(entrees_jour), sum(e[2] for e in entrees_jour), sum(e[4] for e in entrees_jour))
@@ -5110,7 +5134,8 @@ def export_pdf():
         c.drawString(50, height - 125, f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         
         y = height - 150
-        data = qall("SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*) FROM sorties GROUP BY DATE(date_sortie::timestamp) ORDER BY 1 DESC LIMIT 30")
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        data = qall(f"SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*) FROM sorties WHERE 1=1{where_bq} GROUP BY DATE(date_sortie::timestamp) ORDER BY 1 DESC LIMIT 30", params_bq)
         
         c.setFont("Helvetica-Bold", 10)
         c.setFillColorRGB(0.12, 0.24, 0.45)
@@ -5159,29 +5184,30 @@ def export_pdf_jour(date):
         date_str = date_obj.strftime('%d/%m/%Y')
         date_sql = date_obj.strftime('%Y-%m-%d')
         
-        ventes = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total, 
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        ventes = qall(f'''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total, 
                                 s.date_sortie, s.client, u.nom as vendeur
                          FROM sorties s 
                          JOIN produits p ON s.produit_id = p.id 
                          JOIN users u ON s.employe_id = u.id
-                         WHERE DATE(s.date_sortie) = %s
-                         ORDER BY s.date_sortie DESC''', (date_sql,))
+                         WHERE DATE(s.date_sortie) = ?{where_bq.replace('boutique_id', 's.boutique_id')}
+                         ORDER BY s.date_sortie DESC''', (date_sql,) + params_bq)
         
-        entrees = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total, 
+        entrees = qall(f'''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total, 
                                  e.date_entree, e.fournisseur, u.nom as enregistreur
                           FROM entrees e 
                           JOIN produits p ON e.produit_id = p.id 
                           JOIN users u ON e.employe_id = u.id
-                          WHERE DATE(e.date_entree) = %s
-                          ORDER BY e.date_entree DESC''', (date_sql,))
+                          WHERE DATE(e.date_entree) = ?{where_bq.replace('boutique_id', 'e.boutique_id')}
+                          ORDER BY e.date_entree DESC''', (date_sql,) + params_bq)
         
-        pertes = qall('''SELECT pe.id, p.nom, pe.quantite, pe.prix_unitaire, pe.total,
+        pertes = qall(f'''SELECT pe.id, p.nom, pe.quantite, pe.prix_unitaire, pe.total,
                                  pe.date_perte, pe.motif, u.nom as enregistreur
                           FROM pertes pe
                           JOIN produits p ON pe.produit_id = p.id
                           JOIN users u ON pe.employe_id = u.id
-                          WHERE DATE(pe.date_perte) = %s
-                          ORDER BY pe.date_perte DESC''', (date_sql,))
+                          WHERE DATE(pe.date_perte) = ?{where_bq.replace('boutique_id', 'pe.boutique_id')}
+                          ORDER BY pe.date_perte DESC''', (date_sql,) + params_bq)
         
         total_ventes = sum(v[4] for v in ventes) if ventes else 0
         total_entrees = sum(e[4] for e in entrees) if entrees else 0
@@ -5304,31 +5330,36 @@ def export_pdf_archive_jour(date):
         date_str = date_obj.strftime('%d/%m/%Y')
         date_sql = date_obj.strftime('%Y-%m-%d')
 
-        ventes = qall('''SELECT p.nom, s.quantite, s.prix_unitaire, s.total, s.client, u.nom
+        where_s, params_s = boutique_filtre_sql('s.boutique_id')
+        where_a1, params_a1 = boutique_filtre_sql('boutique_id')
+        where_e, params_e = boutique_filtre_sql('e.boutique_id')
+        where_pe, params_pe = boutique_filtre_sql('pe.boutique_id')
+
+        ventes = qall(f'''SELECT p.nom, s.quantite, s.prix_unitaire, s.total, s.client, u.nom
                           FROM sorties s JOIN produits p ON s.produit_id = p.id
                           LEFT JOIN users u ON s.employe_id = u.id
-                          WHERE DATE(s.date_sortie::timestamp) = ?''', (date_sql,)) + \
-                 qall('''SELECT produit_nom, quantite, prix_unitaire, total, client, employe_nom
-                         FROM archive_ventes WHERE DATE(date_vente::timestamp) = ?''', (date_sql,))
+                          WHERE DATE(s.date_sortie::timestamp) = ?{where_s}''', (date_sql,) + params_s) + \
+                 qall(f'''SELECT produit_nom, quantite, prix_unitaire, total, client, employe_nom
+                         FROM archive_ventes WHERE DATE(date_vente::timestamp) = ?{where_a1}''', (date_sql,) + params_a1)
 
-        entrees = qall('''SELECT p.nom, e.quantite, e.prix_unitaire, e.total, e.fournisseur, u.nom
+        entrees = qall(f'''SELECT p.nom, e.quantite, e.prix_unitaire, e.total, e.fournisseur, u.nom
                            FROM entrees e JOIN produits p ON e.produit_id = p.id
                            LEFT JOIN users u ON e.employe_id = u.id
-                           WHERE DATE(e.date_entree::timestamp) = ?''', (date_sql,)) + \
-                  qall('''SELECT produit_nom, quantite, prix_unitaire, total, fournisseur, employe_nom
-                          FROM archive_entrees WHERE DATE(date_entree::timestamp) = ?''', (date_sql,))
+                           WHERE DATE(e.date_entree::timestamp) = ?{where_e}''', (date_sql,) + params_e) + \
+                  qall(f'''SELECT produit_nom, quantite, prix_unitaire, total, fournisseur, employe_nom
+                          FROM archive_entrees WHERE DATE(date_entree::timestamp) = ?{where_a1}''', (date_sql,) + params_a1)
 
-        pertes = qall('''SELECT p.nom, pe.quantite, pe.prix_unitaire, pe.total, pe.motif, u.nom
+        pertes = qall(f'''SELECT p.nom, pe.quantite, pe.prix_unitaire, pe.total, pe.motif, u.nom
                           FROM pertes pe JOIN produits p ON pe.produit_id = p.id
                           LEFT JOIN users u ON pe.employe_id = u.id
-                          WHERE DATE(pe.date_perte::timestamp) = ?''', (date_sql,)) + \
-                 qall('''SELECT produit_nom, quantite, prix_unitaire, total, motif, employe_nom
-                         FROM archive_pertes WHERE DATE(date_perte::timestamp) = ?''', (date_sql,))
+                          WHERE DATE(pe.date_perte::timestamp) = ?{where_pe}''', (date_sql,) + params_pe) + \
+                 qall(f'''SELECT produit_nom, quantite, prix_unitaire, total, motif, employe_nom
+                         FROM archive_pertes WHERE DATE(date_perte::timestamp) = ?{where_a1}''', (date_sql,) + params_a1)
 
-        annulees = qall('''SELECT produit_nom, quantite, total, client, vendeur_original, motif
-                            FROM ventes_annulees WHERE DATE(date_annulation::timestamp) = ?''', (date_sql,)) + \
-                   qall('''SELECT produit_nom, quantite, total, client, vendeur_original, motif
-                           FROM archive_ventes_annulees WHERE DATE(date_annulation::timestamp) = ?''', (date_sql,))
+        annulees = qall(f'''SELECT produit_nom, quantite, total, client, vendeur_original, motif
+                            FROM ventes_annulees WHERE DATE(date_annulation::timestamp) = ?{where_a1}''', (date_sql,) + params_a1) + \
+                   qall(f'''SELECT produit_nom, quantite, total, client, vendeur_original, motif
+                           FROM archive_ventes_annulees WHERE DATE(date_annulation::timestamp) = ?{where_a1}''', (date_sql,) + params_a1)
 
         total_ventes = sum(v[3] for v in ventes) if ventes else 0
         total_entrees = sum(e[3] for e in entrees) if entrees else 0
@@ -5456,21 +5487,22 @@ def export_pdf_employe():
         date_sql = datetime.now().strftime('%Y-%m-%d')
         date_str = datetime.now().strftime('%d/%m/%Y')
         
-        ventes = qall('''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total, 
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        ventes = qall(f'''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total, 
                                 s.date_sortie, s.client, u.nom as vendeur
                          FROM sorties s 
                          JOIN produits p ON s.produit_id = p.id 
                          JOIN users u ON s.employe_id = u.id
-                         WHERE DATE(s.date_sortie) = %s
-                         ORDER BY s.date_sortie DESC''', (date_sql,))
+                         WHERE DATE(s.date_sortie) = ?{where_bq.replace('boutique_id', 's.boutique_id')}
+                         ORDER BY s.date_sortie DESC''', (date_sql,) + params_bq)
         
-        entrees = qall('''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total, 
+        entrees = qall(f'''SELECT e.id, p.nom, e.quantite, e.prix_unitaire, e.total, 
                                  e.date_entree, e.fournisseur, u.nom as enregistreur
                           FROM entrees e 
                           JOIN produits p ON e.produit_id = p.id 
                           JOIN users u ON e.employe_id = u.id
-                          WHERE DATE(e.date_entree) = %s
-                          ORDER BY e.date_entree DESC''', (date_sql,))
+                          WHERE DATE(e.date_entree) = ?{where_bq.replace('boutique_id', 'e.boutique_id')}
+                          ORDER BY e.date_entree DESC''', (date_sql,) + params_bq)
         
         total_ventes = sum(v[4] for v in ventes) if ventes else 0
         total_entrees = sum(e[4] for e in entrees) if entrees else 0
