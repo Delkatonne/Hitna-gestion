@@ -582,6 +582,16 @@
             </div>
         </div>
 
+        <div id="adminPaiementWrap" style="display:none; margin: 12px 0;">
+            <label style="display:block; font-size:13px; color:#555; margin-bottom:6px;"><i class="bi bi-credit-card-fill"></i> Mode de paiement</label>
+            <select name="mode_paiement" id="adminModePaiement" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                <option value="Espèces">💵 Espèces</option>
+                <option value="MTN MobileMoney">📱 MTN MobileMoney</option>
+                <option value="Moov MoovMoney">📱 Moov MoovMoney</option>
+                <option value="Celtiis CeltiisCash">📱 Celtiis CeltiisCash</option>
+            </select>
+        </div>
+
         <button type="button" id="adminValidateSaleBtn" class="btn-sale" style="display: none;" onclick="adminValidateSale()">
             <i class="bi bi-cash"></i> Valider la vente
         </button>
@@ -875,6 +885,7 @@
         if (ids.length === 0) {
             cartList.innerHTML = '<div class="cart-empty" id="adminCartEmpty"> Ajoutez des produits depuis la liste ci-dessus</div>';
             document.getElementById('adminTotalDisplay').style.display = 'none';
+            document.getElementById('adminPaiementWrap').style.display = 'none';
             document.getElementById('adminValidateSaleBtn').style.display = 'none';
             return;
         }
@@ -924,6 +935,7 @@
 
         document.getElementById('adminTotalAmount').innerText = total.toLocaleString();
         document.getElementById('adminTotalDisplay').style.display = 'block';
+        document.getElementById('adminPaiementWrap').style.display = 'block';
         document.getElementById('adminValidateSaleBtn').style.display = 'block';
     }
 

@@ -650,6 +650,16 @@
             </div>
         </div>
 
+        <div id="paiementWrap" style="display:none; margin: 12px 0;">
+            <label style="display:block; font-size:13px; color:#555; margin-bottom:6px;"><i class="bi bi-credit-card-fill"></i> Mode de paiement</label>
+            <select name="mode_paiement" id="modePaiement" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                <option value="Espèces">💵 Espèces</option>
+                <option value="MTN MobileMoney">📱 MTN MobileMoney</option>
+                <option value="Moov MoovMoney">📱 Moov MoovMoney</option>
+                <option value="Celtiis CeltiisCash">📱 Celtiis CeltiisCash</option>
+            </select>
+        </div>
+
         <button type="button" id="validateSaleBtn" class="btn-sale" style="display: none;" onclick="validateSale()">
             <i class="bi bi-cash"></i> Valider la vente
         </button>
@@ -966,6 +976,7 @@
         if (ids.length === 0) {
             cartList.innerHTML = '<div class="cart-empty" id="cartEmpty"> Ajoutez des produits depuis la liste ci-dessus</div>';
             document.getElementById('totalDisplay').style.display = 'none';
+            document.getElementById('paiementWrap').style.display = 'none';
             document.getElementById('validateSaleBtn').style.display = 'none';
             return;
         }
@@ -1017,6 +1028,7 @@
 
         document.getElementById('totalAmount').innerText = total.toLocaleString();
         document.getElementById('totalDisplay').style.display = 'block';
+        document.getElementById('paiementWrap').style.display = 'block';
         document.getElementById('validateSaleBtn').style.display = 'block';
     }
 
@@ -1092,7 +1104,8 @@
 
         // Mode hors ligne : on met la vente en file d'attente au lieu de soumettre le formulaire
         if (typeof navigator !== 'undefined' && !navigator.onLine && window.hitnaQueueIfOffline) {
-            window.hitnaQueueIfOffline('vente', { client: clientName, telephone: clientPhone, cart: cartPayload }).then(function(queued) {
+            const modePaiement = document.getElementById('modePaiement') ? document.getElementById('modePaiement').value : 'Espèces';
+            window.hitnaQueueIfOffline('vente', { client: clientName, telephone: clientPhone, cart: cartPayload, mode_paiement: modePaiement }).then(function(queued) {
                 if (queued) {
                     alert(' Vente enregistrée hors ligne. Elle sera synchronisée automatiquement dès le retour du réseau (le reçu ne sera disponible qu\'après synchronisation).');
                     cart = {};

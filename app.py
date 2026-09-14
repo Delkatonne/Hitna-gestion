@@ -445,6 +445,19 @@ def init_db():
             print(f"⚠️ Erreur ajout colonne notes à clients: {e}")
             conn.rollback()
 
+        # ── MODE DE PAIEMENT — Espèces / MTN MobileMoney / Moov MoovMoney /
+        #    Celtiis CeltiisCash. Un seul mode par vente (par groupe_vente).
+        for _table_mp in ['sorties', 'archive_ventes']:
+            try:
+                c.execute("SELECT column_name FROM information_schema.columns WHERE table_name=%s AND column_name='mode_paiement'", (_table_mp,))
+                if not c.fetchone():
+                    c.execute(f"ALTER TABLE {_table_mp} ADD COLUMN mode_paiement TEXT DEFAULT 'Espèces'")
+                    conn.commit()
+                    print(f"✅ Colonne 'mode_paiement' ajoutée à {_table_mp}")
+            except Exception as e:
+                print(f"⚠️ Erreur ajout colonne mode_paiement à {_table_mp}: {e}")
+                conn.rollback()
+
         # ── VENTES ANNULÉES — journal de toutes les ventes annulées,
         #    conservé même après suppression de la vente d'origine.
         c.execute('''CREATE TABLE IF NOT EXISTS ventes_annulees (
@@ -726,6 +739,26 @@ def init_db():
                            'archive_ventes', 'archive_entrees', 'archive_pertes', 'archive_ventes_annulees']:
             _ajouter_colonne_boutique(_table_bq)
 
+        # ── RÉPLICATION LOGIQUE — certaines tables (ex: archive_pertes) ont
+        #    déjà bloqué toute la migration boutique_id (et donc le login !)
+        #    car Postgres refuse un UPDATE/DELETE sur une table sans "replica
+        #    identity" dès qu'une publication logique existe dessus. On force
+        #    REPLICA IDENTITY FULL sur toutes les tables métier pour éviter
+        #    que ça se reproduise ailleurs — opération sûre et rejouable.
+        for _table_ri in ['produits', 'sorties', 'entrees', 'pertes', 'charges', 'fournisseurs',
+                           'commandes_fournisseurs', 'ventes_annulees', 'users', 'livraisons_clients',
+                           'produits_supprimes', 'clients', 'boutiques', 'categories_produits',
+                           'unites_mesure', 'paliers_prix', 'alertes_produits', 'notifications',
+                           'commandes', 'messages_contact', 'taches_business_plan',
+                           'archive_ventes', 'archive_entrees', 'archive_pertes',
+                           'archive_ventes_annulees', 'archive_recap']:
+            try:
+                c.execute(f"ALTER TABLE {_table_ri} REPLICA IDENTITY FULL")
+                conn.commit()
+            except Exception as e:
+                print(f"⚠️ Erreur REPLICA IDENTITY sur {_table_ri}: {e}")
+                conn.rollback()
+
         # ── FOURNISSEURS — le nom était unique GLOBALEMENT (toutes boutiques
         #    confondues), ce qui empêche deux boutiques différentes d'avoir
         #    chacune un fournisseur du même nom. On remplace cette contrainte
@@ -851,7 +884,8 @@ def archiver_hebdomadaire():
         now_s = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         cm.execute('''SELECT s.id,s.produit_id,s.quantite,s.prix_unitaire,s.total,
-                             s.date_sortie,s.client,s.employe_id,p.nom,u.nom,s.groupe_vente,s.client_id,s.palier_nom
+                             s.date_sortie,s.client,s.employe_id,p.nom,u.nom,s.groupe_vente,s.client_id,s.palier_nom,
+                             s.boutique_id,s.mode_paiement
                       FROM sorties s JOIN produits p ON s.produit_id=p.id
                       JOIN users u ON s.employe_id=u.id
                       WHERE DATE(s.date_sortie)>=%s AND DATE(s.date_sortie)<=%s''',
@@ -861,45 +895,56 @@ def archiver_hebdomadaire():
             cm.execute('''INSERT INTO archive_ventes
                            (id, produit_id, quantite, prix_unitaire, total, date_vente,
                             employe_id, client, archive_date, semaine, annee,
-                            produit_nom, employe_nom, groupe_vente, client_id, palier_nom)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                       (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9],v[10],v[11],v[12]))
+                            produit_nom, employe_nom, groupe_vente, client_id, palier_nom,
+                            boutique_id, mode_paiement)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                       (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9],v[10],v[11],v[12],v[13],v[14]))
             cm.execute("DELETE FROM sorties WHERE id=%s",(v[0],))
 
         cm.execute('''SELECT e.id,e.produit_id,e.quantite,e.prix_unitaire,e.total,
-                             e.date_entree,e.fournisseur,e.employe_id,p.nom,u.nom
+                             e.date_entree,e.fournisseur,e.employe_id,p.nom,u.nom,e.boutique_id
                       FROM entrees e JOIN produits p ON e.produit_id=p.id
                       JOIN users u ON e.employe_id=u.id
                       WHERE DATE(e.date_entree)>=%s AND DATE(e.date_entree)<=%s''',
                    (debut.strftime('%Y-%m-%d'), fin.strftime('%Y-%m-%d')))
         entrees = cm.fetchall()
         for e in entrees:
-            cm.execute('''INSERT INTO archive_entrees VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                       (e[0],e[1],e[2],e[3],e[4],e[5],e[6],e[7],now_s,sem,annee,e[8],e[9]))
+            cm.execute('''INSERT INTO archive_entrees
+                           (id, produit_id, quantite, prix_unitaire, total, date_entree, fournisseur,
+                            employe_id, archive_date, semaine, annee, produit_nom, employe_nom, boutique_id)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                       (e[0],e[1],e[2],e[3],e[4],e[5],e[6],e[7],now_s,sem,annee,e[8],e[9],e[10]))
             cm.execute("DELETE FROM entrees WHERE id=%s",(e[0],))
 
         cm.execute('''SELECT p.id,p.produit_id,p.quantite,p.prix_unitaire,p.total,
-                             p.motif,p.date_perte,p.employe_id,pr.nom,u.nom
+                             p.motif,p.date_perte,p.employe_id,pr.nom,u.nom,p.boutique_id
                       FROM pertes p JOIN produits pr ON p.produit_id=pr.id
                       JOIN users u ON p.employe_id=u.id
                       WHERE DATE(p.date_perte)>=%s AND DATE(p.date_perte)<=%s''',
                    (debut.strftime('%Y-%m-%d'), fin.strftime('%Y-%m-%d')))
         pertes = cm.fetchall()
         for p in pertes:
-            cm.execute('''INSERT INTO archive_pertes VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                       (p[0],p[1],p[2],p[3],p[4],p[5],p[6],p[7],now_s,sem,annee,p[8],p[9]))
+            cm.execute('''INSERT INTO archive_pertes
+                           (id, produit_id, quantite, prix_unitaire, total, motif, date_perte,
+                            employe_id, archive_date, semaine, annee, produit_nom, employe_nom, boutique_id)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                       (p[0],p[1],p[2],p[3],p[4],p[5],p[6],p[7],now_s,sem,annee,p[8],p[9],p[10]))
             cm.execute("DELETE FROM pertes WHERE id=%s",(p[0],))
 
         cm.execute('''SELECT id, groupe_vente, produit_nom, quantite, prix_unitaire, total,
                              client, vendeur_original, date_vente_original, date_annulation,
-                             annule_par, palier_nom, motif
+                             annule_par, palier_nom, motif, boutique_id
                       FROM ventes_annulees
                       WHERE DATE(date_annulation)>=%s AND DATE(date_annulation)<=%s''',
                    (debut.strftime('%Y-%m-%d'), fin.strftime('%Y-%m-%d')))
         annulations = cm.fetchall()
         for a in annulations:
-            cm.execute('''INSERT INTO archive_ventes_annulees VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                       (a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[7],a[8],a[9],a[10],a[11],a[12],now_s,sem,annee))
+            cm.execute('''INSERT INTO archive_ventes_annulees
+                           (id, groupe_vente, produit_nom, quantite, prix_unitaire, total,
+                            client, vendeur_original, date_vente_original, date_annulation,
+                            annule_par, palier_nom, motif, archive_date, semaine, annee, boutique_id)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                       (a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[7],a[8],a[9],a[10],a[11],a[12],now_s,sem,annee,a[13]))
             cm.execute("DELETE FROM ventes_annulees WHERE id=%s",(a[0],))
 
         tv = sum(v[4] for v in ventes) if ventes else 0
@@ -2252,13 +2297,14 @@ def trouver_ou_creer_client(nom, telephone):
                     (nom, telephone, now), returning=True)
     return client_id if client_id else None
 
-def _traiter_vente_cart(cart, client, employe_id, telephone=None):
+def _traiter_vente_cart(cart, client, employe_id, telephone=None, mode_paiement=None):
     """cart: liste de {produit_id, quantite, palier_id (optionnel)}.
     Si palier_id est fourni, quantite = nombre de fois ce palier (ex: 2 cartons de 24),
     et le stock/prix sont calculés à partir du palier plutôt que du prix de base du produit.
     Retourne (groupe_vente, lignes_ok, erreurs)."""
     groupe_vente = uuid.uuid4().hex[:12]
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    mode_paiement = mode_paiement or 'Espèces'
     lignes_ok = []
     erreurs = []
     client_id = trouver_ou_creer_client(client, telephone)
@@ -2300,9 +2346,9 @@ def _traiter_vente_cart(cart, client, employe_id, telephone=None):
             continue
 
         insert_ok = exe("""INSERT INTO sorties
-            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id, palier_nom, boutique_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (pid, qty_base, prix_unitaire, total, now, client, employe_id, groupe_vente, client_id, palier_nom, p[4]))
+            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id, palier_nom, boutique_id, mode_paiement)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (pid, qty_base, prix_unitaire, total, now, client, employe_id, groupe_vente, client_id, palier_nom, p[4], mode_paiement))
         if not insert_ok:
             erreurs.append(f'Échec d\'enregistrement pour "{p[0]}" (erreur serveur)')
             continue
@@ -2445,6 +2491,7 @@ def admin_ventes():
             cart_json = request.form.get('cart_json', '')
             client = request.form.get('client', '').strip()
             telephone = request.form.get('telephone', '').strip()
+            mode_paiement = request.form.get('mode_paiement', '').strip()
             try:
                 cart = json.loads(cart_json) if cart_json else []
             except (ValueError, TypeError):
@@ -2454,7 +2501,7 @@ def admin_ventes():
                 flash('❌ Le panier est vide')
                 return redirect('/admin/ventes')
 
-            groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), telephone)
+            groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), telephone, mode_paiement)
 
             for e in erreurs:
                 flash(f'⚠️ {e}')
@@ -2512,6 +2559,7 @@ def vente():
                 cart_json = request.form.get('cart_json', '')
                 client = request.form.get('client', '').strip()
                 telephone = request.form.get('telephone', '').strip()
+                mode_paiement = request.form.get('mode_paiement', '').strip()
                 try:
                     cart = json.loads(cart_json) if cart_json else []
                 except (ValueError, TypeError):
@@ -2521,7 +2569,7 @@ def vente():
                     flash('❌ Le panier est vide')
                     return redirect('/vente')
 
-                groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), telephone)
+                groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), telephone, mode_paiement)
 
                 for e in erreurs:
                     flash(f'⚠️ {e}')
@@ -2588,7 +2636,7 @@ def _recuperer_lignes_recu(groupe_vente):
     sorties (ventes récentes) puis dans archive_ventes (ventes archivées).
     Chaque ligne se termine par le nom de la boutique où l'achat a eu lieu."""
     lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                             s.date_sortie, s.client, u.nom, s.palier_nom, COALESCE(b.nom, '')
+                             s.date_sortie, s.client, u.nom, s.palier_nom, COALESCE(b.nom, ''), COALESCE(s.mode_paiement, 'Espèces')
                       FROM sorties s
                       JOIN produits p ON s.produit_id = p.id
                       JOIN users u ON s.employe_id = u.id
@@ -2600,7 +2648,7 @@ def _recuperer_lignes_recu(groupe_vente):
         # juste après l'enregistrement de la vente, on retente une fois.
         sleep(0.4)
         lignes = qall('''SELECT s.produit_id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                                 s.date_sortie, s.client, u.nom, s.palier_nom, COALESCE(b.nom, '')
+                                 s.date_sortie, s.client, u.nom, s.palier_nom, COALESCE(b.nom, ''), COALESCE(s.mode_paiement, 'Espèces')
                           FROM sorties s
                           JOIN produits p ON s.produit_id = p.id
                           JOIN users u ON s.employe_id = u.id
@@ -2612,7 +2660,7 @@ def _recuperer_lignes_recu(groupe_vente):
         # La vente n'est plus dans "sorties" : elle a peut-être été archivée
         # (archivage hebdomadaire). On cherche alors dans archive_ventes.
         lignes_archive = qall('''SELECT a.produit_id, a.produit_nom, a.quantite, a.prix_unitaire, a.total,
-                                         a.date_vente, a.client, a.employe_nom, a.palier_nom, COALESCE(b.nom, '')
+                                         a.date_vente, a.client, a.employe_nom, a.palier_nom, COALESCE(b.nom, ''), COALESCE(a.mode_paiement, 'Espèces')
                                   FROM archive_ventes a
                                   LEFT JOIN boutiques b ON a.boutique_id = b.id
                                   WHERE a.groupe_vente = ?
@@ -2671,6 +2719,7 @@ def recu_vente(groupe_vente):
             vendeur=lignes[0][7],
             date_vente=lignes[0][5],
             boutique_nom=lignes[0][9],
+            mode_paiement=lignes[0][10],
             archivee=archivee)
     except Exception as e:
         print(f"❌ Erreur recu_vente: {e}")
@@ -2695,10 +2744,11 @@ def export_pdf_recu(groupe_vente):
         vendeur = lignes[0][7]
         date_vente = lignes[0][5]
         boutique_nom = lignes[0][9]
+        mode_paiement = lignes[0][10]
 
         # Format ticket compact (largeur réduite, hauteur adaptée au contenu)
         largeur = 226  # ~8cm
-        hauteur = 330 + len(lignes) * 16 + (14 if boutique_nom else 0)
+        hauteur = 330 + len(lignes) * 16 + (14 if boutique_nom else 0) + 12
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=(largeur, hauteur))
 
@@ -2743,6 +2793,8 @@ def export_pdf_recu(groupe_vente):
         c.drawString(10, y, f"Vendeur: {vendeur}")
         y -= 12
         c.drawString(10, y, f"Client: {client}")
+        y -= 12
+        c.drawString(10, y, f"Paiement: {mode_paiement or 'Espèces'}")
         y -= 12
         c.drawString(10, y, f"N° reçu: {groupe_vente}")
         if archivee:
@@ -4525,6 +4577,7 @@ def admin_recus():
             return redirect('/login')
         date_filtre = request.args.get('date', '').strip()
         client_filtre = request.args.get('client', '').strip()
+        paiement_filtre = request.args.get('paiement', '').strip()
 
         conditions = ["groupe_vente IS NOT NULL"]
         params = []
@@ -4541,6 +4594,11 @@ def admin_recus():
             params.append(f'%{client_filtre}%')
             conditions_arch.append("client ILIKE %s")
             params_arch.append(f'%{client_filtre}%')
+        if paiement_filtre:
+            conditions.append("mode_paiement = %s")
+            params.append(paiement_filtre)
+            conditions_arch.append("mode_paiement = %s")
+            params_arch.append(paiement_filtre)
         bid = boutique_active()
         if bid is not None:
             conditions.append("boutique_id = %s")
@@ -4553,7 +4611,7 @@ def admin_recus():
 
         recus = qall(f'''SELECT s.groupe_vente, s.client, MIN(s.date_sortie) as date_v,
                                  SUM(s.total) as total_v, COUNT(*) as nb_lignes, false as archivee,
-                                 MAX(COALESCE(b.nom, '')) as boutique_nom
+                                 MAX(COALESCE(b.nom, '')) as boutique_nom, MAX(COALESCE(s.mode_paiement, 'Espèces')) as paiement
                           FROM sorties s LEFT JOIN boutiques b ON s.boutique_id = b.id
                           WHERE {where_sql}
                           GROUP BY s.groupe_vente, s.client
@@ -4561,7 +4619,7 @@ def admin_recus():
 
         recus_archives = qall(f'''SELECT a.groupe_vente, a.client, MIN(a.date_vente) as date_v,
                                           SUM(a.total) as total_v, COUNT(*) as nb_lignes, true as archivee,
-                                          MAX(COALESCE(b.nom, '')) as boutique_nom
+                                          MAX(COALESCE(b.nom, '')) as boutique_nom, MAX(COALESCE(a.mode_paiement, 'Espèces')) as paiement
                                    FROM archive_ventes a LEFT JOIN boutiques b ON a.boutique_id = b.id
                                    WHERE {where_sql_arch}
                                    GROUP BY a.groupe_vente, a.client
@@ -4570,7 +4628,7 @@ def admin_recus():
         tous_recus = sorted(list(recus) + list(recus_archives), key=lambda r: r[2] or '', reverse=True)[:150]
 
         return render_template('admin_recus.html', recus=tous_recus,
-            date_filtre=date_filtre, client_filtre=client_filtre)
+            date_filtre=date_filtre, client_filtre=client_filtre, paiement_filtre=paiement_filtre)
     except Exception as e:
         print(f"❌ Erreur admin_recus: {e}")
         flash('❌ Erreur lors de la recherche de reçus')
@@ -4635,7 +4693,7 @@ def rapport_journalier_jour(jour):
         where_e, params_e = boutique_filtre_sql('e.boutique_id')
         where_pe, params_pe = boutique_filtre_sql('pe.boutique_id')
         ventes_jour = qall(f'''SELECT s.id, p.nom, s.quantite, s.prix_unitaire, s.total,
-                                      s.date_sortie, s.client, u.nom, s.groupe_vente, s.palier_nom, COALESCE(b.nom, '')
+                                      s.date_sortie, s.client, u.nom, s.groupe_vente, s.palier_nom, COALESCE(b.nom, ''), COALESCE(s.mode_paiement, 'Espèces')
                                FROM sorties s
                                JOIN produits p ON s.produit_id = p.id
                                JOIN users u ON s.employe_id = u.id
@@ -5820,10 +5878,11 @@ def api_sync():
                     cart = payload.get('cart', [])
                     client = (payload.get('client') or '').strip()
                     telephone = (payload.get('telephone') or '').strip()
+                    mode_paiement = (payload.get('mode_paiement') or '').strip()
                     if not cart:
                         results.append({'client_id': client_id, 'status': 'error_definitif', 'message': 'Panier vide'})
                         continue
-                    groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, employe_id, telephone)
+                    groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, employe_id, telephone, mode_paiement)
                     if lignes_ok:
                         results.append({'client_id': client_id, 'status': 'ok', 'message': ', '.join(lignes_ok), 'groupe_vente': groupe_vente})
                     else:
