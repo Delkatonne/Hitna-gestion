@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}Transferts entre boutiques - HITNA{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    .form-transfert {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+    }
+    .form-transfert .form-row { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; }
+    .form-transfert .form-group { flex: 1; min-width: 180px; }
+    .form-transfert select, .form-transfert input {
+        width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; box-sizing: border-box;
+    }
+    .transfert-arrow {
+        text-align: center; font-size: 22px; color: #1e3c72; flex: 0 0 auto; padding-bottom: 10px;
+    }
+    .dest-mode-choice {
+        display: flex; gap: 15px; margin: 10px 0; font-size: 13px;
+    }
+    .dest-mode-choice label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+    .transfert-card {
+        background: white;
+        border-radius: 12px;
+        padding: 15px 18px;
+        margin-bottom: 10px;
+        border: 1px solid #e0e0e0;
+        border-left: 4px solid #1e3c72;
+    }
+    .transfert-card .header {
+        display: flex; justify-content: space-between; align-items: center;
+        flex-wrap: wrap; gap: 8px; margin-bottom: 8px;
+    }
+    .transfert-card h3 { font-size: 15px; color: #1e3c72; }
+    .transfert-flow {
+        display: flex; align-items: center; gap: 10px; font-size: 13px; color: #555; flex-wrap: wrap;
+    }
+    .transfert-flow .boutique-pill {
+        background: #eef4ff; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: 600;
+    }
+    .transfert-card .meta { font-size: 12px; color: #888; margin-top: 8px; }
+</style>
+{% endblock %}
+
+{% block page_title %}<i class="bi bi-arrow-left-right"></i> Transferts entre boutiques{% endblock %}
+{% block page_subtitle %}Déplacer du stock d'une boutique vers une autre{% endblock %}
+
+{% block content %}
+
+{% if boutiques|length < 2 %}
+<div class="card">
+    <p style="text-align:center; color:#999; padding:40px;">
+        <i class="bi bi-info-circle"></i> Il faut au moins 2 boutiques actives pour effectuer un transfert.
+        <br><a href="/admin/boutiques">Gérer les boutiques</a>
+    </p>
+</div>
+{% else %}
+
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Nouveau transfert</h2>
+    <form method="post" action="/admin/transferts-stock/effectuer" class="form-transfert" id="formTransfert" onsubmit="return validerFormulaire()">
+        <div class="form-row">
+            <div class="form-group">
+                <label><i class="bi bi-shop"></i> Boutique source</label>
+                <select name="boutique_source_id" id="boutiqueSource" required onchange="chargerProduitsSource()">
+                    <option value="">-- Choisir --</option>
+                    {% for b in boutiques %}
+                    <option value="{{ b[0] }}">{{ b[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-box-seam"></i> Produit à transférer</label>
+                <select name="produit_source_id" id="produitSource" required disabled>
+                    <option value="">-- Choisissez d'abord une boutique --</option>
+                </select>
+                <div id="stockSourceInfo" style="font-size:12px; color:#666; margin-top:4px;"></div>
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-123"></i> Quantité</label>
+                <input type="number" name="quantite" id="quantiteTransfert" min="0.001" step="0.001" required>
+            </div>
+            <div class="transfert-arrow"><i class="bi bi-arrow-right"></i></div>
+            <div class="form-group">
+                <label><i class="bi bi-shop"></i> Boutique destination</label>
+                <select name="boutique_destination_id" id="boutiqueDestination" required onchange="chargerProduitsDestination()">
+                    <option value="">-- Choisir --</option>
+                    {% for b in boutiques %}
+                    <option value="{{ b[0] }}">{{ b[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group" style="flex:2;">
+                <label><i class="bi bi-box-arrow-in-right"></i> Produit dans la boutique destination</label>
+                <div class="dest-mode-choice">
+                    <label><input type="radio" name="mode_destination" value="existant" checked onchange="toggleModeDestination()"> Produit déjà existant</label>
+                    <label><input type="radio" name="mode_destination" value="nouveau" onchange="toggleModeDestination()"> Créer un nouveau produit (mêmes infos que la source)</label>
+                </div>
+                <select name="produit_destination_id" id="produitDestination" disabled>
+                    <option value="">-- Choisissez d'abord la boutique destination --</option>
+                </select>
+                <div id="destNouveauInfo" style="display:none; font-size:12px; color:#1e7e34; margin-top:4px;">
+                    <i class="bi bi-info-circle"></i> Un nouveau produit sera créé dans la boutique destination avec le même nom, prix et unité que le produit source.
+                </div>
+            </div>
+            <div class="form-group" style="flex:2;">
+                <label><i class="bi bi-pencil-square"></i> Notes (optionnel)</label>
+                <input type="text" name="notes" placeholder="Ex: réapprovisionnement suite à rupture">
+            </div>
+            <div class="form-group" style="display:flex; align-items:flex-end;">
+                <button type="submit" style="background:#28a745; width:100%;"><i class="bi bi-arrow-left-right"></i> Effectuer le transfert</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-clock-history"></i> Historique des transferts</h2>
+    {% if transferts %}
+        {% for t in transferts %}
+        <div class="transfert-card">
+            <div class="header">
+                <h3><i class="bi bi-box-seam"></i> {{ t[3]|qte }} × {{ t[1] }}</h3>
+                {% if t[9] %}<span class="inline-block bg-blue-100 text-blue-800 text-[11px] font-bold px-2.5 py-1 rounded-full">Nouveau produit créé</span>{% endif %}
+            </div>
+            <div class="transfert-flow">
+                <span class="boutique-pill"><i class="bi bi-shop"></i> {{ t[4] or 'Boutique supprimée' }}</span>
+                <i class="bi bi-arrow-right"></i>
+                <span class="boutique-pill"><i class="bi bi-shop"></i> {{ t[5] or 'Boutique supprimée' }}</span>
+                {% if t[2] != t[1] %}<span style="color:#999;">(reçu sous le nom "{{ t[2] }}")</span>{% endif %}
+            </div>
+            {% if t[6] %}<p style="font-size:12px; color:#888; margin-top:8px;"><i class="bi bi-pencil-square"></i> {{ t[6] }}</p>{% endif %}
+            <div class="meta">{{ t[7] }}{% if t[8] %} · par {{ t[8] }}{% endif %}</div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align:center; color:#999; padding:40px;"><i class="bi bi-inbox"></i> Aucun transfert enregistré</p>
+    {% endif %}
+</div>
+
+{% endif %}
+
+<div class="nav-links">
+    <a href="/admin/produits"><i class="bi bi-box-seam"></i> Gérer les produits</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+</div>
+
+<script>
+async function chargerProduitsSource() {
+    const boutiqueId = document.getElementById('boutiqueSource').value;
+    const select = document.getElementById('produitSource');
+    const stockInfo = document.getElementById('stockSourceInfo');
+    stockInfo.innerText = '';
+    if (!boutiqueId) {
+        select.innerHTML = '<option value="">-- Choisissez d\'abord une boutique --</option>';
+        select.disabled = true;
+        return;
+    }
+    select.disabled = true;
+    select.innerHTML = '<option value="">Chargement...</option>';
+    try {
+        const res = await fetch('/api/produits_boutique/' + boutiqueId);
+        const produits = await res.json();
+        if (!produits.length) {
+            select.innerHTML = '<option value="">Aucun produit dans cette boutique</option>';
+            return;
+        }
+        select.innerHTML = '<option value="">-- Choisir --</option>' +
+            produits.map(p => `<option value="${p.id}" data-stock="${p.stock}" data-nom="${p.nom}">${p.nom} (stock: ${p.stock})</option>`).join('');
+        select.disabled = false;
+        select.onchange = function() {
+            const opt = select.options[select.selectedIndex];
+            if (opt && opt.value) {
+                stockInfo.innerText = 'Stock disponible : ' + opt.dataset.stock;
+                document.getElementById('quantiteTransfert').max = opt.dataset.stock;
+                suggererProduitDestination(opt.dataset.nom);
+            } else {
+                stockInfo.innerText = '';
+            }
+        };
+    } catch (e) {
+        select.innerHTML = '<option value="">Erreur de chargement</option>';
+    }
+}
+
+let dernierNomSource = '';
+function suggererProduitDestination(nom) {
+    dernierNomSource = nom;
+    const select = document.getElementById('produitDestination');
+    if (!select || select.disabled) return;
+    for (const opt of select.options) {
+        if (opt.dataset.nom && opt.dataset.nom.toLowerCase() === nom.toLowerCase()) {
+            select.value = opt.value;
+            return;
+        }
+    }
+}
+
+async function chargerProduitsDestination() {
+    const boutiqueId = document.getElementById('boutiqueDestination').value;
+    const select = document.getElementById('produitDestination');
+    if (!boutiqueId) {
+        select.innerHTML = '<option value="">-- Choisissez d\'abord la boutique destination --</option>';
+        select.disabled = true;
+        return;
+    }
+    select.disabled = true;
+    select.innerHTML = '<option value="">Chargement...</option>';
+    try {
+        const res = await fetch('/api/produits_boutique/' + boutiqueId);
+        const produits = await res.json();
+        select.innerHTML = '<option value="">-- Choisir --</option>' +
+            produits.map(p => `<option value="${p.id}" data-nom="${p.nom}">${p.nom} (stock: ${p.stock})</option>`).join('');
+        select.disabled = document.querySelector('input[name="mode_destination"]:checked').value === 'nouveau';
+        if (dernierNomSource) suggererProduitDestination(dernierNomSource);
+    } catch (e) {
+        select.innerHTML = '<option value="">Erreur de chargement</option>';
+    }
+}
+
+function toggleModeDestination() {
+    const mode = document.querySelector('input[name="mode_destination"]:checked').value;
+    const select = document.getElementById('produitDestination');
+    const info = document.getElementById('destNouveauInfo');
+    if (mode === 'nouveau') {
+        select.disabled = true;
+        select.required = false;
+        info.style.display = 'block';
+    } else {
+        select.disabled = false;
+        select.required = true;
+        info.style.display = 'none';
+    }
+}
+
+function validerFormulaire() {
+    const mode = document.querySelector('input[name="mode_destination"]:checked').value;
+    if (mode === 'existant' && !document.getElementById('produitDestination').value) {
+        alert('Choisissez un produit dans la boutique destination, ou optez pour "Créer un nouveau produit".');
+        return false;
+    }
+    return confirm('Confirmer ce transfert de stock ?');
+}
+</script>
+{% endblock %}

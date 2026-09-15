@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Comparatif boutiques - HITNA{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    .filters-container {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 25px;
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    .filter-group { flex: 1; min-width: 150px; }
+    .filter-group label { display: block; font-weight: 600; margin-bottom: 8px; color: #1e3c72; font-size: 13px; }
+    .filter-group input {
+        width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;
+    }
+
+    .classement-card {
+        background: white;
+        border-radius: 12px;
+        padding: 16px 18px;
+        margin-bottom: 10px;
+        border: 1px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    .classement-card .rang { font-size: 26px; font-weight: bold; min-width: 40px; text-align: center; }
+    .classement-card .infos { flex: 1; min-width: 180px; }
+    .classement-card .infos h3 { font-size: 16px; color: #1e3c72; }
+    .classement-card .infos p { font-size: 12px; color: #888; }
+    .classement-card .ca { text-align: right; }
+    .classement-card .ca .montant { font-size: 18px; font-weight: bold; color: #28a745; }
+    .classement-card .ca .label { font-size: 11px; color: #888; }
+    .barre-ca { height: 6px; border-radius: 3px; background: #e9ecef; margin-top: 8px; overflow: hidden; }
+    .barre-ca .fill { height: 100%; background: linear-gradient(90deg, #1e3c72, #2a5298); }
+
+    .table-compta { width: 100%; border-collapse: collapse; }
+    .table-compta th {
+        background: #f8f9fa; padding: 12px; text-align: left; font-weight: 600;
+        color: #1e3c72; border-bottom: 2px solid #e0e0e0; white-space: nowrap;
+    }
+    .table-compta td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+    .table-compta tfoot td { font-weight: bold; background: #f8f9fa; border-top: 2px solid #e0e0e0; }
+</style>
+{% endblock %}
+
+{% block page_title %}<i class="bi bi-bar-chart-steps"></i> Comparatif entre boutiques{% endblock %}
+{% block page_subtitle %}Classement et comparaison des performances par boutique{% endblock %}
+
+{% block content %}
+
+<div class="filters-container">
+    <div class="filter-group">
+        <label>📅 Date de début</label>
+        <input type="date" id="date_debut" value="{{ date_debut }}">
+    </div>
+    <div class="filter-group">
+        <label>📅 Date de fin</label>
+        <input type="date" id="date_fin" value="{{ date_fin }}">
+    </div>
+    <div class="filter-group">
+        <button onclick="rechercherPeriode()" style="background:linear-gradient(135deg,#1e3c72,#2a5298); padding:10px 25px; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer; width:100%;">🔍 Afficher</button>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-trophy-fill"></i> Classement par chiffre d'affaires</h2>
+    {% for b in comparatif %}
+    {% set pct = (b.ventes / comparatif[0].ventes * 100) if comparatif[0].ventes else 0 %}
+    <div class="classement-card">
+        <div class="rang">
+            {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}#{{ loop.index }}{% endif %}
+        </div>
+        <div class="infos">
+            <h3><i class="bi bi-shop"></i> {{ b.nom }}</h3>
+            <p>{{ b.nb_ventes }} vente(s) · panier moyen {{ "{:,.0f}".format(b.panier_moyen) }} FCFA · {{ b.nb_produits }} produit(s) · {{ b.nb_employes }} employé(s)</p>
+            <div class="barre-ca"><div class="fill" style="width:{{ pct }}%;"></div></div>
+        </div>
+        <div class="ca">
+            <div class="montant">{{ "{:,.0f}".format(b.ventes) }} FCFA</div>
+            <div class="label">Chiffre d'affaires</div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-table"></i> Comparaison détaillée — du {{ date_debut }} au {{ date_fin }}</h2>
+    <div class="table-container">
+        <table class="table-compta">
+            <thead>
+                <tr>
+                    <th>Boutique</th>
+                    <th>Ventes</th>
+                    <th>Achats</th>
+                    <th>Pertes</th>
+                    <th>Charges</th>
+                    <th>Bénéfice net</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in comparatif %}
+                <tr>
+                    <td><strong>{{ b.nom }}</strong></td>
+                    <td style="color:#28a745;">{{ "{:,.0f}".format(b.ventes) }} FCFA</td>
+                    <td style="color:#dc3545;">{{ "{:,.0f}".format(b.achats) }} FCFA</td>
+                    <td style="color:#e0a800;">{{ "{:,.0f}".format(b.pertes) }} FCFA</td>
+                    <td style="color:#e0a800;">{{ "{:,.0f}".format(b.charges) }} FCFA</td>
+                    <td style="font-weight:bold; {% if b.benefice_net < 0 %}color:#6c757d;{% else %}color:#1e3c72;{% endif %}">{{ "{:,.0f}".format(b.benefice_net) }} FCFA</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td>Total réseau</td>
+                    <td style="color:#28a745;">{{ "{:,.0f}".format(total_reseau.ventes) }} FCFA</td>
+                    <td style="color:#dc3545;">{{ "{:,.0f}".format(total_reseau.achats) }} FCFA</td>
+                    <td style="color:#e0a800;">{{ "{:,.0f}".format(total_reseau.pertes) }} FCFA</td>
+                    <td style="color:#e0a800;">{{ "{:,.0f}".format(total_reseau.charges) }} FCFA</td>
+                    <td>{{ "{:,.0f}".format(total_reseau.benefice_net) }} FCFA</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<div class="nav-links">
+    <a href="/admin/comptabilite"><i class="bi bi-journal-text"></i> Tableau comptable</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+</div>
+
+<script>
+    function rechercherPeriode() {
+        const debut = document.getElementById('date_debut').value;
+        const fin = document.getElementById('date_fin').value;
+        const url = new URL(window.location.href);
+        if (debut) url.searchParams.set('date_debut', debut);
+        if (fin) url.searchParams.set('date_fin', fin);
+        window.location.href = url.toString();
+    }
+</script>
+{% endblock %}

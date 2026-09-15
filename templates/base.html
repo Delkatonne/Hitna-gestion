@@ -843,6 +843,11 @@
                     </a>
                 </div>
                 <div class="nav-item">
+                    <a href="/admin/comparatif-boutiques" class="nav-link {% if request.endpoint == 'admin_comparatif_boutiques' %}active{% endif %}">
+                        <span class="icon"><i class="bi bi-bar-chart-steps"></i></span><span>Comparatif boutiques</span>
+                    </a>
+                </div>
+                <div class="nav-item">
                     <a href="/admin/business-plan" class="nav-link {% if request.endpoint == 'admin_business_plan' %}active{% endif %}">
                         <span class="icon"><i class="bi bi-flag-fill"></i></span><span>Business Plan</span>
                     </a>
@@ -875,6 +880,11 @@
                 <div class="nav-item">
                     <a href="/admin/livraisons" class="nav-link {% if request.endpoint == 'admin_livraisons' %}active{% endif %}">
                         <span class="icon"><i class="bi bi-truck"></i></span><span>Suivi des livraisons</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/transferts-stock" class="nav-link {% if request.endpoint == 'admin_transferts_stock' %}active{% endif %}">
+                        <span class="icon"><i class="bi bi-arrow-left-right"></i></span><span>Transferts entre boutiques</span>
                     </a>
                 </div>
                 <div class="nav-item">

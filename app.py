@@ -180,7 +180,7 @@ BACKUP_TABLES = [
     'archive_ventes_annulees',
     'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
     'ventes_annulees', 'paliers_prix', 'produits_supprimes', 'taches_business_plan', 'boutiques',
-    'livraisons_clients',
+    'livraisons_clients', 'transferts_stock',
 ]
 
 def generer_backup_json():
@@ -359,6 +359,23 @@ def init_db():
             notes TEXT DEFAULT '',
             employe_id INTEGER,
             date_creation TEXT)''')
+
+        # ── TRANSFERTS DE STOCK ENTRE BOUTIQUES — on retire du stock à la
+        #    boutique source et on l'ajoute à un produit de la boutique
+        #    destination (chaque boutique ayant son propre catalogue).
+        c.execute('''CREATE TABLE IF NOT EXISTS transferts_stock (
+            id SERIAL PRIMARY KEY,
+            produit_source_id INTEGER REFERENCES produits(id) ON DELETE SET NULL,
+            produit_source_nom TEXT,
+            produit_destination_id INTEGER REFERENCES produits(id) ON DELETE SET NULL,
+            produit_destination_nom TEXT,
+            quantite NUMERIC(10,3),
+            boutique_source_id INTEGER REFERENCES boutiques(id),
+            boutique_destination_id INTEGER REFERENCES boutiques(id),
+            nouveau_produit_cree INTEGER DEFAULT 0,
+            notes TEXT DEFAULT '',
+            employe_id INTEGER,
+            date_transfert TEXT)''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS notifications (
             id SERIAL PRIMARY KEY, user_id INTEGER, type TEXT,
@@ -749,7 +766,7 @@ def init_db():
                            'commandes_fournisseurs', 'ventes_annulees', 'users', 'livraisons_clients',
                            'produits_supprimes', 'clients', 'boutiques', 'categories_produits',
                            'unites_mesure', 'paliers_prix', 'alertes_produits', 'notifications',
-                           'commandes', 'messages_contact', 'taches_business_plan',
+                           'commandes', 'messages_contact', 'taches_business_plan', 'transferts_stock',
                            'archive_ventes', 'archive_entrees', 'archive_pertes',
                            'archive_ventes_annulees', 'archive_recap']:
             try:
@@ -3737,9 +3754,124 @@ def supprimer_livraison_client(id):
     return redirect('/admin/livraisons')
 
 # ══════════════════════════════════════════════════════════════
-# CHARGES (loyer, salaires, factures...) — bénéfice net
+# TRANSFERTS DE STOCK ENTRE BOUTIQUES
 # ══════════════════════════════════════════════════════════════
-CATEGORIES_CHARGES = ['Loyer', 'Salaires', 'Facture (eau/électricité/internet)', 'Transport', 'Entretien', 'Impôts/Taxes', 'Autre']
+@app.route('/admin/transferts-stock')
+def admin_transferts_stock():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        boutiques = qall("SELECT id, nom FROM boutiques WHERE actif = 1 ORDER BY nom")
+        if len(boutiques) < 2:
+            flash('ℹ️ Il faut au moins 2 boutiques actives pour faire un transfert de stock')
+
+        bid = boutique_active()
+        where_bq = ""
+        params_bq = ()
+        if bid is not None:
+            where_bq = " AND (t.boutique_source_id = ? OR t.boutique_destination_id = ?)"
+            params_bq = (bid, bid)
+
+        transferts = qall(f'''SELECT t.id, t.produit_source_nom, t.produit_destination_nom, t.quantite,
+                                     bs.nom, bd.nom, t.notes, t.date_transfert, u.nom, t.nouveau_produit_cree
+                              FROM transferts_stock t
+                              LEFT JOIN boutiques bs ON t.boutique_source_id = bs.id
+                              LEFT JOIN boutiques bd ON t.boutique_destination_id = bd.id
+                              LEFT JOIN users u ON t.employe_id = u.id
+                              WHERE 1=1{where_bq}
+                              ORDER BY t.date_transfert DESC LIMIT 100''', params_bq)
+
+        return render_template('admin_transferts_stock.html', boutiques=boutiques, transferts=transferts,
+            today_iso=datetime.now().strftime('%Y-%m-%d'))
+    except Exception as e:
+        print(f"❌ Erreur admin_transferts_stock: {e}")
+        flash('Erreur lors du chargement des transferts de stock')
+        return redirect('/dashboard')
+
+@app.route('/api/produits_boutique/<int:boutique_id>')
+def api_produits_boutique(boutique_id):
+    """Retourne les produits d'une boutique donnée (pour remplir dynamiquement
+    les menus déroulants du formulaire de transfert en JS)."""
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Non autorisé'}), 401
+    rows = qall("SELECT id, nom, stock, prix, unite_id, valeur_unite, vente_fractionnable, categorie_id, stock_min FROM produits WHERE boutique_id=? AND COALESCE(actif,1)=1 ORDER BY nom", (boutique_id,))
+    return jsonify([{'id': r[0], 'nom': r[1], 'stock': float(r[2]) if r[2] is not None else 0, 'prix': r[3]} for r in rows])
+
+@app.route('/admin/transferts-stock/effectuer', methods=['POST'])
+def effectuer_transfert_stock():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+
+        boutique_source_id = int(request.form.get('boutique_source_id', 0) or 0)
+        boutique_destination_id = int(request.form.get('boutique_destination_id', 0) or 0)
+        produit_source_id = int(request.form.get('produit_source_id', 0) or 0)
+        quantite = round(float(request.form.get('quantite', 0) or 0), 3)
+        mode_destination = request.form.get('mode_destination', 'existant')
+        produit_destination_id = request.form.get('produit_destination_id', '')
+        notes = request.form.get('notes', '').strip()
+
+        if not boutique_source_id or not boutique_destination_id or not produit_source_id or quantite <= 0:
+            flash('❌ Boutique source, boutique destination, produit et quantité sont obligatoires')
+            return redirect('/admin/transferts-stock')
+        if boutique_source_id == boutique_destination_id:
+            flash('❌ La boutique source et la boutique destination doivent être différentes')
+            return redirect('/admin/transferts-stock')
+
+        p_source = q1("SELECT nom, stock, prix, unite_id, valeur_unite, vente_fractionnable, categorie_id, stock_min FROM produits WHERE id=? AND boutique_id=?",
+                      (produit_source_id, boutique_source_id))
+        if not p_source:
+            flash('❌ Produit source introuvable dans cette boutique')
+            return redirect('/admin/transferts-stock')
+        if quantite > float(p_source[1]):
+            flash(f'❌ Stock insuffisant : "{p_source[0]}" n\'a que {format_qte(p_source[1])} unités dans la boutique source')
+            return redirect('/admin/transferts-stock')
+
+        nouveau_produit_cree = 0
+        if mode_destination == 'nouveau' or not produit_destination_id:
+            # Créer le produit dans la boutique destination, avec les mêmes
+            # caractéristiques que le produit source, stock = 0 pour l'instant.
+            new_id = exe('''INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, boutique_id)
+                            VALUES (?,?,0,?,?,?,?,?,?)''',
+                        (p_source[0], p_source[2], p_source[7], p_source[3], p_source[6], p_source[4], p_source[5], boutique_destination_id),
+                        returning=True)
+            if not new_id:
+                flash('❌ Échec de la création du produit dans la boutique destination')
+                return redirect('/admin/transferts-stock')
+            produit_destination_id = new_id
+            nouveau_produit_cree = 1
+            produit_destination_nom = p_source[0]
+        else:
+            produit_destination_id = int(produit_destination_id)
+            p_dest = q1("SELECT nom FROM produits WHERE id=? AND boutique_id=?", (produit_destination_id, boutique_destination_id))
+            if not p_dest:
+                flash('❌ Produit destination introuvable dans cette boutique')
+                return redirect('/admin/transferts-stock')
+            produit_destination_nom = p_dest[0]
+
+        # Mouvement de stock : on retire à la source, on ajoute à la destination.
+        exe("UPDATE produits SET stock = stock - ? WHERE id=?", (quantite, produit_source_id))
+        exe("UPDATE produits SET stock = stock + ? WHERE id=?", (quantite, produit_destination_id))
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe('''INSERT INTO transferts_stock
+               (produit_source_id, produit_source_nom, produit_destination_id, produit_destination_nom,
+                quantite, boutique_source_id, boutique_destination_id, nouveau_produit_cree, notes, employe_id, date_transfert)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+            (produit_source_id, p_source[0], produit_destination_id, produit_destination_nom,
+             quantite, boutique_source_id, boutique_destination_id, nouveau_produit_cree, notes or None,
+             session.get('user_id', 1), now))
+
+        boutiques_noms = q1("SELECT (SELECT nom FROM boutiques WHERE id=?), (SELECT nom FROM boutiques WHERE id=?)",
+                            (boutique_source_id, boutique_destination_id))
+        flash(f'✅ Transfert effectué : {format_qte(quantite)} × "{p_source[0]}" de {boutiques_noms[0]} vers {boutiques_noms[1]}' +
+              (f' (nouveau produit créé)' if nouveau_produit_cree else ''))
+        verifier_alertes_stock()
+    except Exception as e:
+        print(f"❌ Erreur effectuer_transfert_stock: {e}")
+        flash('❌ Erreur lors du transfert de stock')
+    return redirect('/admin/transferts-stock')
+
 
 @app.route('/admin/charges')
 def charges_list():
@@ -3965,6 +4097,80 @@ def admin_comptabilite():
     except Exception as e:
         print(f"❌ Erreur admin_comptabilite: {e}")
         flash('Erreur lors du chargement du tableau comptable')
+        return redirect('/dashboard')
+
+# ══════════════════════════════════════════════════════════════
+# COMPARATIF ENTRE BOUTIQUES — classement par CA, comparaison
+# ventes / marge / pertes. Ignore volontairement le filtre "boutique
+# active" puisque son but même est de comparer toutes les boutiques.
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/comparatif-boutiques')
+def admin_comparatif_boutiques():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+
+        premier_jour_mois = datetime.now().replace(day=1).strftime('%Y-%m-%d')
+        aujourdhui = datetime.now().strftime('%Y-%m-%d')
+        date_debut = request.args.get('date_debut', premier_jour_mois)
+        date_fin = request.args.get('date_fin', aujourdhui)
+
+        boutiques = qall("SELECT id, nom FROM boutiques WHERE actif = 1 ORDER BY nom")
+        if not boutiques:
+            flash('ℹ️ Aucune boutique active à comparer')
+            return redirect('/admin/boutiques')
+
+        comparatif = []
+        for bid, bnom in boutiques:
+            ventes = q1('''SELECT COALESCE(SUM(total),0), COUNT(DISTINCT groupe_vente) FROM (
+                    SELECT total, groupe_vente FROM sorties WHERE boutique_id=? AND DATE(date_sortie::timestamp) BETWEEN ? AND ?
+                    UNION ALL
+                    SELECT total, groupe_vente FROM archive_ventes WHERE boutique_id=? AND DATE(date_vente::timestamp) BETWEEN ? AND ?
+                ) t''', (bid, date_debut, date_fin, bid, date_debut, date_fin)) or (0, 0)
+            achats = q1('''SELECT COALESCE(SUM(total),0) FROM (
+                    SELECT total FROM entrees WHERE boutique_id=? AND DATE(date_entree::timestamp) BETWEEN ? AND ?
+                    UNION ALL
+                    SELECT total FROM archive_entrees WHERE boutique_id=? AND DATE(date_entree::timestamp) BETWEEN ? AND ?
+                ) t''', (bid, date_debut, date_fin, bid, date_debut, date_fin)) or (0,)
+            pertes = q1('''SELECT COALESCE(SUM(total),0) FROM (
+                    SELECT total FROM pertes WHERE boutique_id=? AND DATE(date_perte::timestamp) BETWEEN ? AND ?
+                    UNION ALL
+                    SELECT total FROM archive_pertes WHERE boutique_id=? AND DATE(date_perte::timestamp) BETWEEN ? AND ?
+                ) t''', (bid, date_debut, date_fin, bid, date_debut, date_fin)) or (0,)
+            charges = q1('''SELECT COALESCE(SUM(montant),0) FROM charges
+                            WHERE boutique_id=? AND date_charge BETWEEN ? AND ?''', (bid, date_debut, date_fin)) or (0,)
+            nb_produits = q1("SELECT COUNT(*) FROM produits WHERE boutique_id=? AND COALESCE(actif,1)=1", (bid,)) or (0,)
+            nb_employes = q1("SELECT COUNT(*) FROM users WHERE boutique_id=? AND role='employe' AND COALESCE(actif,1)=1", (bid,)) or (0,)
+
+            total_ventes = ventes[0] or 0
+            nb_ventes = ventes[1] or 0
+            total_achats = achats[0] or 0
+            total_pertes = pertes[0] or 0
+            total_charges = charges[0] or 0
+            benefice_net = total_ventes - total_achats - total_charges
+            panier_moyen = round(total_ventes / nb_ventes) if nb_ventes else 0
+
+            comparatif.append({
+                'id': bid, 'nom': bnom, 'ventes': total_ventes, 'nb_ventes': nb_ventes,
+                'panier_moyen': panier_moyen, 'achats': total_achats, 'pertes': total_pertes,
+                'charges': total_charges, 'benefice_net': benefice_net,
+                'nb_produits': nb_produits[0], 'nb_employes': nb_employes[0],
+            })
+
+        comparatif.sort(key=lambda b: b['ventes'], reverse=True)
+        total_reseau = {
+            'ventes': sum(b['ventes'] for b in comparatif),
+            'achats': sum(b['achats'] for b in comparatif),
+            'pertes': sum(b['pertes'] for b in comparatif),
+            'charges': sum(b['charges'] for b in comparatif),
+            'benefice_net': sum(b['benefice_net'] for b in comparatif),
+        }
+
+        return render_template('admin_comparatif_boutiques.html', comparatif=comparatif,
+            total_reseau=total_reseau, date_debut=date_debut, date_fin=date_fin)
+    except Exception as e:
+        print(f"❌ Erreur admin_comparatif_boutiques: {e}")
+        flash('Erreur lors du chargement du comparatif')
         return redirect('/dashboard')
 
 # ══════════════════════════════════════════════════════════════
