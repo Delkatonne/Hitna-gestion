@@ -93,6 +93,48 @@
     </form>
 </div>
 
+<!-- Fidélité -->
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-star-fill"></i> Programme de fidélité</h2>
+    <div style="display:flex; align-items:center; gap:20px; flex-wrap:wrap; margin-bottom:16px;">
+        <div style="background:linear-gradient(135deg,#764ba2,#667eea); color:white; padding:16px 24px; border-radius:12px; text-align:center;">
+            <div style="font-size:28px; font-weight:bold;">{{ client[6] or 0 }}</div>
+            <div style="font-size:12px; opacity:0.9;">points</div>
+        </div>
+        <p style="font-size:12px; color:#888; max-width:320px;">1 point est attribué automatiquement tous les {{ "{:,.0f}".format(points_fidelite_taux) }} FCFA dépensés lors d'un achat rattaché à ce client.</p>
+    </div>
+    <form method="post" action="/admin/clients/points/{{ client[0] }}" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+            <label style="display:block; font-size:11px; color:#666; margin-bottom:4px;">Action</label>
+            <select name="action" style="padding:9px; border:2px solid #e0e0e0; border-radius:8px;">
+                <option value="ajouter">➕ Ajouter des points</option>
+                <option value="retirer">➖ Retirer / utiliser des points</option>
+            </select>
+        </div>
+        <div>
+            <label style="display:block; font-size:11px; color:#666; margin-bottom:4px;">Nombre de points</label>
+            <input type="number" name="points" min="1" required style="width:120px; padding:9px; border:2px solid #e0e0e0; border-radius:8px;">
+        </div>
+        <div style="flex:1; min-width:180px;">
+            <label style="display:block; font-size:11px; color:#666; margin-bottom:4px;">Motif</label>
+            <input type="text" name="motif" placeholder="Ex: récompense fidélité, geste commercial..." style="width:100%; padding:9px; border:2px solid #e0e0e0; border-radius:8px; box-sizing:border-box;">
+        </div>
+        <button type="submit" style="background:#1e3c72; color:white; padding:9px 20px;"><i class="bi bi-save"></i> Valider</button>
+    </form>
+
+    {% if historique_points %}
+    <div style="margin-top:18px; border-top:1px solid #f0f0f0; padding-top:14px;">
+        {% for h in historique_points %}
+        <div style="display:flex; justify-content:space-between; font-size:13px; padding:6px 0; border-bottom:1px solid #f8f9fa;">
+            <span>{{ h[1] }}</span>
+            <span style="font-weight:bold; {% if h[0] > 0 %}color:#28a745;{% else %}color:#dc3545;{% endif %}">{{ '+' if h[0] > 0 }}{{ h[0] }} pts</span>
+            <span style="color:#999;">{{ h[2].split(' ')[0] if h[2] else '-' }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
 <!-- Statistiques -->
 <div class="stats-grid">
     <div class="stat-card" style="background: linear-gradient(135deg, #28a745, #20c997);">

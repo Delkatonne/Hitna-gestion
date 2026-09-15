@@ -143,7 +143,10 @@
             <div class="infos">
                 <h3><i class="bi bi-hand-index-thumb"></i> <a href="/admin/clients/{{ c[0] }}">{{ c[1] }}</a></h3>
                 <p><i class="bi bi-telephone-fill"></i> {{ c[2] }}{% if c[3] %} · <i class="bi bi-geo-alt-fill"></i> {{ c[3] }}{% endif %}</p>
-                {% if c[7] %}<p style="margin-top:4px;"><span class="inline-block bg-amber-100 text-amber-800 text-[11px] font-semibold px-2 py-0.5 rounded-full"><i class="bi bi-sticky"></i> {{ c[7][:40] }}{% if c[7]|length > 40 %}…{% endif %}</span></p>{% endif %}
+                <p style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
+                    {% if c[8] %}<span class="inline-block bg-purple-100 text-purple-800 text-[11px] font-semibold px-2 py-0.5 rounded-full"><i class="bi bi-star-fill"></i> {{ c[8] }} pts</span>{% endif %}
+                    {% if c[7] %}<span class="inline-block bg-amber-100 text-amber-800 text-[11px] font-semibold px-2 py-0.5 rounded-full"><i class="bi bi-sticky"></i> {{ c[7][:40] }}{% if c[7]|length > 40 %}…{% endif %}</span>{% endif %}
+                </p>
             </div>
             <div class="contact-links">
                 <a href="tel:{{ c[2] }}" style="background:#1e3c72;" title="Appeler"><i class="bi bi-telephone-fill"></i></a>

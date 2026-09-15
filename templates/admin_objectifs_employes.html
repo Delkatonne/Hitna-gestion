@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Objectifs & commissions - HITNA{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    .filters-container {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 25px;
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    .filter-group { flex: 1; min-width: 150px; }
+    .filter-group label { display: block; font-weight: 600; margin-bottom: 8px; color: #1e3c72; font-size: 13px; }
+    .filter-group input { width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; }
+
+    .emp-card {
+        background: white;
+        border-radius: 12px;
+        padding: 16px 18px;
+        margin-bottom: 12px;
+        border: 1px solid #e0e0e0;
+    }
+    .emp-card .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+    .emp-card h3 { font-size: 15px; color: #1e3c72; }
+    .emp-card .commission-badge {
+        background: linear-gradient(135deg, #28a745, #20c997); color: white;
+        padding: 4px 14px; border-radius: 20px; font-weight: bold; font-size: 13px;
+    }
+    .barre-objectif { height: 10px; border-radius: 5px; background: #e9ecef; overflow: hidden; margin: 8px 0; }
+    .barre-objectif .fill { height: 100%; border-radius: 5px; }
+    .barre-objectif .fill.ok { background: linear-gradient(90deg, #28a745, #20c997); }
+    .barre-objectif .fill.warn { background: linear-gradient(90deg, #ffc107, #e0a800); }
+    .emp-card .stats-line { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: #666; }
+    .emp-card .stats-line strong { color: #333; }
+    .edit-objectif-form {
+        display: none;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px dashed #e0e0e0;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    .edit-objectif-form.visible { display: flex; }
+    .edit-objectif-form input { padding: 8px; border: 2px solid #667eea; border-radius: 6px; width: 140px; }
+    .edit-objectif-form label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; }
+</style>
+{% endblock %}
+
+{% block page_title %}<i class="bi bi-graph-up-arrow"></i> Objectifs & commissions{% endblock %}
+{% block page_subtitle %}Objectif de vente mensuel et commission par employé — {{ mois_affiche }}{% endblock %}
+
+{% block content %}
+
+<div class="filters-container">
+    <div class="filter-group">
+        <label>📅 Mois</label>
+        <input type="month" id="mois_select" value="{{ mois }}" onchange="changerMois()">
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-people-fill"></i> Performance des employés — {{ mois_affiche }}</h2>
+    {% if lignes %}
+        {% for l in lignes %}
+        <div class="emp-card">
+            <div class="header">
+                <h3><i class="bi bi-person"></i> {{ l.nom }}</h3>
+                {% if l.commission %}<span class="commission-badge"><i class="bi bi-cash-coin"></i> {{ "{:,.0f}".format(l.commission) }} FCFA de commission</span>{% endif %}
+            </div>
+            {% if l.objectif_montant %}
+            {% set pct_affiche = l.pct_objectif if l.pct_objectif <= 100 else 100 %}
+            <div class="barre-objectif"><div class="fill {% if l.pct_objectif >= 100 %}ok{% else %}warn{% endif %}" style="width:{{ pct_affiche }}%;"></div></div>
+            <div class="stats-line">
+                <span><strong>{{ "{:,.0f}".format(l.ventes) }} FCFA</strong> / objectif {{ "{:,.0f}".format(l.objectif_montant) }} FCFA ({{ l.pct_objectif }}%)</span>
+                <span>{{ l.nb_ventes }} vente(s)</span>
+                {% if l.taux_commission %}<span>Taux de commission : {{ l.taux_commission }}%</span>{% endif %}
+            </div>
+            {% else %}
+            <div class="stats-line">
+                <span><strong>{{ "{:,.0f}".format(l.ventes) }} FCFA</strong> de ventes ce mois</span>
+                <span>{{ l.nb_ventes }} vente(s)</span>
+                <span style="color:#999;">Aucun objectif défini</span>
+            </div>
+            {% endif %}
+            <button type="button" class="btn-small" style="background:#ffc107; margin-top:8px;" onclick="basculerEdition({{ l.id }})"><i class="bi bi-pencil-square"></i> Définir l'objectif</button>
+            <form method="post" action="/admin/objectifs-employes/definir" class="edit-objectif-form" id="edit-{{ l.id }}">
+                <input type="hidden" name="employe_id" value="{{ l.id }}">
+                <input type="hidden" name="mois" value="{{ mois }}">
+                <div>
+                    <label>Objectif de vente (FCFA)</label>
+                    <input type="number" name="objectif_montant" min="0" step="1000" value="{{ l.objectif_montant or '' }}" placeholder="Ex: 500000">
+                </div>
+                <div>
+                    <label>Taux de commission (%)</label>
+                    <input type="number" name="taux_commission" min="0" max="100" step="0.1" value="{{ l.taux_commission or '' }}" placeholder="Ex: 2.5">
+                </div>
+                <button type="submit" style="background:#28a745; color:white; padding:9px 18px; border:none; border-radius:6px; cursor:pointer;"><i class="bi bi-check-circle-fill"></i> Enregistrer</button>
+            </form>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align:center; color:#999; padding:40px;"><i class="bi bi-inbox"></i> Aucun employé actif</p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/admin/comparatif-boutiques"><i class="bi bi-bar-chart-steps"></i> Comparatif boutiques</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+</div>
+
+<script>
+    function basculerEdition(id) {
+        document.getElementById('edit-' + id).classList.toggle('visible');
+    }
+    function changerMois() {
+        const mois = document.getElementById('mois_select').value;
+        if (mois) { window.location.href = '/admin/objectifs-employes?mois=' + mois; }
+    }
+</script>
+{% endblock %}
