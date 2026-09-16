@@ -180,7 +180,7 @@ BACKUP_TABLES = [
     'archive_ventes_annulees',
     'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
     'ventes_annulees', 'paliers_prix', 'produits_supprimes', 'taches_business_plan', 'boutiques',
-    'livraisons_clients', 'transferts_stock',
+    'livraisons_clients', 'transferts_stock', 'points_fidelite_historique', 'objectifs_employes',
 ]
 
 def generer_backup_json():
@@ -461,6 +461,40 @@ def init_db():
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne notes à clients: {e}")
             conn.rollback()
+
+        # ── PROGRAMME DE FIDÉLITÉ — 1 point tous les 1000 FCFA dépensés,
+        #    attribué automatiquement à chaque vente rattachée à un client.
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='clients' AND column_name='points_fidelite'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE clients ADD COLUMN points_fidelite INTEGER DEFAULT 0")
+                conn.commit()
+                print("✅ Colonne 'points_fidelite' ajoutée à clients")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne points_fidelite à clients: {e}")
+            conn.rollback()
+
+        c.execute('''CREATE TABLE IF NOT EXISTS points_fidelite_historique (
+            id SERIAL PRIMARY KEY,
+            client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+            points INTEGER,
+            motif TEXT,
+            groupe_vente TEXT,
+            employe_id INTEGER,
+            date_mouvement TEXT)''')
+        conn.commit()
+
+        # ── OBJECTIFS & COMMISSIONS DE VENTE PAR EMPLOYÉ ──
+        c.execute('''CREATE TABLE IF NOT EXISTS objectifs_employes (
+            id SERIAL PRIMARY KEY,
+            employe_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            mois TEXT,
+            objectif_montant INTEGER DEFAULT 0,
+            taux_commission NUMERIC(5,2) DEFAULT 0,
+            boutique_id INTEGER REFERENCES boutiques(id),
+            date_creation TEXT,
+            UNIQUE(employe_id, mois))''')
+        conn.commit()
 
         # ── MODE DE PAIEMENT — Espèces / MTN MobileMoney / Moov MoovMoney /
         #    Celtiis CeltiisCash. Un seul mode par vente (par groupe_vente).
@@ -767,6 +801,7 @@ def init_db():
                            'produits_supprimes', 'clients', 'boutiques', 'categories_produits',
                            'unites_mesure', 'paliers_prix', 'alertes_produits', 'notifications',
                            'commandes', 'messages_contact', 'taches_business_plan', 'transferts_stock',
+                           'points_fidelite_historique', 'objectifs_employes',
                            'archive_ventes', 'archive_entrees', 'archive_pertes',
                            'archive_ventes_annulees', 'archive_recap']:
             try:
@@ -2376,6 +2411,18 @@ def _traiter_vente_cart(cart, client, employe_id, telephone=None, mode_paiement=
             lignes_ok.append(f'{format_qte(qty_base)} x {p[0]}')
     if lignes_ok:
         verifier_alertes_stock()
+    if client_id and lignes_ok:
+        try:
+            total_vente = q1("SELECT COALESCE(SUM(total),0) FROM sorties WHERE groupe_vente=?", (groupe_vente,))
+            total_vente = total_vente[0] if total_vente else 0
+            points_gagnes = int(total_vente // POINTS_FIDELITE_TAUX)
+            if points_gagnes > 0:
+                exe("UPDATE clients SET points_fidelite = COALESCE(points_fidelite,0) + ? WHERE id=?", (points_gagnes, client_id))
+                exe('''INSERT INTO points_fidelite_historique (client_id, points, motif, groupe_vente, employe_id, date_mouvement)
+                       VALUES (?,?,?,?,?,?)''',
+                    (client_id, points_gagnes, f'Achat de {format_prix(total_vente)} FCFA', groupe_vente, employe_id, now))
+        except Exception as e:
+            print(f"⚠️ Erreur attribution points fidélité: {e}")
     return groupe_vente, lignes_ok, erreurs
 
 
@@ -3872,6 +3919,13 @@ def effectuer_transfert_stock():
         flash('❌ Erreur lors du transfert de stock')
     return redirect('/admin/transferts-stock')
 
+# ══════════════════════════════════════════════════════════════
+# CHARGES (loyer, salaires, factures...) — bénéfice net
+# ══════════════════════════════════════════════════════════════
+CATEGORIES_CHARGES = ['Loyer', 'Salaires', 'Facture (eau/électricité/internet)', 'Transport', 'Entretien', 'Impôts/Taxes', 'Autre']
+
+# ── FIDÉLITÉ — 1 point tous les 1000 FCFA dépensés (configurable ici).
+POINTS_FIDELITE_TAUX = 1000
 
 @app.route('/admin/charges')
 def charges_list():
@@ -4172,6 +4226,88 @@ def admin_comparatif_boutiques():
         print(f"❌ Erreur admin_comparatif_boutiques: {e}")
         flash('Erreur lors du chargement du comparatif')
         return redirect('/dashboard')
+
+# ══════════════════════════════════════════════════════════════
+# OBJECTIFS & COMMISSIONS DE VENTE PAR EMPLOYÉ
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/objectifs-employes')
+def admin_objectifs_employes():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        mois = request.args.get('mois', datetime.now().strftime('%Y-%m'))
+
+        where_bq, params_bq = boutique_filtre_sql('boutique_id')
+        employes = qall(f'''SELECT id, nom FROM users
+                            WHERE role='employe' AND COALESCE(actif,1)=1{where_bq}
+                            ORDER BY nom''', params_bq)
+
+        annee, mnum = mois.split('-')
+        date_debut = f'{mois}-01'
+        dernier_jour = calendar.monthrange(int(annee), int(mnum))[1]
+        date_fin = f'{mois}-{dernier_jour:02d}'
+
+        lignes = []
+        for emp_id, emp_nom in employes:
+            objectif = q1("SELECT objectif_montant, taux_commission FROM objectifs_employes WHERE employe_id=? AND mois=?", (emp_id, mois))
+            objectif_montant = objectif[0] if objectif else 0
+            taux_commission = float(objectif[1]) if objectif else 0
+
+            ventes = q1('''SELECT COALESCE(SUM(total),0), COUNT(DISTINCT groupe_vente) FROM (
+                    SELECT total, groupe_vente FROM sorties WHERE employe_id=? AND DATE(date_sortie::timestamp) BETWEEN ? AND ?
+                    UNION ALL
+                    SELECT total, groupe_vente FROM archive_ventes WHERE employe_id=? AND DATE(date_vente::timestamp) BETWEEN ? AND ?
+                ) t''', (emp_id, date_debut, date_fin, emp_id, date_debut, date_fin)) or (0, 0)
+            total_ventes = ventes[0] or 0
+            nb_ventes = ventes[1] or 0
+            pct_objectif = round(total_ventes / objectif_montant * 100) if objectif_montant else None
+            commission = round(total_ventes * taux_commission / 100) if taux_commission else 0
+
+            lignes.append({
+                'id': emp_id, 'nom': emp_nom, 'objectif_montant': objectif_montant,
+                'taux_commission': taux_commission, 'ventes': total_ventes, 'nb_ventes': nb_ventes,
+                'pct_objectif': pct_objectif, 'commission': commission,
+            })
+
+        lignes.sort(key=lambda l: l['ventes'], reverse=True)
+
+        mois_labels = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+        mois_affiche = f"{mois_labels[int(mnum)-1]} {annee}"
+
+        return render_template('admin_objectifs_employes.html', lignes=lignes, mois=mois, mois_affiche=mois_affiche)
+    except Exception as e:
+        print(f"❌ Erreur admin_objectifs_employes: {e}")
+        flash('Erreur lors du chargement des objectifs employés')
+        return redirect('/dashboard')
+
+@app.route('/admin/objectifs-employes/definir', methods=['POST'])
+def definir_objectif_employe():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        employe_id = int(request.form.get('employe_id', 0) or 0)
+        mois = request.form.get('mois', datetime.now().strftime('%Y-%m'))
+        objectif_montant = int(float(request.form.get('objectif_montant', 0) or 0))
+        taux_commission = float(request.form.get('taux_commission', 0) or 0)
+
+        if not employe_id:
+            flash('❌ Employé introuvable')
+            return redirect(f'/admin/objectifs-employes?mois={mois}')
+
+        boutique_id = boutique_active()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        existant = q1("SELECT id FROM objectifs_employes WHERE employe_id=? AND mois=?", (employe_id, mois))
+        if existant:
+            exe("UPDATE objectifs_employes SET objectif_montant=?, taux_commission=?, boutique_id=? WHERE id=?",
+                (objectif_montant, taux_commission, boutique_id, existant[0]))
+        else:
+            exe('''INSERT INTO objectifs_employes (employe_id, mois, objectif_montant, taux_commission, boutique_id, date_creation)
+                   VALUES (?,?,?,?,?,?)''', (employe_id, mois, objectif_montant, taux_commission, boutique_id, now))
+        flash('✅ Objectif enregistré')
+    except Exception as e:
+        print(f"❌ Erreur definir_objectif_employe: {e}")
+        flash('❌ Erreur lors de l\'enregistrement de l\'objectif')
+    return redirect(f'/admin/objectifs-employes?mois={mois}')
 
 # ══════════════════════════════════════════════════════════════
 # BUSINESS PLAN — tâches planifiées par l'admin, à cocher/valider
@@ -4496,7 +4632,8 @@ def clients_list():
                         COALESCE(cur.nb,0) + COALESCE(arch.nb,0) as nb_achats,
                         COALESCE(cur.total,0) + COALESCE(arch.total,0) as total_depense,
                         GREATEST(cur.dernier, arch.dernier) as dernier_achat,
-                        COALESCE(c.notes, '') as notes
+                        COALESCE(c.notes, '') as notes,
+                        COALESCE(c.points_fidelite, 0) as points_fidelite
                  FROM clients c
                  LEFT JOIN (SELECT client_id, COUNT(*) nb, SUM(total) total, MAX(date_sortie) dernier
                             FROM sorties WHERE client_id IS NOT NULL GROUP BY client_id) cur ON cur.client_id = c.id
@@ -4546,7 +4683,8 @@ def export_excel_clients():
                                   COALESCE(cur.total,0) + COALESCE(arch.total,0) as total_depense,
                                   GREATEST(cur.dernier, arch.dernier) as dernier_achat,
                                   COALESCE(c.notes, '') as notes,
-                                  c.date_creation
+                                  c.date_creation,
+                                  COALESCE(c.points_fidelite, 0) as points_fidelite
                            FROM clients c
                            LEFT JOIN (SELECT client_id, COUNT(*) nb, SUM(total) total, MAX(date_sortie) dernier
                                       FROM sorties WHERE client_id IS NOT NULL GROUP BY client_id) cur ON cur.client_id = c.id
@@ -4557,10 +4695,10 @@ def export_excel_clients():
         wb = Workbook()
         wb.remove(wb.active)
         lignes = [(c[0], c[1], c[2] or '', c[3] or 0, round(c[4] or 0), c[5].split(' ')[0] if c[5] else '',
-                   c[6] or '', c[7].split(' ')[0] if c[7] else '') for c in clients]
+                   c[6] or '', c[7].split(' ')[0] if c[7] else '', c[8] or 0) for c in clients]
         ws = _feuille_excel(wb, "Clients",
-            ["Nom", "Téléphone", "Adresse", "Nb achats", "Total dépensé (FCFA)", "Dernier achat", "Notes", "Client depuis"],
-            lignes, largeurs=[22, 16, 24, 12, 20, 14, 30, 14])
+            ["Nom", "Téléphone", "Adresse", "Nb achats", "Total dépensé (FCFA)", "Dernier achat", "Notes", "Client depuis", "Points fidélité"],
+            lignes, largeurs=[22, 16, 24, 12, 20, 14, 30, 14, 14])
         for row_cells in ws.iter_rows(min_row=2, min_col=5, max_col=5):
             for cell in row_cells:
                 cell.number_format = '#,##0'
@@ -4581,7 +4719,7 @@ def fiche_client(id):
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        client = q1("SELECT id, nom, telephone, adresse, date_creation, COALESCE(notes,'') FROM clients WHERE id=?", (id,))
+        client = q1("SELECT id, nom, telephone, adresse, date_creation, COALESCE(notes,''), COALESCE(points_fidelite,0) FROM clients WHERE id=?", (id,))
         if not client:
             flash('❌ Client introuvable')
             return redirect('/admin/clients')
@@ -4594,6 +4732,9 @@ def fiche_client(id):
                           FROM archive_ventes a
                           WHERE a.client_id=?
                           ORDER BY 1 DESC''', (id, id))
+
+        historique_points = qall('''SELECT points, motif, date_mouvement FROM points_fidelite_historique
+                                     WHERE client_id=? ORDER BY date_mouvement DESC LIMIT 30''', (id,))
 
         stats = q1('''SELECT COUNT(*), COALESCE(SUM(total),0), MAX(dernier) FROM (
                           SELECT total, date_sortie AS dernier FROM sorties WHERE client_id=?
@@ -4613,7 +4754,8 @@ def fiche_client(id):
 
         return render_template('admin_clients_fiche.html', client=client, achats=achats,
             nb_achats=nb_achats, total_depense=total_depense, panier_moyen=panier_moyen,
-            jours_inactivite=jours_inactivite)
+            jours_inactivite=jours_inactivite, historique_points=historique_points,
+            points_fidelite_taux=POINTS_FIDELITE_TAUX)
     except Exception as e:
         print(f"❌ Erreur fiche_client: {e}")
         flash('Erreur lors du chargement de la fiche client')
@@ -4651,6 +4793,45 @@ def modifier_notes_client(id):
     except Exception as e:
         print(f"❌ Erreur modifier_notes_client: {e}")
         flash('❌ Erreur lors de l\'enregistrement de la note')
+    return redirect(f'/admin/clients/{id}')
+
+@app.route('/admin/clients/points/<int:id>', methods=['POST'])
+def ajuster_points_client(id):
+    """Ajustement manuel des points de fidélité (utilisation d'une récompense,
+    correction, geste commercial...)."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        action = request.form.get('action', 'ajouter')
+        points = int(request.form.get('points', 0) or 0)
+        motif = request.form.get('motif', '').strip()
+        if points <= 0:
+            flash('❌ Le nombre de points doit être supérieur à 0')
+            return redirect(f'/admin/clients/{id}')
+
+        client = q1("SELECT nom, COALESCE(points_fidelite,0) FROM clients WHERE id=?", (id,))
+        if not client:
+            flash('❌ Client introuvable')
+            return redirect('/admin/clients')
+
+        if action == 'retirer':
+            if points > client[1]:
+                flash(f'❌ "{client[0]}" n\'a que {client[1]} points — impossible d\'en retirer {points}')
+                return redirect(f'/admin/clients/{id}')
+            points_delta = -points
+            motif_final = motif or 'Utilisation de points'
+        else:
+            points_delta = points
+            motif_final = motif or 'Ajustement manuel'
+
+        exe("UPDATE clients SET points_fidelite = COALESCE(points_fidelite,0) + ? WHERE id=?", (points_delta, id))
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe('''INSERT INTO points_fidelite_historique (client_id, points, motif, employe_id, date_mouvement)
+               VALUES (?,?,?,?,?)''', (id, points_delta, motif_final, session.get('user_id', 1), now))
+        flash(f'✅ {"+" if points_delta > 0 else ""}{points_delta} point(s) pour "{client[0]}"')
+    except Exception as e:
+        print(f"❌ Erreur ajuster_points_client: {e}")
+        flash('❌ Erreur lors de l\'ajustement des points')
     return redirect(f'/admin/clients/{id}')
 
 @app.route('/admin/clients/supprimer/<int:id>')
