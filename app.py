@@ -181,6 +181,7 @@ BACKUP_TABLES = [
     'commandes', 'messages_contact', 'charges', 'clients', 'commandes_fournisseurs',
     'ventes_annulees', 'paliers_prix', 'produits_supprimes', 'taches_business_plan', 'boutiques',
     'livraisons_clients', 'transferts_stock', 'points_fidelite_historique', 'objectifs_employes',
+    'reservations_produits', 'reservations_lignes',
 ]
 
 def generer_backup_json():
@@ -376,6 +377,28 @@ def init_db():
             notes TEXT DEFAULT '',
             employe_id INTEGER,
             date_transfert TEXT)''')
+
+        # ── RÉSERVATIONS DE PRODUITS — un client appelle pour réserver
+        #    un ou plusieurs produits (avant qu'ils ne soient épuisés) et
+        #    passera les récupérer à une boutique précise.
+        c.execute('''CREATE TABLE IF NOT EXISTS reservations_produits (
+            id SERIAL PRIMARY KEY,
+            client_nom TEXT NOT NULL,
+            telephone TEXT,
+            boutique_id INTEGER REFERENCES boutiques(id),
+            date_limite TEXT,
+            statut TEXT DEFAULT 'en_attente',
+            notes TEXT DEFAULT '',
+            employe_id INTEGER,
+            date_creation TEXT,
+            date_recuperation TEXT)''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS reservations_lignes (
+            id SERIAL PRIMARY KEY,
+            reservation_id INTEGER REFERENCES reservations_produits(id) ON DELETE CASCADE,
+            produit_id INTEGER REFERENCES produits(id) ON DELETE SET NULL,
+            produit_nom TEXT,
+            quantite NUMERIC(10,3))''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS notifications (
             id SERIAL PRIMARY KEY, user_id INTEGER, type TEXT,
@@ -802,6 +825,7 @@ def init_db():
                            'unites_mesure', 'paliers_prix', 'alertes_produits', 'notifications',
                            'commandes', 'messages_contact', 'taches_business_plan', 'transferts_stock',
                            'points_fidelite_historique', 'objectifs_employes',
+                           'reservations_produits', 'reservations_lignes',
                            'archive_ventes', 'archive_entrees', 'archive_pertes',
                            'archive_ventes_annulees', 'archive_recap']:
             try:
@@ -3918,6 +3942,177 @@ def effectuer_transfert_stock():
         print(f"❌ Erreur effectuer_transfert_stock: {e}")
         flash('❌ Erreur lors du transfert de stock')
     return redirect('/admin/transferts-stock')
+
+# ══════════════════════════════════════════════════════════════
+# RÉSERVATIONS DE PRODUITS — un client appelle, réserve un ou
+# plusieurs produits avant qu'ils ne soient épuisés, et passera
+# les récupérer à une boutique précise. La récupération devient
+# une vraie vente (stock déduit, chiffre d'affaires comptabilisé).
+# ══════════════════════════════════════════════════════════════
+STATUTS_RESERVATION = ['en_attente', 'recuperee', 'annulee']
+
+@app.route('/admin/reservations')
+def admin_reservations():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        boutiques = qall("SELECT id, nom FROM boutiques WHERE actif = 1 ORDER BY nom")
+        filtre_statut = request.args.get('statut', 'en_attente')
+
+        where_bq, params_bq = boutique_filtre_sql('r.boutique_id')
+        sql = '''SELECT r.id, r.client_nom, r.telephone, COALESCE(b.nom,'Boutique supprimée'), r.date_limite,
+                        r.statut, r.notes, r.date_creation, r.date_recuperation,
+                        string_agg(COALESCE(rl.produit_nom,'') || ' × ' || rl.quantite::text, ', ' ORDER BY rl.id)
+                 FROM reservations_produits r
+                 LEFT JOIN boutiques b ON r.boutique_id = b.id
+                 LEFT JOIN reservations_lignes rl ON rl.reservation_id = r.id
+                 WHERE 1=1'''
+        params = []
+        if filtre_statut:
+            sql += " AND r.statut = ?"
+            params.append(filtre_statut)
+        sql += where_bq
+        params += list(params_bq)
+        sql += " GROUP BY r.id, b.nom ORDER BY (r.statut = 'en_attente') DESC, r.date_limite ASC NULLS LAST, r.id DESC"
+        reservations = qall(sql, tuple(params))
+
+        where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
+        nb_en_attente = q1(f"SELECT COUNT(*) FROM reservations_produits WHERE statut='en_attente'{where_bq2}", params_bq2)
+        nb_en_attente = nb_en_attente[0] if nb_en_attente else 0
+        today_iso = datetime.now().strftime('%Y-%m-%d')
+        nb_urgentes = q1(f'''SELECT COUNT(*) FROM reservations_produits
+                             WHERE statut='en_attente' AND date_limite IS NOT NULL AND date_limite <= ?{where_bq2}''',
+                             (today_iso,) + params_bq2)
+        nb_urgentes = nb_urgentes[0] if nb_urgentes else 0
+
+        return render_template('admin_reservations.html', boutiques=boutiques, reservations=reservations,
+            filtre_statut=filtre_statut, nb_en_attente=nb_en_attente, nb_urgentes=nb_urgentes, today_iso=today_iso)
+    except Exception as e:
+        print(f"❌ Erreur admin_reservations: {e}")
+        flash('Erreur lors du chargement des réservations')
+        return redirect('/dashboard')
+
+@app.route('/admin/reservations/ajouter', methods=['POST'])
+def ajouter_reservation():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        client_nom = request.form.get('client_nom', '').strip()
+        telephone = request.form.get('telephone', '').strip()
+        boutique_id = int(request.form.get('boutique_id', 0) or 0)
+        date_limite = request.form.get('date_limite') or None
+        notes = request.form.get('notes', '').strip()
+        cart_json = request.form.get('cart_json', '')
+
+        try:
+            cart = json.loads(cart_json) if cart_json else []
+        except (ValueError, TypeError):
+            cart = []
+
+        if not client_nom or not boutique_id:
+            flash('❌ Nom du client et boutique sont obligatoires')
+            return redirect('/admin/reservations')
+        if not cart:
+            flash('❌ Ajoutez au moins un produit à la réservation')
+            return redirect('/admin/reservations')
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        reservation_id = exe('''INSERT INTO reservations_produits
+                                (client_nom, telephone, boutique_id, date_limite, statut, notes, employe_id, date_creation)
+                                VALUES (?,?,?,?,'en_attente',?,?,?)''',
+                             (client_nom, telephone or None, boutique_id, date_limite, notes or None,
+                              session.get('user_id', 1), now), returning=True)
+        if not reservation_id:
+            flash('❌ Échec de la création de la réservation')
+            return redirect('/admin/reservations')
+
+        nb_produits = 0
+        for ligne in cart:
+            pid = int(ligne.get('produit_id', 0) or 0)
+            qty = round(float(ligne.get('quantite', 0) or 0), 3)
+            if not pid or qty <= 0:
+                continue
+            p = q1("SELECT nom FROM produits WHERE id=? AND boutique_id=?", (pid, boutique_id))
+            if not p:
+                continue
+            exe('''INSERT INTO reservations_lignes (reservation_id, produit_id, produit_nom, quantite)
+                   VALUES (?,?,?,?)''', (reservation_id, pid, p[0], qty))
+            nb_produits += 1
+
+        if not nb_produits:
+            exe("DELETE FROM reservations_produits WHERE id=?", (reservation_id,))
+            flash('❌ Aucun produit valide dans cette réservation')
+            return redirect('/admin/reservations')
+
+        flash(f'✅ Réservation créée pour "{client_nom}" ({nb_produits} produit(s))')
+    except Exception as e:
+        print(f"❌ Erreur ajouter_reservation: {e}")
+        flash('❌ Erreur lors de la création de la réservation')
+    return redirect('/admin/reservations')
+
+@app.route('/admin/reservations/recuperer/<int:id>', methods=['POST'])
+def recuperer_reservation(id):
+    """Le client vient récupérer sa réservation : ça devient une vraie
+    vente (stock déduit, chiffre d'affaires comptabilisé)."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        reservation = q1("SELECT client_nom, telephone, statut FROM reservations_produits WHERE id=?", (id,))
+        if not reservation:
+            flash('❌ Réservation introuvable')
+            return redirect('/admin/reservations')
+        if reservation[2] != 'en_attente':
+            flash('❌ Cette réservation a déjà été traitée')
+            return redirect('/admin/reservations')
+
+        mode_paiement = request.form.get('mode_paiement', 'Espèces')
+        lignes = qall("SELECT produit_id, quantite FROM reservations_lignes WHERE reservation_id=?", (id,))
+        cart = [{'produit_id': l[0], 'quantite': float(l[1])} for l in lignes if l[0]]
+        if not cart:
+            flash('❌ Aucun produit valide dans cette réservation (produit(s) peut-être supprimé(s) depuis)')
+            return redirect('/admin/reservations')
+
+        groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(
+            cart, reservation[0], session.get('user_id', 1), reservation[1], mode_paiement)
+
+        if erreurs and not lignes_ok:
+            flash('❌ Récupération impossible : ' + ' | '.join(erreurs))
+            return redirect('/admin/reservations')
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        exe("UPDATE reservations_produits SET statut='recuperee', date_recuperation=? WHERE id=?", (now, id))
+        msg = f'✅ Réservation récupérée par "{reservation[0]}" — vente enregistrée'
+        if erreurs:
+            msg += ' (partiellement : ' + ' | '.join(erreurs) + ')'
+        flash(msg)
+    except Exception as e:
+        print(f"❌ Erreur recuperer_reservation: {e}")
+        flash('❌ Erreur lors de la récupération de la réservation')
+    return redirect('/admin/reservations')
+
+@app.route('/admin/reservations/annuler/<int:id>')
+def annuler_reservation(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        exe("UPDATE reservations_produits SET statut='annulee' WHERE id=? AND statut='en_attente'", (id,))
+        flash('🚫 Réservation annulée')
+    except Exception as e:
+        print(f"❌ Erreur annuler_reservation: {e}")
+        flash('❌ Erreur lors de l\'annulation')
+    return redirect('/admin/reservations')
+
+@app.route('/admin/reservations/supprimer/<int:id>')
+def supprimer_reservation(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        exe("DELETE FROM reservations_produits WHERE id=?", (id,))
+        flash('🗑️ Réservation supprimée')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_reservation: {e}")
+        flash('❌ Erreur lors de la suppression')
+    return redirect('/admin/reservations')
 
 # ══════════════════════════════════════════════════════════════
 # CHARGES (loyer, salaires, factures...) — bénéfice net
