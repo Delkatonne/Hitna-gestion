@@ -614,6 +614,10 @@
                     <input type="checkbox" name="permissions" value="commandes" id="permCommandes">
                     <i class="bi bi-bag-fill"></i> Commandes (site web)
                 </label>
+                <label>
+                    <input type="checkbox" name="permissions" value="reservations" id="permReservations">
+                    <i class="bi bi-bookmark-star-fill"></i> Réservations
+                </label>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button type="submit" style="background: #28a745;"><i class="bi bi-check-circle-fill"></i> Enregistrer</button>
@@ -732,6 +736,7 @@
                 document.getElementById('permEntrees').checked = perms.includes('entrees');
                 document.getElementById('permPertes').checked = perms.includes('pertes');
                 document.getElementById('permCommandes').checked = perms.includes('commandes');
+                document.getElementById('permReservations').checked = perms.includes('reservations');
                 
                 document.getElementById('permModal').style.display = 'flex';
                 pendingPermActeurId = null;

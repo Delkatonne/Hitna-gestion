@@ -25,6 +25,7 @@
 
     .cart-line { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
     .cart-line select { flex: 2; min-width: 180px; }
+    .cart-line input.ligne-produit-nom { flex: 2; min-width: 180px; }
     .cart-line input { flex: 0 0 90px; }
     .cart-line .remove-line { background: #dc3545; color: white; border: none; border-radius: 6px; width: 34px; height: 34px; cursor: pointer; flex-shrink: 0; }
     #panierProduits { margin-bottom: 10px; }
@@ -101,6 +102,7 @@
         </div>
 
         <label style="display:block; font-weight:600; margin: 14px 0 8px; color:#1e3c72; font-size:14px;"><i class="bi bi-box-seam"></i> Produits à réserver</label>
+        <datalist id="datalistProduitsResa"></datalist>
         <div id="panierProduits"></div>
         <button type="button" onclick="ajouterLigne()" class="btn-small" style="background:#1e3c72; color:white; margin-bottom:14px;" id="btnAjouterLigne" disabled><i class="bi bi-plus-lg"></i> Ajouter un produit</button>
 
@@ -125,6 +127,7 @@
         <a href="/admin/reservations?statut=recuperee" style="{% if filtre_statut=='recuperee' %}font-weight:bold; text-decoration:underline;{% endif %}"><i class="bi bi-check-circle-fill"></i> Récupérées</a>
         <a href="/admin/reservations?statut=annulee" style="{% if filtre_statut=='annulee' %}font-weight:bold; text-decoration:underline;{% endif %}"><i class="bi bi-slash-circle"></i> Annulées</a>
         <a href="/admin/reservations?statut=" style="{% if not filtre_statut %}font-weight:bold; text-decoration:underline;{% endif %}">Toutes</a>
+        <a href="/admin/reservations/historique" style="margin-left:auto;"><i class="bi bi-archive-fill"></i> Historique / archives (7j+)</a>
     </div>
 
     {% if reservations %}
@@ -181,6 +184,7 @@
 
 <script>
 let produitsBoutiqueResa = [];
+let nomVersIdResa = {};
 
 async function chargerProduitsResa() {
     const boutiqueId = document.getElementById('boutiqueResa').value;
@@ -196,6 +200,13 @@ async function chargerProduitsResa() {
             document.getElementById('panierProduits').innerHTML = '<p style="color:#999; font-size:13px;">Aucun produit dans cette boutique.</p>';
             return;
         }
+        nomVersIdResa = {};
+        const datalist = document.getElementById('datalistProduitsResa');
+        datalist.innerHTML = produitsBoutiqueResa.map(p => {
+            const libelle = `${p.nom} (stock: ${p.stock})`;
+            nomVersIdResa[libelle.toLowerCase()] = { id: p.id, stock: p.stock };
+            return `<option value="${libelle}">`;
+        }).join('');
         btn.disabled = false;
         ajouterLigne();
     } catch (e) {
@@ -207,25 +218,47 @@ function ajouterLigne() {
     const container = document.getElementById('panierProduits');
     const div = document.createElement('div');
     div.className = 'cart-line';
-    const options = produitsBoutiqueResa.map(p => `<option value="${p.id}">${p.nom} (stock: ${p.stock})</option>`).join('');
     div.innerHTML = `
-        <select class="ligne-produit">${options}</select>
+        <input type="text" class="ligne-produit-nom" list="datalistProduitsResa" placeholder="Tapez pour rechercher un produit..." autocomplete="off" oninput="resoudreProduitLigne(this)">
+        <input type="hidden" class="ligne-produit-id">
         <input type="number" class="ligne-quantite" min="0.001" step="0.001" value="1" placeholder="Qté">
         <button type="button" class="remove-line" onclick="this.parentElement.remove()"><i class="bi bi-trash"></i></button>
     `;
     container.appendChild(div);
 }
 
+function resoudreProduitLigne(input) {
+    const ligne = input.closest('.cart-line');
+    const hiddenId = ligne.querySelector('.ligne-produit-id');
+    const trouve = nomVersIdResa[input.value.trim().toLowerCase()];
+    if (trouve) {
+        hiddenId.value = trouve.id;
+        input.style.borderColor = '#28a745';
+        ligne.querySelector('.ligne-quantite').max = trouve.stock;
+    } else {
+        hiddenId.value = '';
+        input.style.borderColor = '#e0e0e0';
+    }
+}
+
 function preparerEnvoi() {
     const lignes = document.querySelectorAll('#panierProduits .cart-line');
     const cart = [];
+    let ligneInvalide = false;
     lignes.forEach(l => {
-        const produitId = l.querySelector('.ligne-produit').value;
+        const nomTape = l.querySelector('.ligne-produit-nom').value.trim();
+        const produitId = l.querySelector('.ligne-produit-id').value;
         const quantite = parseFloat(l.querySelector('.ligne-quantite').value);
+        if (!nomTape) { return; }
+        if (!produitId) { ligneInvalide = true; return; }
         if (produitId && quantite > 0) {
             cart.push({ produit_id: parseInt(produitId), quantite: quantite });
         }
     });
+    if (ligneInvalide) {
+        alert('Un produit tapé ne correspond à aucun élément de la liste — choisissez-le dans les suggestions qui apparaissent en tapant.');
+        return false;
+    }
     if (!cart.length) {
         alert('Ajoutez au moins un produit à la réservation.');
         return false;

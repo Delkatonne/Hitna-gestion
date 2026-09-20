@@ -962,6 +962,13 @@
                     </a>
                 </div>
                 {% endif %}
+                {% if session.permissions and 'reservations' in session.permissions.split(',') %}
+                <div class="nav-item">
+                    <a href="/admin/reservations" class="nav-link">
+                        <span class="icon"><i class="bi bi-bookmark-star-fill"></i></span><span>Réservations</span>
+                    </a>
+                </div>
+                {% endif %}
                 <div class="nav-divider"></div>
                 {% endif %}
                 

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Historique des réservations - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-recherche {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 25px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    .form-recherche .form-group { flex: 1; min-width: 200px; }
+    .form-recherche input {
+        width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; box-sizing: border-box;
+    }
+    .resa-archive-item {
+        background: white;
+        border-radius: 12px;
+        padding: 15px 18px;
+        margin-bottom: 10px;
+        border: 1px solid #e0e0e0;
+        border-left: 4px solid #6c757d;
+    }
+    .resa-archive-item.annulee { border-left-color: #dc3545; }
+    .resa-archive-item .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .resa-archive-item h3 { font-size: 15px; color: #1e3c72; }
+    .resa-archive-item .produits-list { background: #f8f9fa; padding: 8px 12px; border-radius: 8px; font-size: 13px; color: #333; margin-bottom: 8px; }
+    .resa-archive-item .meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #666; }
+</style>
+{% endblock %}
+
+{% block page_title %}<i class="bi bi-archive-fill"></i> Historique des réservations{% endblock %}
+{% block page_subtitle %}Réservations archivées (récupérées depuis plus de 7 jours) — recherche par nom ou date{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <form method="get" class="form-recherche">
+        <div class="form-group">
+            <label><i class="bi bi-search"></i> Nom du client ou produit</label>
+            <input type="text" name="q" placeholder="Ex: Denise, Coca-Cola..." value="{{ recherche }}">
+        </div>
+        <div class="form-group">
+            <label><i class="bi bi-calendar-event"></i> Date (réservation ou récupération)</label>
+            <input type="date" name="date" value="{{ date_recherche }}">
+        </div>
+        <div class="form-group" style="flex: 0 0 auto;">
+            <button type="submit" style="background:#1e3c72; color:white; padding:10px 25px;"><i class="bi bi-search"></i> Rechercher</button>
+        </div>
+        {% if recherche or date_recherche %}
+        <div class="form-group" style="flex: 0 0 auto;">
+            <a href="/admin/reservations/historique" style="display:inline-block; background:#6c757d; color:white; padding:10px 20px; border-radius:8px; text-decoration:none;"><i class="bi bi-x-lg"></i> Effacer</a>
+        </div>
+        {% endif %}
+    </form>
+
+    {% if archives %}
+        {% for a in archives %}
+        <div class="resa-archive-item {{ a[5] }}">
+            <div class="header">
+                <h3><i class="bi bi-person-fill"></i> {{ a[1] }} — <i class="bi bi-shop"></i> {{ a[3] }}</h3>
+                <span style="font-size:11px; font-weight:bold; padding:3px 10px; border-radius:20px; {% if a[5]=='recuperee' %}background:#d4edda; color:#155724;{% else %}background:#e2e3e5; color:#383d41;{% endif %}">
+                    {% if a[5] == 'recuperee' %}✅ Récupérée{% else %}🚫 Annulée{% endif %}
+                </span>
+            </div>
+            <div class="produits-list"><i class="bi bi-box-seam"></i> {{ a[4] or 'Aucun produit' }}</div>
+            <div class="meta">
+                {% if a[2] %}<span><i class="bi bi-telephone"></i> {{ a[2] }}</span>{% endif %}
+                <span><i class="bi bi-calendar-event"></i> Réservé le {{ a[7].split(' ')[0] if a[7] else '-' }}</span>
+                {% if a[8] %}<span><i class="bi bi-check-circle-fill"></i> Récupéré le {{ a[8].split(' ')[0] }}</span>{% endif %}
+            </div>
+            {% if a[6] %}<p style="font-size:12px; color:#888; margin-top:8px;"><i class="bi bi-pencil-square"></i> {{ a[6] }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="text-align:center; color:#999; padding:40px;">
+            {% if recherche or date_recherche %}
+                <i class="bi bi-inbox"></i> Aucune réservation archivée trouvée pour ces critères
+            {% else %}
+                <i class="bi bi-inbox"></i> Aucune réservation archivée pour le moment (archivage automatique 7 jours après récupération)
+            {% endif %}
+        </p>
+    {% endif %}
+</div>
+
+<div class="nav-links">
+    <a href="/admin/reservations"><i class="bi bi-arrow-left"></i> Retour aux réservations</a>
+    <a href="/dashboard"><i class="bi bi-house-door-fill"></i> Dashboard</a>
+</div>
+{% endblock %}
