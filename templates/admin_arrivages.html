@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Arrivages - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-ar { background: #f8f9fa; padding: 20px; border-radius: 15px; margin-bottom: 30px; }
+    .form-ar .form-row { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 12px; }
+    .form-ar .form-group { flex: 1; min-width: 160px; }
+    .form-ar select, .form-ar input, .form-ar textarea {
+        width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; box-sizing: border-box;
+    }
+    .info-ar { background: #cff4fc; color: #055160; border: 1px solid #9eeaf9; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; }
+
+    .filtres { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .filtres a { padding: 8px 18px; border-radius: 20px; background: #f0f2f5; color: #555; text-decoration: none; font-weight: 600; font-size: 14px; }
+    .filtres a.active { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; }
+
+    .ar-card { background: white; border-radius: 12px; padding: 15px 18px; margin-bottom: 14px; border: 1px solid #e0e0e0; border-left: 4px solid #ffc107; }
+    .ar-card.integre { border-left-color: #28a745; opacity: 0.85; }
+    .ar-card.partiel { border-left-color: #17a2b8; }
+    .ar-card.annule { border-left-color: #6c757d; opacity: 0.6; }
+    .ar-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .ar-head h3 { font-size: 15px; color: #1e3c72; }
+    .ar-sub { font-size: 12px; color: #888; margin-top: 2px; }
+    .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+    .pill.warn { background: #fff3cd; color: #664d03; }
+    .pill.ok { background: #d1e7dd; color: #0f5132; }
+    .pill.info { background: #cff4fc; color: #055160; }
+    .pill.gris { background: #e9ecef; color: #495057; }
+
+    .ar-ligne { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+    .ar-ligne .top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; font-size: 14px; }
+    .ar-ligne .top .qtes { font-size: 12px; color: #666; }
+    .ar-int { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 8px; }
+    .ar-int .g { display: flex; flex-direction: column; font-size: 11px; color: #777; gap: 2px; }
+    .ar-int input, .ar-int select { padding: 8px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 13px; }
+    .ar-int .q { width: 110px; } .ar-int .p { width: 120px; }
+    .ar-int .nouveau { display: flex; gap: 8px; flex-wrap: wrap; }
+    .lien-btn { display: inline-block; padding: 8px 14px; border-radius: 8px; color: white; text-decoration: none; font-size: 13px; font-weight: 600; margin-right: 6px; }
+    .ligne-new { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .ligne-new select { flex: 2; min-width: 180px; } .ligne-new input { flex: 1; min-width: 120px; }
+    @media (max-width: 768px) { .form-ar .form-row { flex-direction: column; } }
+</style>
+{% endblock %}
+
+{% block page_title %}<i class="bi bi-box-arrow-in-down"></i> Arrivages{% endblock %}
+{% block page_subtitle %}Produits arrivés, pas encore dans le stock du logiciel{% endblock %}
+
+{% block content %}
+<div class="info-ar">
+    <i class="bi bi-info-circle"></i> <strong>{{ nb_a_traiter }}</strong> arrivage(s) à intégrer.
+    Un arrivage ne change <u>pas</u> le stock tant que vous ne cliquez pas sur « Intégrer au stock » — et vous choisissez la quantité à intégrer.
+</div>
+
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Enregistrer un arrivage{% if boutique_nom %} — {{ boutique_nom }}{% endif %}</h2>
+    {% if not boutique_ok %}
+        <p style="color:#664d03; background:#fff3cd; padding:12px 16px; border-radius:10px;">
+            <i class="bi bi-info-circle"></i> Choisissez d'abord une boutique active (sélecteur en haut de la page).
+        </p>
+    {% else %}
+    <form method="post" action="/admin/arrivages/ajouter" class="form-ar">
+        <div class="form-row">
+            <div class="form-group"><label><i class="bi bi-building"></i> Fournisseur (optionnel)</label><input type="text" name="fournisseur"></div>
+            <div class="form-group"><label><i class="bi bi-calendar-event"></i> Date d'arrivée</label><input type="date" name="date_arrivage" value="{{ today_iso }}"></div>
+            <div class="form-group" style="flex:2;"><label><i class="bi bi-card-text"></i> Note (optionnel)</label><input type="text" name="notes"></div>
+        </div>
+        <div id="lignes"></div>
+        <button type="button" onclick="ajouterLigne()" style="background:#6c757d; margin-bottom:12px;"><i class="bi bi-plus-lg"></i> Ajouter un produit</button><br>
+        <button type="submit" style="background:#28a745;"><i class="bi bi-save"></i> Enregistrer l'arrivage</button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-list-ul"></i> Arrivages</h2>
+    <div class="filtres">
+        {% for k, label in [('a_traiter', 'À intégrer'), ('integre', 'Intégrés'), ('annule', 'Annulés'), ('tous', 'Tous')] %}
+        <a href="/admin/arrivages?statut={{ k }}" class="{{ 'active' if filtre == k }}">{{ label }}</a>
+        {% endfor %}
+    </div>
+
+    {% for a in arrivages %}
+    <div class="ar-card {{ a.statut }}">
+        <div class="ar-head">
+            <div>
+                <h3><i class="bi bi-truck"></i> Arrivage du {{ a.date_arrivage }}{% if a.fournisseur %} — {{ a.fournisseur }}{% endif %}</h3>
+                <div class="ar-sub">{{ a.boutique }}{% if a.notes %} · {{ a.notes }}{% endif %}</div>
+            </div>
+            <div>
+                {% if a.statut == 'integre' %}<span class="pill ok">✅ Intégré</span>
+                {% elif a.statut == 'partiel' %}<span class="pill info">Partiellement intégré</span>
+                {% elif a.statut == 'annule' %}<span class="pill gris">Annulé</span>
+                {% else %}<span class="pill warn">À intégrer</span>{% endif %}
+            </div>
+        </div>
+
+        {% for l in a.lignes %}
+        {# l = (id, produit_id, produit_nom, quantite_recue, quantite_integree, prix_achat) #}
+        {% set reste = l[3] - l[4] %}
+        <div class="ar-ligne">
+            <div class="top">
+                <strong>{{ l[2] }}</strong>
+                <span class="qtes">Reçu : {{ l[3]|qte }} · Intégré : {{ l[4]|qte }} · <strong style="{{ 'color:#dc3545;' if reste > 0 }}">Reste : {{ reste|qte }}</strong></span>
+            </div>
+            {% if reste > 0 and a.statut in ('en_attente', 'partiel') %}
+            <form method="post" action="/admin/arrivages/integrer/{{ l[0] }}" class="ar-int">
+                <div class="g">Quantité à intégrer
+                    <input class="q" type="number" name="quantite" min="0.001" max="{{ reste|qte }}" step="any" value="{{ reste|qte }}" required>
+                </div>
+                <div class="g">Prix d'achat unitaire
+                    <input class="p" type="number" name="prix_achat" min="1" value="{{ l[5] or '' }}" required>
+                </div>
+                <div class="g">Produit du catalogue
+                    <select name="produit_choix" onchange="basculerNouveau(this)">
+                        {% for p in produits if p[2] == a.boutique_id %}
+                        <option value="{{ p[0] }}" {{ 'selected' if l[1] == p[0] }}>{{ p[1] }}</option>
+                        {% endfor %}
+                        <option value="nouveau" {{ 'selected' if not l[1] }}>➕ Créer un nouveau produit</option>
+                    </select>
+                </div>
+                <div class="nouveau bloc-nouveau" style="{{ 'display:none;' if l[1] }}">
+                    <div class="g">Nom du nouveau produit<input type="text" name="nouveau_nom" value="{{ l[2] }}"></div>
+                    <div class="g">Prix de vente<input class="p" type="number" name="prix_vente" min="1"></div>
+                </div>
+                <button type="submit" style="background:#28a745; padding:9px 16px;"><i class="bi bi-box-arrow-in-down"></i> Intégrer au stock</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <div style="margin-top:10px;">
+            {% if a.statut in ('en_attente', 'partiel') %}
+            <a class="lien-btn" style="background:#6c757d;" href="/admin/arrivages/annuler/{{ a.id }}" onclick="return confirm('Annuler cet arrivage ? Ce qui est déjà intégré reste dans le stock.')"><i class="bi bi-x-circle"></i> Annuler l'arrivage</a>
+            {% endif %}
+            {% if a.statut != 'integre' %}
+            <a class="lien-btn" style="background:#dc3545;" href="/admin/arrivages/supprimer/{{ a.id }}" onclick="return confirm('Supprimer définitivement cet arrivage ?')"><i class="bi bi-trash"></i> Supprimer</a>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <p style="text-align:center; color:#999; padding:40px;"><i class="bi bi-inbox"></i> Aucun arrivage dans cette liste</p>
+    {% endfor %}
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const PRODUITS = {{ produits|tojson }};   // [id, nom, boutique_id]
+
+function basculerNouveau(sel) {
+    const bloc = sel.closest('form').querySelector('.bloc-nouveau');
+    if (bloc) bloc.style.display = sel.value === 'nouveau' ? '' : 'none';
+}
+
+function ajouterLigne() {
+    const conteneur = document.getElementById('lignes');
+    if (!conteneur) return;
+    const row = document.createElement('div');
+    row.className = 'ligne-new';
+
+    const sel = document.createElement('select'); sel.name = 'produit_id[]';
+    const vide = document.createElement('option'); vide.value = ''; vide.textContent = '— Produit pas encore dans le logiciel —';
+    sel.appendChild(vide);
+    PRODUITS.forEach(p => { const o = document.createElement('option'); o.value = p[0]; o.textContent = p[1]; sel.appendChild(o); });
+
+    const nom = document.createElement('input'); nom.type = 'text'; nom.name = 'produit_nom[]'; nom.placeholder = 'Nom du produit'; nom.required = true;
+    sel.onchange = () => { nom.style.display = sel.value ? 'none' : ''; nom.required = !sel.value; };
+
+    const q = document.createElement('input'); q.type = 'number'; q.name = 'quantite[]'; q.min = '0.001'; q.step = 'any'; q.required = true; q.placeholder = 'Quantité reçue';
+    const pa = document.createElement('input'); pa.type = 'number'; pa.name = 'prix_achat[]'; pa.min = '1'; pa.placeholder = "Prix d'achat (optionnel)";
+
+    const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.style.background = '#dc3545'; x.style.padding = '8px 14px';
+    x.onclick = () => row.remove();
+
+    [sel, nom, q, pa, x].forEach(e => row.appendChild(e));
+    conteneur.appendChild(row);
+}
+if (document.getElementById('lignes')) ajouterLigne();
+</script>
+{% endblock %}

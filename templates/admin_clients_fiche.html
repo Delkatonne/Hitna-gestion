@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ client[1] }} - Fiche client - HITNA{% endblock %}
+{% block title %}{{ (client[7] ~ ' ') if client[7] else '' }}{{ client[1] }} - Fiche client - HITNA{% endblock %}
 
 {% block extra_css %}
 <script src="https://cdn.tailwindcss.com"></script>
@@ -45,7 +45,7 @@
 </style>
 {% endblock %}
 
-{% block page_title %}<i class="bi bi-hand-index-thumb"></i> {{ client[1] }}{% endblock %}
+{% block page_title %}<i class="bi bi-hand-index-thumb"></i> {{ (client[7] ~ ' ') if client[7] else '' }}{{ client[1] }}{% endblock %}
 {% block page_subtitle %}Fiche client — historique complet des achats{% endblock %}
 
 {% block content %}
@@ -77,6 +77,7 @@
     </div>
 
     <form method="post" action="/admin/clients/modifier/{{ client[0] }}" class="edit-client-form" id="editForm">
+        <input type="text" name="prenom" value="{{ client[7] }}" placeholder="Prénom">
         <input type="text" name="nom" value="{{ client[1] }}" placeholder="Nom" required>
         <input type="tel" name="telephone" value="{{ client[2] }}" placeholder="Téléphone" required>
         <input type="text" name="adresse" value="{{ client[3] or '' }}" placeholder="Adresse">

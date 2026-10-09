@@ -182,6 +182,7 @@ BACKUP_TABLES = [
     'ventes_annulees', 'paliers_prix', 'produits_supprimes', 'taches_business_plan', 'boutiques',
     'livraisons_clients', 'transferts_stock', 'points_fidelite_historique', 'objectifs_employes',
     'reservations_produits', 'reservations_lignes', 'archive_reservations',
+    'evenements', 'credits', 'credits_lignes', 'credits_paiements', 'arrivages', 'arrivages_lignes',
 ]
 
 def generer_backup_json():
@@ -4368,8 +4369,16 @@ def _comptabilite_resume_mensuel(annee, bid=None):
         WHERE to_char(d::timestamp,'YYYY') = ?{filtre} GROUP BY 1''', (annee,) + extra1)
     rows_charges = qall(f'''SELECT to_char(date_charge::timestamp,'YYYY-MM'), COALESCE(SUM(montant),0)
         FROM charges WHERE to_char(date_charge::timestamp,'YYYY') = ?{filtre} GROUP BY 1''', (annee,) + extra1)
+    # Versements reçus sur les crédits clients : l'argent compte quand il rentre
+    rows_credits = qall(f'''SELECT to_char(p.date_paiement::timestamp,'YYYY-MM'), COALESCE(SUM(p.montant),0)
+        FROM credits_paiements p JOIN credits c ON p.credit_id = c.id
+        WHERE to_char(p.date_paiement::timestamp,'YYYY') = ?{filtre.replace('boutique_id', 'c.boutique_id')}
+        GROUP BY 1''', (annee,) + extra1)
 
     ventes_map = {m: (t, n) for m, t, n in rows_ventes}
+    for m, t in rows_credits:
+        v0, n0 = ventes_map.get(m, (0, 0))
+        ventes_map[m] = ((v0 or 0) + (t or 0), n0)
     achats_map = {m: t for m, t in rows_achats}
     charges_map = {m: t for m, t in rows_charges}
 
@@ -4413,6 +4422,14 @@ def _comptabilite_registre(date_debut, date_fin, bid=None):
         lignes.append({'date': d, 'type': 'achat',
             'libelle': 'Achat de stock' + (f' — {fournisseur}' if fournisseur else ''),
             'recette': 0, 'depense': total or 0})
+
+    versements = qall(f'''SELECT p.date_paiement, p.montant, c.client_nom
+                          FROM credits_paiements p JOIN credits c ON p.credit_id = c.id
+                          WHERE DATE(p.date_paiement::timestamp) BETWEEN ? AND ?{filtre.replace('boutique_id', 'c.boutique_id')}''',
+                      (date_debut, date_fin) + extra)
+    for d, montant, client in versements:
+        lignes.append({'date': d, 'type': 'vente', 'libelle': f'Versement crédit — {client}',
+            'recette': montant or 0, 'depense': 0})
 
     charges = qall(f'''SELECT date_charge, montant, categorie, libelle FROM charges
                        WHERE date_charge BETWEEN ? AND ?{filtre}''', (date_debut, date_fin) + extra)
@@ -4636,33 +4653,7 @@ def definir_objectif_employe():
 # ══════════════════════════════════════════════════════════════
 PRIORITES_TACHE = ['basse', 'normale', 'haute']
 
-@app.route('/admin/business-plan')
-def admin_business_plan():
-    try:
-        if session.get('role') != 'admin':
-            return redirect('/login')
-        taches_a_faire = qall('''SELECT t.id, t.titre, t.description, t.priorite, t.date_echeance,
-                                         t.date_creation, u.nom
-                                  FROM taches_business_plan t LEFT JOIN users u ON t.employe_id = u.id
-                                  WHERE t.statut = 'a_faire'
-                                  ORDER BY CASE t.priorite WHEN 'haute' THEN 0 WHEN 'normale' THEN 1 ELSE 2 END,
-                                           t.date_echeance ASC NULLS LAST, t.id DESC''')
-        taches_faites = qall('''SELECT t.id, t.titre, t.description, t.priorite, t.date_echeance,
-                                        t.date_validation, u.nom
-                                 FROM taches_business_plan t LEFT JOIN users u ON t.employe_id = u.id
-                                 WHERE t.statut = 'fait'
-                                 ORDER BY t.date_validation DESC LIMIT 100''')
-        nb_a_faire = len(taches_a_faire)
-        nb_faites = q1("SELECT COUNT(*) FROM taches_business_plan WHERE statut='fait'")
-        nb_faites = nb_faites[0] if nb_faites else 0
-        today_iso = datetime.now().strftime('%Y-%m-%d')
-        return render_template('admin_business_plan.html', taches_a_faire=taches_a_faire,
-            taches_faites=taches_faites, nb_a_faire=nb_a_faire, nb_faites=nb_faites,
-            today_iso=today_iso)
-    except Exception as e:
-        print(f"❌ Erreur admin_business_plan: {e}")
-        flash('Erreur lors du chargement du business plan')
-        return redirect('/dashboard')
+# (la page /admin/business-plan est maintenant dans ajouts.py : tâches + évènements)
 
 @app.route('/admin/business-plan/ajouter', methods=['POST'])
 def ajouter_tache_business_plan():
@@ -4954,7 +4945,8 @@ def clients_list():
                         COALESCE(cur.total,0) + COALESCE(arch.total,0) as total_depense,
                         GREATEST(cur.dernier, arch.dernier) as dernier_achat,
                         COALESCE(c.notes, '') as notes,
-                        COALESCE(c.points_fidelite, 0) as points_fidelite
+                        COALESCE(c.points_fidelite, 0) as points_fidelite,
+                        COALESCE(c.prenom, '') as prenom
                  FROM clients c
                  LEFT JOIN (SELECT client_id, COUNT(*) nb, SUM(total) total, MAX(date_sortie) dernier
                             FROM sorties WHERE client_id IS NOT NULL GROUP BY client_id) cur ON cur.client_id = c.id
@@ -4963,9 +4955,9 @@ def clients_list():
         conditions = []
         params = []
         if recherche:
-            conditions.append("(c.nom ILIKE ? OR c.telephone ILIKE ?)")
+            conditions.append("(c.nom ILIKE ? OR COALESCE(c.prenom,'') ILIKE ? OR c.telephone ILIKE ?)")
             like = f'%{recherche}%'
-            params += [like, like]
+            params += [like, like, like]
         if inactif_jours:
             try:
                 jours = int(inactif_jours)
@@ -5040,7 +5032,7 @@ def fiche_client(id):
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        client = q1("SELECT id, nom, telephone, adresse, date_creation, COALESCE(notes,''), COALESCE(points_fidelite,0) FROM clients WHERE id=?", (id,))
+        client = q1("SELECT id, nom, telephone, adresse, date_creation, COALESCE(notes,''), COALESCE(points_fidelite,0), COALESCE(prenom,'') FROM clients WHERE id=?", (id,))
         if not client:
             flash('❌ Client introuvable')
             return redirect('/admin/clients')
@@ -5093,7 +5085,11 @@ def modifier_client(id):
         if not telephone:
             flash('❌ Le numéro de téléphone est obligatoire')
             return redirect(f'/admin/clients/{id}')
-        ok = exe("UPDATE clients SET nom=?, telephone=?, adresse=? WHERE id=?", (nom, telephone, adresse, id))
+        if 'prenom' in request.form:
+            prenom = request.form.get('prenom', '').strip()
+            ok = exe("UPDATE clients SET nom=?, prenom=?, telephone=?, adresse=? WHERE id=?", (nom, prenom, telephone, adresse, id))
+        else:
+            ok = exe("UPDATE clients SET nom=?, telephone=?, adresse=? WHERE id=?", (nom, telephone, adresse, id))
         if ok:
             flash(f'✅ Client "{nom}" modifié')
         else:
@@ -6654,6 +6650,14 @@ def manifest():
 # de ce bloc, pour que les tables soient créées aussi en production.
 # ──────────────────────────────────────────────────────────────
 init_db()
+
+# ──────────────────────────────────────────────────────────────
+# NOUVELLES FONCTIONNALITÉS (module séparé : ajouts.py)
+# évènements du business plan, crédits clients, arrivages, WhatsApp
+# ──────────────────────────────────────────────────────────────
+import sys
+sys.modules.setdefault('app', sys.modules[__name__])  # évite un double chargement avec "python app.py"
+import ajouts  # noqa: E402,F401
 
 # ──────────────────────────────────────────────────────────────
 # LANCEMENT (uniquement en local, ex: python app.py)

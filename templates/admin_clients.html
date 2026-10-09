@@ -81,6 +81,16 @@
         display: flex; align-items: center; justify-content: center;
         color: white; text-decoration: none; font-size: 14px;
     }
+    .client-card .cb-client { width: 20px; height: 20px; flex-shrink: 0; cursor: pointer; accent-color: #25D366; }
+    .form-client { background: #f8f9fa; padding: 20px; border-radius: 15px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .form-client .form-group { flex: 1; min-width: 160px; }
+    .form-client input, .form-client textarea {
+        width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; box-sizing: border-box;
+    }
+    .wa-modeles { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .wa-modeles button { background: #e9ecef; color: #333; padding: 6px 14px; font-size: 13px; }
+    .wa-tout { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 12px; cursor: pointer; }
+    #btnWa:disabled { opacity: 0.45; cursor: not-allowed; }
 </style>
 {% endblock %}
 
@@ -88,6 +98,48 @@
 {% block page_subtitle %}{{ nb_clients }} client(s) enregistré(s) — historique d'achats par numéro de téléphone{% endblock %}
 
 {% block content %}
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-person-plus-fill"></i> Enregistrer un nouveau client</h2>
+    <form method="post" action="/admin/clients/ajouter" class="form-client">
+        <div class="form-group">
+            <label><i class="bi bi-person"></i> Nom *</label>
+            <input type="text" name="nom" required>
+        </div>
+        <div class="form-group">
+            <label><i class="bi bi-person"></i> Prénom</label>
+            <input type="text" name="prenom">
+        </div>
+        <div class="form-group">
+            <label><i class="bi bi-whatsapp"></i> Numéro WhatsApp *</label>
+            <input type="tel" name="telephone" required placeholder="Ex: 01 67 19 85 31">
+        </div>
+        <div class="form-group">
+            <label><i class="bi bi-geo-alt"></i> Adresse</label>
+            <input type="text" name="adresse">
+        </div>
+        <div class="form-group" style="flex: 0 0 auto;">
+            <button type="submit" style="background:#28a745; padding:10px 25px;"><i class="bi bi-save"></i> Enregistrer</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-whatsapp"></i> Message WhatsApp aux clients cochés <span id="nbCoches" style="background:#25D366; color:white; border-radius:20px; padding:2px 12px; font-size:14px;">0</span></h2>
+    <form method="post" action="/admin/clients/whatsapp" id="formWhatsapp">
+        <div class="wa-modeles">
+            <button type="button" data-modele="Bonjour {prenom} 👋, HITNA Superette vous propose une promotion : [décrivez la promotion]. Passez nous voir ! 🛒">🏷️ Promotion</button>
+            <button type="button" data-modele="Bonjour {prenom}, retrouvez HITNA Superette à [nom de la foire] du [dates]. Venez nombreux ! 🎪">🎪 Foire</button>
+            <button type="button" data-modele="Bonjour {prenom}, de nouveaux produits viennent d'arriver chez HITNA Superette. Passez les découvrir ! 📦">📦 Nouveaux arrivages</button>
+        </div>
+        <label class="wa-tout"><input type="checkbox" id="cbTous" style="width:18px; height:18px;"> Tout sélectionner (clients affichés ci-dessous)</label>
+        <textarea name="message" id="messageWa" rows="3" required
+                  style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px; box-sizing:border-box; margin-bottom:10px;"
+                  placeholder="Votre message… {prenom} sera remplacé par le prénom de chaque client, {nom} par son nom complet."></textarea>
+        <button type="submit" id="btnWa" style="background:#25D366;" disabled><i class="bi bi-whatsapp"></i> Préparer l'envoi</button>
+        <small style="color:#888; margin-left:8px;">Cochez d'abord les clients dans la liste.</small>
+    </form>
+</div>
+
 <div class="card">
     <form method="get" class="form-recherche">
         <div class="form-group">
@@ -135,13 +187,14 @@
     {% if clients %}
         {% for c in clients %}
         <div class="client-card">
+            <input type="checkbox" class="cb-client" name="client_ids" value="{{ c[0] }}" form="formWhatsapp" title="Sélectionner pour WhatsApp">
             {% if tri == 'depense' and not inactif_jours %}
             <div class="rang">
                 {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}#{{ loop.index }}{% endif %}
             </div>
             {% endif %}
             <div class="infos">
-                <h3><i class="bi bi-hand-index-thumb"></i> <a href="/admin/clients/{{ c[0] }}">{{ c[1] }}</a></h3>
+                <h3><i class="bi bi-hand-index-thumb"></i> <a href="/admin/clients/{{ c[0] }}">{{ (c[9] ~ ' ') if c[9] else '' }}{{ c[1] }}</a></h3>
                 <p><i class="bi bi-telephone-fill"></i> {{ c[2] }}{% if c[3] %} · <i class="bi bi-geo-alt-fill"></i> {{ c[3] }}{% endif %}</p>
                 <p style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
                     {% if c[8] %}<span class="inline-block bg-purple-100 text-purple-800 text-[11px] font-semibold px-2 py-0.5 rounded-full"><i class="bi bi-star-fill"></i> {{ c[8] }} pts</span>{% endif %}
@@ -150,7 +203,7 @@
             </div>
             <div class="contact-links">
                 <a href="tel:{{ c[2] }}" style="background:#1e3c72;" title="Appeler"><i class="bi bi-telephone-fill"></i></a>
-                <a href="https://wa.me/{{ c[2]|replace(' ', '')|replace('-', '')|replace('+', '') }}" target="_blank" style="background:#25D366;" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>
+                <a href="{{ lien_whatsapp(c[2]) }}" target="_blank" rel="noopener" style="background:#25D366;" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>
             </div>
             <div class="montant">
                 <div class="total">{{ "{:,.0f}".format(c[5] or 0) }} FCFA</div>
@@ -173,4 +226,25 @@
 <div class="nav-links">
     <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const cases = () => Array.from(document.querySelectorAll('.cb-client'));
+    function maj() {
+        const n = cases().filter(c => c.checked).length;
+        document.getElementById('nbCoches').textContent = n;
+        document.getElementById('btnWa').disabled = n === 0;
+    }
+    document.getElementById('cbTous').addEventListener('change', function () {
+        cases().forEach(c => c.checked = this.checked); maj();
+    });
+    document.addEventListener('change', e => { if (e.target.classList && e.target.classList.contains('cb-client')) maj(); });
+    document.querySelectorAll('[data-modele]').forEach(b => b.addEventListener('click', () => {
+        document.getElementById('messageWa').value = b.dataset.modele;
+    }));
+    maj();
+})();
+</script>
 {% endblock %}

@@ -15,6 +15,11 @@
     .stat-bp .number { font-size: 28px; font-weight: bold; }
     .stat-bp.attente { background: linear-gradient(135deg, #ffc107, #e0a800); color: #333; }
     .stat-bp.fait { background: linear-gradient(135deg, #28a745, #20c997); }
+    .stat-bp.evt { background: linear-gradient(135deg, #1e3c72, #2a5298); }
+    .pill-evt { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+    .pill-evt.encours { background: #d1e7dd; color: #0f5132; }
+    .pill-evt.avenir { background: #cfe2ff; color: #084298; }
+    .pill-evt.cloturer { background: #fff3cd; color: #664d03; }
 
     .form-tache {
         background: #f8f9fa;
@@ -73,6 +78,109 @@
         <h3><i class="bi bi-check-circle-fill"></i> Réalisées</h3>
         <div class="number">{{ nb_faites }}</div>
     </div>
+    <div class="stat-bp evt">
+        <h3><i class="bi bi-calendar-event"></i> Évènements à venir</h3>
+        <div class="number">{{ evenements_a_venir|length }}</div>
+    </div>
+</div>
+
+<!-- Évènements programmés (foire, promotion...) -->
+{% set icones = {'foire': '🎪', 'promotion': '🏷️', 'autre': '📌'} %}
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-calendar-event"></i> Évènements programmés ({{ evenements_a_venir|length }})</h2>
+    <form method="post" action="/admin/business-plan/evenements/ajouter" class="form-tache">
+        <div class="form-row">
+            <div class="form-group" style="flex:2;">
+                <label><i class="bi bi-pencil-square"></i> Nom de l'évènement</label>
+                <input type="text" name="nom" required placeholder="Ex: Foire de fin d'année, Promo rentrée scolaire...">
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-tag"></i> Type</label>
+                <select name="type_evenement">
+                    <option value="foire">🎪 Foire</option>
+                    <option value="promotion">🏷️ Promotion</option>
+                    <option value="autre" selected>📌 Autre</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-calendar-event"></i> Début</label>
+                <input type="date" name="date_debut" required>
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-calendar-check"></i> Fin (optionnel)</label>
+                <input type="date" name="date_fin">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label><i class="bi bi-shop"></i> Boutique</label>
+                <select name="boutique_id">
+                    <option value="">Toutes les boutiques</option>
+                    {% for b in boutiques %}<option value="{{ b[0] }}">{{ b[1] }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="flex:3;">
+                <label><i class="bi bi-card-text"></i> Notes (optionnel)</label>
+                <input type="text" name="notes" placeholder="Détails, produits en promotion, lieu...">
+            </div>
+            <div class="form-group" style="display:flex; align-items:flex-end;">
+                <button type="submit" style="background:#28a745; width:100%;"><i class="bi bi-save"></i> Programmer</button>
+            </div>
+        </div>
+    </form>
+
+    {% for e in evenements_a_venir %}
+    {% set fin = e[4] or e[3] %}
+    <div class="tache-item">
+        <form method="post" action="/admin/business-plan/evenements/basculer/{{ e[0] }}" class="tache-check-form"
+              onsubmit="return confirm('Marquer cet évènement comme terminé ?')">
+            <button type="submit" title="Marquer comme terminé"></button>
+        </form>
+        <div class="tache-body">
+            <div class="tache-titre">{{ icones.get(e[2], '📌') }} {{ e[1] }}</div>
+            {% if e[6] %}<div class="tache-desc">{{ e[6] }}</div>{% endif %}
+            <div class="tache-meta">
+                {% if e[3] <= today_iso and fin >= today_iso %}<span class="pill-evt encours">En cours</span>
+                {% elif fin < today_iso %}<span class="pill-evt cloturer">Passé — à clôturer</span>
+                {% else %}<span class="pill-evt avenir">À venir</span>{% endif %}
+                <span>📅 {{ e[3] }}{% if e[4] and e[4] != e[3] %} → {{ e[4] }}{% endif %}</span>
+                <span>🏪 {{ e[5] }}</span>
+            </div>
+        </div>
+        <div class="tache-actions">
+            <a href="/admin/business-plan/evenements/supprimer/{{ e[0] }}"
+               onclick="return confirm('Supprimer cet évènement ?')"
+               class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i></a>
+        </div>
+    </div>
+    {% else %}
+    <p style="text-align:center; color:#999; padding:30px;"><i class="bi bi-inbox"></i> Aucun évènement programmé pour le moment</p>
+    {% endfor %}
+
+    {% if evenements_passes %}
+    <details style="margin-top:15px;">
+        <summary style="cursor:pointer; color:#1e3c72; font-weight:600;">Évènements terminés ({{ evenements_passes|length }})</summary>
+        <div style="margin-top:10px;">
+        {% for e in evenements_passes %}
+        <div class="tache-item fait">
+            <form method="post" action="/admin/business-plan/evenements/basculer/{{ e[0] }}" class="tache-check-form fait"
+                  onsubmit="return confirm('Remettre cet évènement « à venir » ?')">
+                <button type="submit" title="Remettre à venir"><i class="bi bi-check-lg"></i></button>
+            </form>
+            <div class="tache-body">
+                <div class="tache-titre">{{ icones.get(e[2], '📌') }} {{ e[1] }}</div>
+                <div class="tache-meta"><span>📅 {{ e[3] }}{% if e[4] and e[4] != e[3] %} → {{ e[4] }}{% endif %}</span><span>🏪 {{ e[5] }}</span></div>
+            </div>
+            <div class="tache-actions">
+                <a href="/admin/business-plan/evenements/supprimer/{{ e[0] }}"
+                   onclick="return confirm('Supprimer cet évènement ?')"
+                   class="btn-small" style="background:#dc3545; color:white;"><i class="bi bi-trash"></i></a>
+            </div>
+        </div>
+        {% endfor %}
+        </div>
+    </details>
+    {% endif %}
 </div>
 
 <!-- Formulaire d'ajout -->

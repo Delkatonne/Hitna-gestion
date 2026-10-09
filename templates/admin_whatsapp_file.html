@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Envoi WhatsApp - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .msg-apercu { background: #dcf8c6; border-radius: 12px; padding: 14px 16px; white-space: pre-wrap; font-size: 14px; color: #222; margin-bottom: 18px; }
+    .info-wa { background: #cff4fc; color: #055160; border: 1px solid #9eeaf9; border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; font-size: 13px; }
+    .warn-wa { background: #fff3cd; color: #664d03; border: 1px solid #ffe69c; border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; font-size: 13px; }
+    .wa-ligne { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; background: white; border: 1px solid #e0e0e0; border-radius: 12px; padding: 12px 16px; margin-bottom: 8px; }
+    .wa-ligne.ouvert { opacity: 0.55; background: #f8f9fa; }
+    .wa-ligne .nom { font-weight: bold; color: #1e3c72; }
+    .wa-ligne .tel { font-size: 12px; color: #888; }
+    .wa-btn { display: inline-block; padding: 8px 18px; border-radius: 8px; background: #25D366; color: white; text-decoration: none; font-weight: 600; font-size: 14px; }
+    .wa-ligne.ouvert .wa-btn { background: #6c757d; }
+    .wa-barre { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+</style>
+{% endblock %}
+
+{% block page_title %}<i class="bi bi-whatsapp"></i> Envoi WhatsApp{% endblock %}
+{% block page_subtitle %}{{ destinataires|length }} message(s) prêt(s){% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-chat-left-text"></i> Votre message</h2>
+    <div class="msg-apercu">{{ message }}</div>
+
+    <div class="info-wa">
+        <i class="bi bi-info-circle"></i> Cliquez sur <strong>Envoyer</strong> : WhatsApp s'ouvre avec la conversation du client et le message déjà écrit.
+        Il ne reste qu'à valider l'envoi dans WhatsApp.
+    </div>
+    {% if sans_numero %}
+    <div class="warn-wa"><i class="bi bi-exclamation-triangle"></i> Sans numéro utilisable (ignorés) : {{ sans_numero|join(', ') }}</div>
+    {% endif %}
+
+    <div class="wa-barre">
+        <button type="button" id="btnSuivant" style="background:#25D366;"><i class="bi bi-play-fill"></i> Ouvrir le suivant</button>
+        <span id="compteur" style="font-size:13px; color:#666;"></span>
+    </div>
+
+    {% for d in destinataires %}
+    <div class="wa-ligne" data-lien="{{ d.lien }}">
+        <div><div class="nom">{{ d.nom }}</div><div class="tel">{{ d.telephone }}</div></div>
+        <a href="{{ d.lien }}" target="_blank" rel="noopener" class="wa-btn btn-envoyer"><i class="bi bi-whatsapp"></i> Envoyer</a>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="nav-links">
+    <a href="/admin/clients"><i class="bi bi-arrow-left"></i> Retour aux clients</a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const lignes = Array.from(document.querySelectorAll('.wa-ligne'));
+function majCompteur() {
+    const n = lignes.filter(l => l.classList.contains('ouvert')).length;
+    document.getElementById('compteur').textContent = n + ' / ' + lignes.length + ' ouverts';
+}
+function marquer(li) {
+    li.classList.add('ouvert');
+    li.querySelector('.btn-envoyer').textContent = '✔ Ouvert';
+    majCompteur();
+}
+lignes.forEach(li => li.querySelector('.btn-envoyer').addEventListener('click', () => marquer(li)));
+document.getElementById('btnSuivant').addEventListener('click', () => {
+    const suivant = lignes.find(l => !l.classList.contains('ouvert'));
+    if (!suivant) { alert('Tous les messages ont été ouverts.'); return; }
+    window.open(suivant.dataset.lien, '_blank', 'noopener');
+    marquer(suivant);
+});
+majCompteur();
+</script>
+{% endblock %}

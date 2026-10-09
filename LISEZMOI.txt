@@ -1,0 +1,26 @@
+MISE A JOUR HITNA — evenements, credits, arrivages, clients WhatsApp
+=====================================================================
+1. Dezippez ce dossier PAR-DESSUS votre projet (acceptez de remplacer les fichiers).
+2. Lancez l'appli en local pour verifier, puis commit + push : Render redeploie et cree
+   automatiquement les nouvelles tables.
+
+Fichiers (tous a leur place dans l'arborescence du projet) :
+  app.py                            modifie (8 petits changements, voir ci-dessous)
+  ajouts.py                         NOUVEAU (evenements, credits, arrivages, clients/WhatsApp)
+  templates/base.html               2 liens ajoutes dans le menu (Credits clients, Arrivages)
+  templates/admin_credits.html      NOUVEAU
+  templates/admin_arrivages.html    NOUVEAU
+  templates/admin_whatsapp_file.html NOUVEAU
+  templates/admin_business_plan.html evenements programmes ajoutes
+  templates/admin_clients.html      ajout de client, cases a cocher, message WhatsApp
+  templates/admin_clients_fiche.html champ prenom
+  .gitignore                        NOUVEAU (evite de pousser __pycache__, *.db, .env, dist/)
+
+Changements dans app.py :
+  - BACKUP_TABLES : 6 nouvelles tables
+  - comptabilite (mensuel + registre) : les versements de credit comptent comme recettes
+  - ancienne page /admin/business-plan supprimee (reprise dans ajouts.py avec les evenements)
+  - clients : prenom (liste, recherche, fiche, modification)
+  - en bas : "import ajouts" juste apres init_db()
+
+Variable optionnelle sur Render : WHATSAPP_INDICATIF (defaut 229).

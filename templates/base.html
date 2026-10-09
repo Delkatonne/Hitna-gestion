@@ -873,6 +873,11 @@
                     </a>
                 </div>
                 <div class="nav-item">
+                    <a href="/admin/credits" class="nav-link {% if request.endpoint == 'admin_credits' %}active{% endif %}">
+                        <span class="icon"><i class="bi bi-credit-card-2-front-fill"></i></span><span>Crédits clients</span>
+                    </a>
+                </div>
+                <div class="nav-item">
                     <a href="/admin/fournisseurs" class="nav-link">
                         <span class="icon"><i class="bi bi-building"></i></span><span>Fournisseurs</span>
                     </a>
@@ -880,6 +885,11 @@
                 <div class="nav-item">
                     <a href="/admin/commandes-fournisseurs" class="nav-link {% if request.endpoint == 'commandes_fournisseurs_list' %}active{% endif %}">
                         <span class="icon"><i class="bi bi-box-seam"></i></span><span>Commandes fournisseurs</span>
+                    </a>
+                </div>
+                <div class="nav-item">
+                    <a href="/admin/arrivages" class="nav-link {% if request.endpoint == 'admin_arrivages' %}active{% endif %}">
+                        <span class="icon"><i class="bi bi-box-arrow-in-down"></i></span><span>Arrivages</span>
                     </a>
                 </div>
                 <div class="nav-item">

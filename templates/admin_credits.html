@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}Crédits clients - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-cr { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 25px; }
+    .stat-cr { padding: 20px; border-radius: 15px; text-align: center; color: white; }
+    .stat-cr .number { font-size: 26px; font-weight: bold; }
+    .stat-cr.encours { background: linear-gradient(135deg, #ffc107, #e0a800); color: #333; }
+    .stat-cr.total { background: linear-gradient(135deg, #1e3c72, #2a5298); }
+    .stat-cr.retard { background: linear-gradient(135deg, #dc3545, #c82333); }
+    .stat-cr.montant { background: linear-gradient(135deg, #fd7e14, #e8590c); }
+
+    .form-cr { background: #f8f9fa; padding: 20px; border-radius: 15px; margin-bottom: 30px; }
+    .form-cr .form-row { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 12px; }
+    .form-cr .form-group { flex: 1; min-width: 160px; }
+    .form-cr select, .form-cr input, .form-cr textarea {
+        width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; box-sizing: border-box;
+    }
+
+    .filtres { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .filtres a { padding: 8px 18px; border-radius: 20px; background: #f0f2f5; color: #555; text-decoration: none; font-weight: 600; font-size: 14px; }
+    .filtres a.active { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; }
+
+    .cr-card { background: white; border-radius: 12px; padding: 15px 18px; margin-bottom: 12px; border: 1px solid #e0e0e0; border-left: 4px solid #ffc107; }
+    .cr-card.solde { border-left-color: #28a745; opacity: 0.85; }
+    .cr-card.annule { border-left-color: #6c757d; opacity: 0.6; }
+    .cr-card.retard { border-left-color: #dc3545; background: #fff8f8; }
+    .cr-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+    .cr-head h3 { font-size: 16px; color: #1e3c72; }
+    .cr-sub { font-size: 12px; color: #888; margin-top: 2px; }
+    .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+    .pill.warn { background: #fff3cd; color: #664d03; }
+    .pill.ok { background: #d1e7dd; color: #0f5132; }
+    .pill.bad { background: #f8d7da; color: #842029; }
+    .pill.gris { background: #e9ecef; color: #495057; }
+    .barre { height: 8px; background: #e9ecef; border-radius: 6px; overflow: hidden; margin: 10px 0; }
+    .barre span { display: block; height: 100%; background: #28a745; }
+    .montants { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #666; }
+    .montants strong { color: #333; }
+    .cr-det summary { cursor: pointer; font-size: 13px; color: #1e3c72; margin-top: 8px; }
+    .cr-det ul { font-size: 13px; color: #555; margin: 8px 0 0 18px; }
+    .cr-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    .cr-actions input, .cr-actions select { padding: 8px; border: 2px solid #28a745; border-radius: 8px; font-size: 13px; }
+    .lien-btn { display: inline-block; padding: 8px 14px; border-radius: 8px; color: white; text-decoration: none; font-size: 13px; font-weight: 600; }
+    .aide { font-size: 12px; color: #888; margin-top: 8px; }
+    @media (max-width: 768px) { .form-cr .form-row { flex-direction: column; } }
+</style>
+{% endblock %}
+
+{% block page_title %}<i class="bi bi-credit-card-2-front-fill"></i> Crédits clients{% endblock %}
+{% block page_subtitle %}Ventes à crédit et versements reçus{% endblock %}
+
+{% block content %}
+<div class="stats-cr">
+    <div class="stat-cr encours"><h3><i class="bi bi-hourglass-split"></i> Crédits en cours</h3><div class="number">{{ nb_en_cours }}</div></div>
+    <div class="stat-cr total"><h3><i class="bi bi-cash-stack"></i> Total à recevoir</h3><div class="number">{{ total_du|prix }} FCFA</div></div>
+    <div class="stat-cr retard"><h3><i class="bi bi-exclamation-octagon-fill"></i> En retard</h3><div class="number">{{ nb_retard }}</div></div>
+    <div class="stat-cr montant"><h3><i class="bi bi-clock-history"></i> Montant en retard</h3><div class="number">{{ montant_retard|prix }} FCFA</div></div>
+</div>
+
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-plus-lg"></i> Enregistrer un crédit{% if boutique_nom %} — {{ boutique_nom }}{% endif %}</h2>
+    {% if not boutique_ok %}
+        <p style="color:#664d03; background:#fff3cd; padding:12px 16px; border-radius:10px;">
+            <i class="bi bi-info-circle"></i> Choisissez d'abord une boutique active (sélecteur en haut) : le stock retiré est celui de cette boutique.
+        </p>
+    {% else %}
+    <form method="post" action="/admin/credits/ajouter" class="form-cr" id="creditForm">
+        <div class="form-row">
+            <div class="form-group" style="flex:2;">
+                <label><i class="bi bi-person"></i> Client</label>
+                <input type="text" name="client_nom" required placeholder="Nom du client">
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-whatsapp"></i> Numéro (WhatsApp de préférence)</label>
+                <input type="tel" name="telephone" placeholder="Ex: 01 67 19 85 31">
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-calendar-event"></i> À régler avant le</label>
+                <input type="date" name="date_limite" min="{{ today_iso }}">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group" style="flex:3;">
+                <label><i class="bi bi-box-seam"></i> Produit</label>
+                <select id="selProduit">
+                    {% for p in produits %}
+                    <option value="{{ p.id }}">{{ p.nom }} — {{ p.prix|prix }} FCFA (stock : {{ p.stock|qte }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label>Quantité</label>
+                <input type="number" id="qteProduit" value="1" min="0.001" step="any">
+            </div>
+            <div class="form-group" style="flex:0 0 auto; display:flex; align-items:flex-end;">
+                <button type="button" onclick="ajouterAuPanier()" style="background:#1e3c72;"><i class="bi bi-plus-lg"></i> Ajouter</button>
+            </div>
+        </div>
+        <table id="tablePanier" style="display:none;">
+            <thead><tr><th>Produit</th><th>Qté</th><th>Total</th><th></th></tr></thead>
+            <tbody id="panierBody"></tbody>
+            <tfoot><tr><th colspan="2" style="text-align:right;">Total du crédit</th><th id="panierTotal">0</th><th></th></tr></tfoot>
+        </table>
+        <div class="form-row" style="margin-top:12px;">
+            <div class="form-group" style="flex:3;">
+                <input type="text" name="notes" placeholder="Note (optionnel)">
+            </div>
+            <div class="form-group" style="flex:0 0 auto;">
+                <input type="hidden" name="cart_json" id="cartJson">
+                <button type="submit" style="background:#28a745;"><i class="bi bi-save"></i> Enregistrer le crédit</button>
+            </div>
+        </div>
+        <div class="aide">Le stock est retiré maintenant ; l'argent est compté en comptabilité au fil des versements.</div>
+    </form>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2 class="card-title"><i class="bi bi-list-ul"></i> Crédits</h2>
+    <div class="filtres">
+        {% for k, label in [('en_cours', 'En cours'), ('solde', 'Soldés'), ('annule', 'Annulés'), ('tous', 'Tous')] %}
+        <a href="/admin/credits?statut={{ k }}" class="{{ 'active' if filtre == k }}">{{ label }}</a>
+        {% endfor %}
+    </div>
+
+    {% for c in credits %}
+    <div class="cr-card {{ 'retard' if c.en_retard else c.statut }}">
+        <div class="cr-head">
+            <div>
+                <h3><i class="bi bi-person-fill"></i> {{ c.client_nom }}</h3>
+                <div class="cr-sub">
+                    {{ c.telephone or 'sans numéro' }}{% if c.boutique %} · {{ c.boutique }}{% endif %}
+                    · crédit du {{ c.date_credit }}{% if c.date_limite %} · à régler avant le {{ c.date_limite }}{% endif %}
+                </div>
+                {% if c.notes %}<div class="cr-sub" style="font-style:italic;">{{ c.notes }}</div>{% endif %}
+            </div>
+            <div>
+                {% if c.statut == 'solde' %}<span class="pill ok">✅ Soldé</span>
+                {% elif c.statut == 'annule' %}<span class="pill gris">Annulé</span>
+                {% else %}<span class="pill warn">En cours</span>{% endif %}
+                {% if c.en_retard %}<span class="pill bad">⚠️ En retard</span>{% endif %}
+            </div>
+        </div>
+
+        <div class="barre"><span style="width: {{ ((c.paye / c.total * 100) if c.total else 0)|round|int }}%;"></span></div>
+        <div class="montants">
+            <span>Total : <strong>{{ c.total|prix }} FCFA</strong></span>
+            <span>Payé : <strong style="color:#28a745;">{{ c.paye|prix }}</strong></span>
+            <span>Reste : <strong style="{{ 'color:#dc3545;' if c.reste > 0 }}">{{ c.reste|prix }}</strong></span>
+        </div>
+
+        <details class="cr-det">
+            <summary>Produits et versements</summary>
+            <ul>
+                {% for l in c.lignes %}<li>{{ l[1]|qte }} × {{ l[0] }} — {{ l[3]|prix }} FCFA</li>{% endfor %}
+            </ul>
+            {% if c.paiements %}
+            <ul>
+                {% for p in c.paiements %}<li>Versement du {{ p[2][:10] }} : {{ p[0]|prix }} FCFA ({{ p[1] }}){% if p[3] %} — {{ p[3] }}{% endif %}</li>{% endfor %}
+            </ul>
+            {% endif %}
+        </details>
+
+        {% if c.statut == 'en_cours' %}
+        <div class="cr-actions">
+            <form method="post" action="/admin/credits/paiement/{{ c.id }}" style="display:inline-flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <input type="number" name="montant" min="1" max="{{ c.reste }}" placeholder="Montant reçu" required style="width:140px;">
+                <select name="mode_paiement">
+                    {% for m in modes_paiement %}<option>{{ m }}</option>{% endfor %}
+                </select>
+                <button type="submit" style="background:#28a745; padding:8px 16px;"><i class="bi bi-cash-coin"></i> Enregistrer le versement</button>
+            </form>
+            {% if c.telephone %}
+                {% set msg = 'Bonjour ' ~ c.client_nom ~ ', petit rappel de HITNA Superette : il vous reste ' ~ (c.reste|prix) ~ ' FCFA à régler' ~ ((' avant le ' ~ c.date_limite) if c.date_limite else '') ~ '. Merci !' %}
+                <a class="lien-btn" style="background:#25D366;" target="_blank" rel="noopener" href="{{ lien_whatsapp(c.telephone, msg) }}"><i class="bi bi-whatsapp"></i> Rappeler</a>
+            {% endif %}
+            {% if not c.paye %}
+                <a class="lien-btn" style="background:#dc3545;" href="/admin/credits/annuler/{{ c.id }}" onclick="return confirm('Annuler ce crédit et remettre le stock en rayon ?')"><i class="bi bi-x-circle"></i> Annuler</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <p style="text-align:center; color:#999; padding:40px;"><i class="bi bi-inbox"></i> Aucun crédit dans cette liste</p>
+    {% endfor %}
+</div>
+
+<div class="nav-links">
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const PRODUITS = {{ produits|tojson }};
+let cart = [];
+const fmt = n => new Intl.NumberFormat('fr-FR').format(n);
+
+function ajouterAuPanier() {
+    const sel = document.getElementById('selProduit');
+    const q = parseFloat(document.getElementById('qteProduit').value);
+    const p = PRODUITS.find(x => String(x.id) === sel.value);
+    if (!p || !(q > 0)) return;
+    if (!p.frac && !Number.isInteger(q)) { alert("Ce produit ne se prend qu'en quantité entière."); return; }
+    const deja = cart.find(l => l.produit_id === p.id);
+    const total = q + (deja ? deja.quantite : 0);
+    if (total > p.stock) { alert('Stock insuffisant : ' + p.stock + ' disponible(s).'); return; }
+    if (deja) deja.quantite = total; else cart.push({produit_id: p.id, quantite: q});
+    rendrePanier();
+}
+function retirer(i) { cart.splice(i, 1); rendrePanier(); }
+
+function rendrePanier() {
+    const body = document.getElementById('panierBody');
+    if (!body) return;
+    body.replaceChildren();
+    let somme = 0;
+    cart.forEach((l, i) => {
+        const p = PRODUITS.find(x => x.id === l.produit_id);
+        const tot = Math.round(p.prix * l.quantite);
+        somme += tot;
+        const tr = document.createElement('tr');
+        [p.nom, String(l.quantite), fmt(tot) + ' FCFA'].forEach(txt => {
+            const td = document.createElement('td'); td.textContent = txt; tr.appendChild(td);
+        });
+        const td = document.createElement('td');
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = '✕'; b.style.background = '#dc3545'; b.style.padding = '4px 10px';
+        b.onclick = () => retirer(i);
+        td.appendChild(b); tr.appendChild(td); body.appendChild(tr);
+    });
+    document.getElementById('panierTotal').textContent = fmt(somme) + ' FCFA';
+    document.getElementById('tablePanier').style.display = cart.length ? '' : 'none';
+}
+
+const form = document.getElementById('creditForm');
+if (form) form.addEventListener('submit', function (e) {
+    if (!cart.length) { e.preventDefault(); alert('Ajoutez au moins un produit.'); return; }
+    document.getElementById('cartJson').value = JSON.stringify(cart);
+});
+</script>
+{% endblock %}
