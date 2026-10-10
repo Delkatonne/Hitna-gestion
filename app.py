@@ -1862,6 +1862,31 @@ def produits_list():
         flash('Erreur lors du chargement des produits')
         return redirect('/dashboard')
 
+def produit_nom_existe(nom, boutique_id, exclure_id=None):
+    """Un nom de produit doit être unique DANS une boutique (chaque boutique a son catalogue).
+    Comparaison sans tenir compte des majuscules ni des espaces autour.
+    Retourne (id, nom, actif) du produit déjà existant, ou None."""
+    nom = (nom or '').strip()
+    if not nom:
+        return None
+    sql = "SELECT id, nom, COALESCE(actif,1) FROM produits WHERE LOWER(TRIM(nom)) = LOWER(TRIM(?))"
+    params = [nom]
+    if boutique_id is None:
+        sql += " AND boutique_id IS NULL"
+    else:
+        sql += " AND boutique_id = ?"
+        params.append(boutique_id)
+    if exclure_id is not None:
+        sql += " AND id <> ?"
+        params.append(exclure_id)
+    return q1(sql + " LIMIT 1", tuple(params))
+
+def message_doublon_produit(existant):
+    msg = f'❌ Un produit nommé "{existant[1]}" existe déjà dans cette boutique'
+    if not existant[2]:
+        msg += ' (il est désactivé — réactivez-le plutôt que d\'en créer un nouveau)'
+    return msg
+
 @app.route('/admin/produits/ajouter', methods=['POST'])
 def ajouter_produit():
     try:
@@ -1893,6 +1918,14 @@ def ajouter_produit():
         boutique_id = boutique_active()
         if boutique_id is None:
             flash('❌ Choisissez d\'abord une boutique active (en haut) avant d\'ajouter un produit — le catalogue est propre à chaque boutique')
+            return redirect('/admin/produits')
+        nom = nom.strip()
+        if not nom:
+            flash('❌ Le nom du produit est obligatoire')
+            return redirect('/admin/produits')
+        doublon = produit_nom_existe(nom, boutique_id)
+        if doublon:
+            flash(message_doublon_produit(doublon))
             return redirect('/admin/produits')
         ok = exe("INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, boutique_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, boutique_id))
@@ -1942,6 +1975,15 @@ def modifier_produit(id):
             if existant:
                 flash(f'❌ Ce code-barres est déjà utilisé par "{existant[0]}"')
                 return redirect('/admin/produits')
+        nom = nom.strip()
+        if not nom:
+            flash('❌ Le nom du produit est obligatoire')
+            return redirect('/admin/produits')
+        bq = q1("SELECT boutique_id FROM produits WHERE id=?", (id,))
+        doublon = produit_nom_existe(nom, bq[0] if bq else None, exclure_id=id)
+        if doublon:
+            flash(message_doublon_produit(doublon) + ' — modification annulée')
+            return redirect('/admin/produits')
         ok = exe("UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?, valeur_unite=?, vente_fractionnable=?, code_barre=? WHERE id=?", 
             (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, id))
         if ok:
@@ -2014,6 +2056,10 @@ def _restaurer_produit_depuis_corbeille(corbeille_id):
         existant = q1("SELECT id FROM produits WHERE code_barre=?", (code_barre,))
         if existant:
             code_barre = None
+
+    doublon = produit_nom_existe(nom, boutique_id)
+    if doublon:
+        return False, f'❌ Restauration impossible : un produit nommé "{doublon[1]}" existe déjà dans cette boutique (renommez-le ou supprimez-le d\'abord)'
 
     new_id = exe('''INSERT INTO produits
                      (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, actif, boutique_id)
@@ -3922,6 +3968,11 @@ def effectuer_transfert_stock():
         if mode_destination == 'nouveau' or not produit_destination_id:
             # Créer le produit dans la boutique destination, avec les mêmes
             # caractéristiques que le produit source, stock = 0 pour l'instant.
+            # Interdit s'il y existe déjà un produit de même nom (pas de doublon).
+            doublon = produit_nom_existe(p_source[0], boutique_destination_id)
+            if doublon:
+                flash(f'❌ "{doublon[1]}" existe déjà dans la boutique destination : choisissez-le dans la liste du produit de destination au lieu d\'en créer un nouveau')
+                return redirect('/admin/transferts-stock')
             new_id = exe('''INSERT INTO produits (nom, prix, stock, stock_min, unite_id, categorie_id, valeur_unite, vente_fractionnable, boutique_id)
                             VALUES (?,?,0,?,?,?,?,?,?)''',
                         (p_source[0], p_source[2], p_source[7], p_source[3], p_source[6], p_source[4], p_source[5], boutique_destination_id),

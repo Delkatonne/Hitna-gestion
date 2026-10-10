@@ -17,7 +17,8 @@ from flask import request, redirect, session, flash, render_template
 from app import (app, q1, qall, exe, get_db, release_db,
                  boutique_active, boutique_filtre_sql,
                  format_qte, format_prix, verifier_alertes_stock,
-                 trouver_ou_creer_client, _traiter_entree)
+                 trouver_ou_creer_client, _traiter_entree,
+                 produit_nom_existe, message_doublon_produit)
 
 MODES_PAIEMENT = ['Espèces', 'MTN MobileMoney', 'Moov MoovMoney', 'Celtiis CeltiisCash']
 TYPES_EVENEMENT = ['foire', 'promotion', 'autre']
@@ -139,6 +140,17 @@ def init_db_ajouts():
             except Exception as e:
                 print(f"⚠️ REPLICA IDENTITY sur {t}: {e}")
                 conn.rollback()
+
+        # Unicité des noms de produit par boutique, garantie aussi au niveau de la base.
+        # Si des doublons existent déjà, l'index ne peut pas être créé : la protection du
+        # code reste active, et /admin/produits/doublons permet de les nettoyer
+        # (l'index sera créé automatiquement au redémarrage suivant, une fois nettoyé).
+        try:
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_produits_nom_boutique ON produits (boutique_id, LOWER(TRIM(nom)))")
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"⚠️ Index d'unicité des noms de produit non créé (doublons existants ?) — voir /admin/produits/doublons : {e}")
         c.close()
         print("✅ Tables évènements / crédits / arrivages prêtes")
     except Exception as e:
@@ -594,6 +606,10 @@ def integrer_ligne_arrivage(ligne_id):
                 flash('❌ Indiquez le prix de vente du nouveau produit')
                 return redirect('/admin/arrivages')
             nom_nouveau = request.form.get('nouveau_nom', '').strip() or nom_ligne
+            doublon = produit_nom_existe(nom_nouveau, boutique_id)
+            if doublon:
+                flash(message_doublon_produit(doublon) + ' — choisissez-le dans la liste « Produit du catalogue » pour y ajouter le stock')
+                return redirect('/admin/arrivages')
             produit_id = exe("INSERT INTO produits (nom, prix, stock, stock_min, boutique_id) VALUES (?,?,0,5,?)",
                              (nom_nouveau, prix_vente, boutique_id), returning=True)
             if not produit_id:
@@ -769,6 +785,39 @@ def admin_business_plan():
         print(f"❌ Erreur admin_business_plan: {e}")
         flash('Erreur lors du chargement du business plan')
         return redirect('/dashboard')
+
+
+# ══════════════════════════════════════════════════════════════
+# DOUBLONS DE PRODUITS — liste des produits qui portent le même nom dans une même boutique
+# (pour nettoyer ceux qui existaient avant l'interdiction des doublons)
+# ══════════════════════════════════════════════════════════════
+@app.route('/admin/produits/doublons')
+def admin_produits_doublons():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        rows = qall('''SELECT p.id, p.nom, COALESCE(b.nom, ''), p.stock, COALESCE(p.actif, 1),
+                               (SELECT COUNT(*) FROM sorties WHERE produit_id = p.id)
+                             + (SELECT COUNT(*) FROM entrees WHERE produit_id = p.id)
+                             + (SELECT COUNT(*) FROM pertes WHERE produit_id = p.id) AS mouvements,
+                               p.boutique_id, LOWER(TRIM(p.nom)) AS cle
+                        FROM produits p LEFT JOIN boutiques b ON p.boutique_id = b.id
+                        WHERE (p.boutique_id, LOWER(TRIM(p.nom))) IN (
+                              SELECT boutique_id, LOWER(TRIM(nom)) FROM produits
+                              GROUP BY boutique_id, LOWER(TRIM(nom)) HAVING COUNT(*) > 1)
+                        ORDER BY b.nom, cle, p.id''')
+        groupes, index = [], {}
+        for r in rows:
+            cle = (r[6], r[7])
+            if cle not in index:
+                index[cle] = {'nom': r[1], 'boutique': r[2], 'produits': []}
+                groupes.append(index[cle])
+            index[cle]['produits'].append(r[:6])
+        return render_template('admin_produits_doublons.html', groupes=groupes)
+    except Exception as e:
+        print(f"❌ Erreur admin_produits_doublons: {e}")
+        flash('Erreur lors du chargement des doublons')
+        return redirect('/admin/produits')
 
 
 # Création des tables au chargement (app.py appelle init_db() juste avant d'importer ce module)
