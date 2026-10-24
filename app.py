@@ -183,6 +183,7 @@ BACKUP_TABLES = [
     'livraisons_clients', 'transferts_stock', 'points_fidelite_historique', 'objectifs_employes',
     'reservations_produits', 'reservations_lignes', 'archive_reservations',
     'evenements', 'credits', 'credits_lignes', 'credits_paiements', 'arrivages', 'arrivages_lignes',
+    'ventes_paiements',
 ]
 
 def generer_backup_json():
@@ -2436,7 +2437,63 @@ def trouver_ou_creer_client(nom, telephone):
                     (nom, telephone, now), returning=True)
     return client_id if client_id else None
 
-def _traiter_vente_cart(cart, client, employe_id, telephone=None, mode_paiement=None, stock_deja_deduit=False):
+MODES_PAIEMENT_VENTE = ['Espèces', 'MTN MobileMoney', 'Moov MoovMoney', 'Celtiis CeltiisCash']
+
+def _lire_paiements(brut):
+    """Lit le JSON envoyé par la page de vente : [{"mode": "Espèces", "montant": 5000}, ...]."""
+    if not brut:
+        return []
+    try:
+        data = json.loads(brut) if isinstance(brut, str) else brut
+    except (ValueError, TypeError):
+        return []
+    return data if isinstance(data, list) else []
+
+def _normaliser_paiements(paiements):
+    """Nettoie la liste de paiements : modes connus, montants > 0, modes identiques regroupés.
+    Retourne une liste [(mode, montant), ...]."""
+    cumul = {}
+    for p in paiements or []:
+        try:
+            mode = str(p.get('mode') or p.get('mode_paiement') or '').strip()
+            montant = int(round(float(p.get('montant') or 0)))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if mode in MODES_PAIEMENT_VENTE and montant > 0:
+            cumul[mode] = cumul.get(mode, 0) + montant
+    return list(cumul.items())
+
+def _enregistrer_paiements_vente(groupe_vente, paiements, boutique_id, now):
+    """Enregistre la répartition du paiement d'une vente.
+    - un seul mode  -> la vente porte simplement ce mode (comme avant) ;
+    - plusieurs modes -> la vente est marquée « Mixte » et chaque part est détaillée
+      dans ventes_paiements. Les montants doivent égaler le total réel (±1 FCFA d'arrondi).
+    Retourne un message d'avertissement (str) ou None."""
+    parts = _normaliser_paiements(paiements)
+    if not parts:
+        return None
+    total_reel = q1("SELECT COALESCE(SUM(total),0) FROM sorties WHERE groupe_vente=?", (groupe_vente,))
+    total_reel = int(total_reel[0]) if total_reel else 0
+    somme = sum(m for _, m in parts)
+    principal = max(parts, key=lambda x: x[1])[0]
+
+    if len(parts) == 1:
+        exe("UPDATE sorties SET mode_paiement=? WHERE groupe_vente=?", (parts[0][0], groupe_vente))
+        return None
+
+    if abs(somme - total_reel) > 1:
+        exe("UPDATE sorties SET mode_paiement=? WHERE groupe_vente=?", (principal, groupe_vente))
+        return (f'Les montants de paiement saisis ({format_prix(somme)} FCFA) ne correspondent pas au total réel '
+                f'de la vente ({format_prix(total_reel)} FCFA) : la vente a été enregistrée en {principal}')
+    if somme != total_reel:          # écart d'arrondi de 1 FCFA : on l'applique à la plus grosse part
+        parts = [(m, v + (total_reel - somme) if m == principal else v) for m, v in parts]
+    for mode, montant in parts:
+        exe('''INSERT INTO ventes_paiements (groupe_vente, mode_paiement, montant, boutique_id, date_paiement)
+               VALUES (?,?,?,?,?)''', (groupe_vente, mode, montant, boutique_id, now))
+    exe("UPDATE sorties SET mode_paiement='Mixte' WHERE groupe_vente=?", (groupe_vente,))
+    return None
+
+def _traiter_vente_cart(cart, client, employe_id, telephone=None, mode_paiement=None, stock_deja_deduit=False, paiements=None):
     """cart: liste de {produit_id, quantite, palier_id (optionnel)}.
     Si palier_id est fourni, quantite = nombre de fois ce palier (ex: 2 cartons de 24),
     et le stock/prix sont calculés à partir du palier plutôt que du prix de base du produit.
@@ -2513,6 +2570,14 @@ def _traiter_vente_cart(cart, client, employe_id, telephone=None, mode_paiement=
                     (client_id, points_gagnes, f'Achat de {format_prix(total_vente)} FCFA', groupe_vente, employe_id, now))
         except Exception as e:
             print(f"⚠️ Erreur attribution points fidélité: {e}")
+    if lignes_ok and paiements:
+        try:
+            bq = q1("SELECT boutique_id FROM sorties WHERE groupe_vente=? LIMIT 1", (groupe_vente,))
+            alerte = _enregistrer_paiements_vente(groupe_vente, paiements, bq[0] if bq else None, now)
+            if alerte:
+                erreurs.append(alerte)
+        except Exception as e:
+            print(f"⚠️ Erreur enregistrement des paiements: {e}")
     return groupe_vente, lignes_ok, erreurs
 
 
@@ -2551,6 +2616,7 @@ def _annuler_vente(groupe_vente, annule_par_id, motif=None):
         exe("UPDATE produits SET stock = stock + ? WHERE id = ?", (quantite, produit_id))
         exe("DELETE FROM sorties WHERE id = ?", (ligne_id,))
         noms.append(f'{format_qte(quantite)} x {palier_nom}' if palier_nom else f'{format_qte(quantite)} x {nom_produit}')
+    exe("DELETE FROM ventes_paiements WHERE groupe_vente=?", (groupe_vente,))
     return True, f"✅ Vente annulée ({motif}), stock restauré : " + ", ".join(noms)
 
 
@@ -2655,7 +2721,8 @@ def admin_ventes():
                 flash('❌ Le panier est vide')
                 return redirect('/admin/ventes')
 
-            groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), telephone, mode_paiement)
+            groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), telephone, mode_paiement,
+                paiements=_lire_paiements(request.form.get('paiements_json')))
 
             for e in erreurs:
                 flash(f'⚠️ {e}')
@@ -2723,7 +2790,8 @@ def vente():
                     flash('❌ Le panier est vide')
                     return redirect('/vente')
 
-                groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), telephone, mode_paiement)
+                groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, session.get('user_id', 1), telephone, mode_paiement,
+                    paiements=_lire_paiements(request.form.get('paiements_json')))
 
                 for e in erreurs:
                     flash(f'⚠️ {e}')
@@ -2865,7 +2933,9 @@ def recu_vente(groupe_vente):
             flash('❌ Reçu introuvable (vente trop ancienne ou identifiant invalide)')
             return redirect('/vente' if session.get('role') == 'employe' else '/dashboard')
         total_recu = sum(l[4] for l in lignes)
+        paiements = qall("SELECT mode_paiement, montant FROM ventes_paiements WHERE groupe_vente=? ORDER BY id", (groupe_vente,))
         return render_template('recu.html',
+            paiements=paiements,
             lignes=lignes,
             total_recu=total_recu,
             groupe_vente=groupe_vente,
@@ -2899,10 +2969,11 @@ def export_pdf_recu(groupe_vente):
         date_vente = lignes[0][5]
         boutique_nom = lignes[0][9]
         mode_paiement = lignes[0][10]
+        paiements = qall("SELECT mode_paiement, montant FROM ventes_paiements WHERE groupe_vente=? ORDER BY id", (groupe_vente,))
 
         # Format ticket compact (largeur réduite, hauteur adaptée au contenu)
         largeur = 226  # ~8cm
-        hauteur = 330 + len(lignes) * 16 + (14 if boutique_nom else 0) + 12
+        hauteur = 330 + len(lignes) * 16 + (14 if boutique_nom else 0) + 12 + len(paiements) * 12
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=(largeur, hauteur))
 
@@ -2950,6 +3021,9 @@ def export_pdf_recu(groupe_vente):
         y -= 12
         c.drawString(10, y, f"Paiement: {mode_paiement or 'Espèces'}")
         y -= 12
+        for _mode, _montant in paiements:
+            c.drawString(18, y, f"- {_mode} : {format_prix(_montant)} FCFA")
+            y -= 12
         c.drawString(10, y, f"N° reçu: {groupe_vente}")
         if archivee:
             y -= 12
@@ -6637,7 +6711,8 @@ def api_sync():
                     if not cart:
                         results.append({'client_id': client_id, 'status': 'error_definitif', 'message': 'Panier vide'})
                         continue
-                    groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, employe_id, telephone, mode_paiement)
+                    groupe_vente, lignes_ok, erreurs = _traiter_vente_cart(cart, client, employe_id, telephone, mode_paiement,
+                        paiements=_lire_paiements(payload.get('paiements')))
                     if lignes_ok:
                         results.append({'client_id': client_id, 'status': 'ok', 'message': ', '.join(lignes_ok), 'groupe_vente': groupe_vente})
                     else:

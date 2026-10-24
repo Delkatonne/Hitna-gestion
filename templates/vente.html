@@ -658,6 +658,15 @@
                 <option value="Moov MoovMoney">📱 Moov MoovMoney</option>
                 <option value="Celtiis CeltiisCash">📱 Celtiis CeltiisCash</option>
             </select>
+            <label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; color:#1e3c72; font-weight:600; cursor:pointer;">
+                <input type="checkbox" id="pmToggle" style="width:18px; height:18px;"> Payer en plusieurs modes (ex : espèces + MoMo)
+            </label>
+            <div id="pmSplit" style="display:none; margin-top:10px;">
+                <div id="pmRows"></div>
+                <button type="button" id="pmAdd" style="background:#6c757d; padding:6px 14px; font-size:13px;">+ Ajouter un mode</button>
+                <div id="pmReste" style="margin-top:8px; font-size:14px; font-weight:600;"></div>
+            </div>
+            <input type="hidden" name="paiements_json" id="paiementsJson" value="">
         </div>
 
         <button type="button" id="validateSaleBtn" class="btn-sale" style="display: none;" onclick="validateSale()">
@@ -665,6 +674,8 @@
         </button>
     </form>
 </div>
+
+<script src="{{ url_for('static', filename='paiement-multiple.js') }}"></script>
 
 <!-- Historique des ventes du jour -->
 <div class="card">
@@ -1027,6 +1038,7 @@
         cartList.innerHTML = html;
 
         document.getElementById('totalAmount').innerText = total.toLocaleString();
+        if (window.hitnaPaiement) window.hitnaPaiement.setTotal(total);
         document.getElementById('totalDisplay').style.display = 'block';
         document.getElementById('paiementWrap').style.display = 'block';
         document.getElementById('validateSaleBtn').style.display = 'block';
@@ -1042,6 +1054,7 @@
                 alert('Veuillez ajouter au moins un produit au panier');
                 return;
             }
+            if (window.hitnaPaiement && !window.hitnaPaiement.valider()) return;
             document.getElementById('clientModal').style.display = 'flex';
             document.getElementById('clientNameInput').focus();
         } catch (error) {
@@ -1105,7 +1118,7 @@
         // Mode hors ligne : on met la vente en file d'attente au lieu de soumettre le formulaire
         if (typeof navigator !== 'undefined' && !navigator.onLine && window.hitnaQueueIfOffline) {
             const modePaiement = document.getElementById('modePaiement') ? document.getElementById('modePaiement').value : 'Espèces';
-            window.hitnaQueueIfOffline('vente', { client: clientName, telephone: clientPhone, cart: cartPayload, mode_paiement: modePaiement }).then(function(queued) {
+            window.hitnaQueueIfOffline('vente', { client: clientName, telephone: clientPhone, cart: cartPayload, mode_paiement: modePaiement, paiements: window.hitnaPaiement ? window.hitnaPaiement.valeur() : [] }).then(function(queued) {
                 if (queued) {
                     alert(' Vente enregistrée hors ligne. Elle sera synchronisée automatiquement dès le retour du réseau (le reçu ne sera disponible qu\'après synchronisation).');
                     cart = {};

@@ -126,6 +126,16 @@ def init_db_ajouts():
             quantite_integree NUMERIC(10,3) DEFAULT 0,
             prix_achat INTEGER)''')
 
+        # Paiement d'une vente en plusieurs modes (ex : espèces + MoMo) : une ligne par mode
+        c.execute('''CREATE TABLE IF NOT EXISTS ventes_paiements (
+            id SERIAL PRIMARY KEY,
+            groupe_vente TEXT NOT NULL,
+            mode_paiement TEXT NOT NULL,
+            montant INTEGER NOT NULL,
+            boutique_id INTEGER,
+            date_paiement TEXT)''')
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ventes_paiements_groupe ON ventes_paiements(groupe_vente)")
+
         # Clients : prénom (le nom et l'adresse existent déjà ; le numéro WhatsApp
         # est le champ « telephone », déjà unique et déjà utilisé partout).
         c.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS prenom TEXT DEFAULT ''")
@@ -133,7 +143,7 @@ def init_db_ajouts():
 
         # Même précaution que pour les autres tables (réplication logique Postgres)
         for t in ['evenements', 'credits', 'credits_lignes', 'credits_paiements',
-                  'arrivages', 'arrivages_lignes']:
+                  'arrivages', 'arrivages_lignes', 'ventes_paiements']:
             try:
                 c.execute(f"ALTER TABLE {t} REPLICA IDENTITY FULL")
                 conn.commit()

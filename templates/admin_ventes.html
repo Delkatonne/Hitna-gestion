@@ -590,6 +590,15 @@
                 <option value="Moov MoovMoney">📱 Moov MoovMoney</option>
                 <option value="Celtiis CeltiisCash">📱 Celtiis CeltiisCash</option>
             </select>
+            <label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; color:#1e3c72; font-weight:600; cursor:pointer;">
+                <input type="checkbox" id="pmToggle" style="width:18px; height:18px;"> Payer en plusieurs modes (ex : espèces + MoMo)
+            </label>
+            <div id="pmSplit" style="display:none; margin-top:10px;">
+                <div id="pmRows"></div>
+                <button type="button" id="pmAdd" style="background:#6c757d; padding:6px 14px; font-size:13px;">+ Ajouter un mode</button>
+                <div id="pmReste" style="margin-top:8px; font-size:14px; font-weight:600;"></div>
+            </div>
+            <input type="hidden" name="paiements_json" id="paiementsJson" value="">
         </div>
 
         <button type="button" id="adminValidateSaleBtn" class="btn-sale" style="display: none;" onclick="adminValidateSale()">
@@ -597,6 +606,8 @@
         </button>
     </form>
 </div>
+
+<script src="{{ url_for('static', filename='paiement-multiple.js') }}"></script>
 
 <!-- Historique des ventes -->
 <div class="card">
@@ -934,6 +945,7 @@
         cartList.innerHTML = html;
 
         document.getElementById('adminTotalAmount').innerText = total.toLocaleString();
+        if (window.hitnaPaiement) window.hitnaPaiement.setTotal(total);
         document.getElementById('adminTotalDisplay').style.display = 'block';
         document.getElementById('adminPaiementWrap').style.display = 'block';
         document.getElementById('adminValidateSaleBtn').style.display = 'block';
@@ -949,6 +961,7 @@
                 alert('Veuillez ajouter au moins un produit au panier');
                 return;
             }
+            if (window.hitnaPaiement && !window.hitnaPaiement.valider()) return;
             document.getElementById('adminClientModal').style.display = 'flex';
             document.getElementById('adminClientNameInput').focus();
         } catch (error) {
