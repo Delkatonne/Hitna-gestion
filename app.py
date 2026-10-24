@@ -183,7 +183,7 @@ BACKUP_TABLES = [
     'livraisons_clients', 'transferts_stock', 'points_fidelite_historique', 'objectifs_employes',
     'reservations_produits', 'reservations_lignes', 'archive_reservations',
     'evenements', 'credits', 'credits_lignes', 'credits_paiements', 'arrivages', 'arrivages_lignes',
-    'ventes_paiements',
+    'ventes_paiements', 'credits_tranches',
 ]
 
 def generer_backup_json():

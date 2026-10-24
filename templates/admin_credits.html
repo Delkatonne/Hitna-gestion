@@ -45,6 +45,17 @@
     .cr-actions input, .cr-actions select { padding: 8px; border: 2px solid #28a745; border-radius: 8px; font-size: 13px; }
     .lien-btn { display: inline-block; padding: 8px 14px; border-radius: 8px; color: white; text-decoration: none; font-size: 13px; font-weight: 600; }
     .aide { font-size: 12px; color: #888; margin-top: 8px; }
+    .pill.info { background: #cff4fc; color: #055160; }
+    .cr-table { width: 100%; font-size: 13px; margin-top: 8px; }
+    .cr-table th, .cr-table td { padding: 6px 8px; }
+    .cr-prochaine { margin-top: 8px; padding: 8px 12px; border-radius: 8px; background: #e7f1ff; color: #084298; font-size: 13px; }
+    .cr-prochaine.late { background: #f8d7da; color: #842029; }
+    .cr-pay { display: inline-flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .cr-pay input, .cr-pay select { padding: 8px; border: 2px solid #28a745; border-radius: 8px; font-size: 13px; }
+    .cr-autre { display: inline-block; font-size: 13px; }
+    .cr-autre summary { cursor: pointer; color: #1e3c72; }
+    .cr-recherche { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .cr-recherche input[type=text] { flex: 1; min-width: 180px; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; }
     @media (max-width: 768px) { .form-cr .form-row { flex-direction: column; } }
 </style>
 {% endblock %}
@@ -80,6 +91,27 @@
             <div class="form-group">
                 <label><i class="bi bi-calendar-event"></i> À régler avant le</label>
                 <input type="date" name="date_limite" min="{{ today_iso }}">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label><i class="bi bi-calendar2-week"></i> Payer par tranches ?</label>
+                <select name="nb_tranches">
+                    <option value="">Non — un seul paiement</option>
+                    {% for n in range(2, 13) %}<option value="{{ n }}">{{ n }} tranches</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-calendar-event"></i> 1re tranche le</label>
+                <input type="date" name="date_premiere" min="{{ today_iso }}">
+            </div>
+            <div class="form-group">
+                <label><i class="bi bi-arrow-repeat"></i> Ensuite tous les</label>
+                <select name="periodicite">
+                    <option value="7">7 jours</option>
+                    <option value="15">15 jours</option>
+                    <option value="30" selected>30 jours</option>
+                </select>
             </div>
         </div>
         <div class="form-row">
@@ -122,9 +154,16 @@
     <h2 class="card-title"><i class="bi bi-list-ul"></i> Crédits</h2>
     <div class="filtres">
         {% for k, label in [('en_cours', 'En cours'), ('solde', 'Soldés'), ('annule', 'Annulés'), ('tous', 'Tous')] %}
-        <a href="/admin/credits?statut={{ k }}" class="{{ 'active' if filtre == k }}">{{ label }}</a>
+        <a href="/admin/credits?statut={{ k }}{% if recherche %}&q={{ recherche|urlencode }}{% endif %}" class="{{ 'active' if filtre == k }}">{{ label }}</a>
         {% endfor %}
+        <a href="/admin/credits/versements" style="background:#25D366; color:white; margin-left:auto;"><i class="bi bi-journal-text"></i> Journal des versements</a>
     </div>
+    <form method="get" action="/admin/credits" class="cr-recherche">
+        <input type="hidden" name="statut" value="{{ filtre }}">
+        <input type="text" name="q" value="{{ recherche }}" placeholder="Rechercher un client (nom ou numéro)…">
+        <button type="submit" style="background:#1e3c72;"><i class="bi bi-search"></i> Rechercher</button>
+        {% if recherche %}<a href="/admin/credits?statut={{ filtre }}" class="lien-btn" style="background:#6c757d;">Effacer</a>{% endif %}
+    </form>
 
     {% for c in credits %}
     <div class="cr-card {{ 'retard' if c.en_retard else c.statut }}">
@@ -133,7 +172,7 @@
                 <h3><i class="bi bi-person-fill"></i> {{ c.client_nom }}</h3>
                 <div class="cr-sub">
                     {{ c.telephone or 'sans numéro' }}{% if c.boutique %} · {{ c.boutique }}{% endif %}
-                    · crédit du {{ c.date_credit }}{% if c.date_limite %} · à régler avant le {{ c.date_limite }}{% endif %}
+                    · crédit du {{ c.date_credit }}{% if c.date_limite and not c.tranches %} · à régler avant le {{ c.date_limite }}{% endif %}
                 </div>
                 {% if c.notes %}<div class="cr-sub" style="font-style:italic;">{{ c.notes }}</div>{% endif %}
             </div>
@@ -152,35 +191,102 @@
             <span>Reste : <strong style="{{ 'color:#dc3545;' if c.reste > 0 }}">{{ c.reste|prix }}</strong></span>
         </div>
 
+        {% if c.prochaine %}
+        <div class="cr-prochaine {{ 'late' if c.prochaine.statut == 'retard' }}">
+            <i class="bi bi-calendar-event"></i> Prochaine tranche : <strong>{{ c.prochaine.reste|prix }} FCFA</strong>
+            avant le <strong>{{ c.prochaine.echeance }}</strong>{% if c.prochaine.statut == 'retard' %} — en retard{% endif %}
+        </div>
+        {% endif %}
+
+        {% if c.tranches %}
+        <details class="cr-det" {{ 'open' if c.statut == 'en_cours' }}>
+            <summary>Tranches ({{ c.nb_tranches_payees }}/{{ c.tranches|length }} payées)</summary>
+            <table class="cr-table">
+                <thead><tr><th>N°</th><th>Échéance</th><th>Montant</th><th>Payé</th><th>Statut</th></tr></thead>
+                <tbody>
+                {% for t in c.tranches %}
+                <tr>
+                    <td>{{ t.numero }}</td><td>{{ t.echeance }}</td><td>{{ t.montant|prix }}</td><td>{{ t.paye|prix }}</td>
+                    <td>
+                        {% if t.statut == 'payee' %}<span class="pill ok">✅ Payée</span>
+                        {% elif t.statut == 'retard' %}<span class="pill bad">⚠️ En retard</span>
+                        {% elif t.statut == 'partielle' %}<span class="pill info">Partielle</span>
+                        {% else %}<span class="pill warn">À venir</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </details>
+        {% endif %}
+
         <details class="cr-det">
-            <summary>Produits et versements</summary>
-            <ul>
-                {% for l in c.lignes %}<li>{{ l[1]|qte }} × {{ l[0] }} — {{ l[3]|prix }} FCFA</li>{% endfor %}
-            </ul>
+            <summary>Produits</summary>
+            <ul>{% for l in c.lignes %}<li>{{ l[1]|qte }} × {{ l[0] }} — {{ l[3]|prix }} FCFA</li>{% endfor %}</ul>
+        </details>
+
+        <details class="cr-det" {{ 'open' if c.paiements and c.statut == 'en_cours' }}>
+            <summary>Versements reçus ({{ c.paiements|length }})</summary>
             {% if c.paiements %}
-            <ul>
-                {% for p in c.paiements %}<li>Versement du {{ p[2][:10] }} : {{ p[0]|prix }} FCFA ({{ p[1] }}){% if p[3] %} — {{ p[3] }}{% endif %}</li>{% endfor %}
-            </ul>
-            {% endif %}
+            <table class="cr-table">
+                <thead><tr><th>Date</th><th>Montant</th><th>Moyen de paiement</th><th>Note</th><th>Reçu</th></tr></thead>
+                <tbody>
+                {% for p in c.paiements %}
+                <tr>
+                    <td>{{ p.date[:16] }}</td><td><strong>{{ p.montant|prix }} FCFA</strong></td><td>{{ p.mode }}</td><td>{{ p.notes }}</td>
+                    <td><a href="/admin/credits/recu/{{ p.id }}" title="Voir / envoyer le reçu">🧾</a></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}<p class="cr-sub" style="margin-top:8px;">Aucun versement pour le moment.</p>{% endif %}
         </details>
 
         {% if c.statut == 'en_cours' %}
         <div class="cr-actions">
-            <form method="post" action="/admin/credits/paiement/{{ c.id }}" style="display:inline-flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                <input type="number" name="montant" min="1" max="{{ c.reste }}" placeholder="Montant reçu" required style="width:140px;">
+            <form method="post" action="/admin/credits/paiement/{{ c.id }}" class="cr-pay">
+                <input type="number" name="montant" min="1" max="{{ c.reste }}" placeholder="Montant reçu" required
+                       value="{{ c.prochaine.reste if c.prochaine else '' }}" style="width:140px;">
                 <select name="mode_paiement">
                     {% for m in modes_paiement %}<option>{{ m }}</option>{% endfor %}
                 </select>
+                <details class="cr-autre">
+                    <summary>＋ payer aussi avec un 2e mode</summary>
+                    <div class="cr-pay" style="margin-top:6px;">
+                        <input type="number" name="montant2" min="1" placeholder="Montant (2e mode)" style="width:150px;">
+                        <select name="mode_paiement2">
+                            {% for m in modes_paiement %}<option {{ 'selected' if loop.index == 2 }}>{{ m }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </details>
                 <button type="submit" style="background:#28a745; padding:8px 16px;"><i class="bi bi-cash-coin"></i> Enregistrer le versement</button>
             </form>
             {% if c.telephone %}
-                {% set msg = 'Bonjour ' ~ c.client_nom ~ ', petit rappel de HITNA Superette : il vous reste ' ~ (c.reste|prix) ~ ' FCFA à régler' ~ ((' avant le ' ~ c.date_limite) if c.date_limite else '') ~ '. Merci !' %}
+                {% set msg = ('Bonjour ' ~ c.client_nom ~ ', rappel de HITNA Superette : votre tranche de ' ~ (c.prochaine.reste|prix) ~ ' FCFA est à régler avant le ' ~ c.prochaine.echeance ~ ' (reste total : ' ~ (c.reste|prix) ~ ' FCFA). Merci !') if c.prochaine else ('Bonjour ' ~ c.client_nom ~ ', petit rappel de HITNA Superette : il vous reste ' ~ (c.reste|prix) ~ ' FCFA à régler' ~ ((' avant le ' ~ c.date_limite) if c.date_limite else '') ~ '. Merci !') %}
                 <a class="lien-btn" style="background:#25D366;" target="_blank" rel="noopener" href="{{ lien_whatsapp(c.telephone, msg) }}"><i class="bi bi-whatsapp"></i> Rappeler</a>
             {% endif %}
             {% if not c.paye %}
                 <a class="lien-btn" style="background:#dc3545;" href="/admin/credits/annuler/{{ c.id }}" onclick="return confirm('Annuler ce crédit et remettre le stock en rayon ?')"><i class="bi bi-x-circle"></i> Annuler</a>
             {% endif %}
         </div>
+        <div class="aide">Pour une tranche réglée avec deux moyens (ex : 6 000 en espèces + 4 000 en MoMo), saisissez chaque part avec son mode.</div>
+
+        <details class="cr-det" style="margin-top:6px;">
+            <summary>📅 {{ 'Replanifier' if c.tranches else 'Planifier' }} le reste en tranches</summary>
+            <form method="post" action="/admin/credits/tranches/{{ c.id }}" class="cr-pay" style="margin-top:8px;">
+                <input type="number" name="nb_tranches" min="2" max="24" placeholder="Nb de tranches" required style="width:140px;">
+                <input type="date" name="date_premiere" min="{{ today_iso }}" required title="Date de la 1re tranche">
+                <select name="periodicite">
+                    <option value="7">tous les 7 jours</option>
+                    <option value="15">tous les 15 jours</option>
+                    <option value="30" selected>tous les 30 jours</option>
+                </select>
+                <button type="submit" style="background:#1e3c72; padding:8px 16px;">Planifier {{ c.reste|prix }} FCFA</button>
+                {% if c.tranches %}
+                <a class="lien-btn" style="background:#6c757d;" href="/admin/credits/tranches/supprimer/{{ c.id }}" onclick="return confirm('Supprimer l\'échéancier ? Les versements déjà reçus restent enregistrés.')">Supprimer l'échéancier</a>
+                {% endif %}
+            </form>
+        </details>
         {% endif %}
     </div>
     {% else %}

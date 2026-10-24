@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Reçu de versement - HITNA{% endblock %}
+
+{% block extra_css %}
+<style>
+    .rv { max-width: 460px; margin: 0 auto; background: white; border-radius: 15px; padding: 25px; border: 1px solid #e0e0e0; }
+    .rv h2 { text-align: center; color: #1e3c72; margin-bottom: 4px; }
+    .rv .sous { text-align: center; color: #888; font-size: 13px; margin-bottom: 18px; }
+    .rv .ligne { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px dashed #ddd; font-size: 14px; }
+    .rv .ligne span:first-child { color: #666; }
+    .rv .total { font-size: 18px; font-weight: bold; color: #198754; border-bottom: 2px solid #198754; }
+    .rv .reste { font-weight: bold; }
+    .rv .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 20px; }
+    .lien-btn { display: inline-block; padding: 10px 18px; border-radius: 8px; color: white; text-decoration: none; font-weight: 600; font-size: 14px; border: 0; cursor: pointer; }
+    @media print { .actions, .nav-links { display: none !important; } .rv { border: 0; } }
+</style>
+{% endblock %}
+
+{% block page_title %}<i class="bi bi-receipt"></i> Reçu de versement{% endblock %}
+{% block page_subtitle %}Crédit client{% endblock %}
+
+{% block content %}
+<div class="rv">
+    <h2>HITNA Superette</h2>
+    <div class="sous">Reçu de versement sur crédit</div>
+
+    {% if boutique %}<div class="ligne"><span>Boutique</span><span>{{ boutique }}</span></div>{% endif %}
+    <div class="ligne"><span>Date</span><span>{{ date_paiement[:16] }}</span></div>
+    <div class="ligne"><span>Client</span><span>{{ client }}</span></div>
+    {% for montant, mode in parts %}
+    <div class="ligne"><span>Versement — {{ mode }}</span><span>{{ montant|prix }} FCFA</span></div>
+    {% endfor %}
+    <div class="ligne total"><span>Total reçu</span><span>{{ montant_total|prix }} FCFA</span></div>
+    <div class="ligne"><span>Total du crédit</span><span>{{ total_credit|prix }} FCFA</span></div>
+    <div class="ligne"><span>Déjà payé</span><span>{{ paye_jusque|prix }} FCFA</span></div>
+    <div class="ligne reste"><span>Reste à payer</span><span style="color: {{ '#198754' if reste_apres == 0 else '#dc3545' }};">{{ reste_apres|prix }} FCFA</span></div>
+    {% if notes %}<div class="ligne"><span>Note</span><span>{{ notes }}</span></div>{% endif %}
+    {% if employe %}<div class="ligne"><span>Enregistré par</span><span>{{ employe }}</span></div>{% endif %}
+
+    <div class="actions">
+        <button type="button" class="lien-btn" style="background:#1e3c72;" onclick="window.print()"><i class="bi bi-printer"></i> Imprimer</button>
+        {% if telephone %}
+            {% set msg = 'Bonjour ' ~ client ~ ', HITNA Superette confirme la réception de ' ~ (montant_total|prix) ~ ' FCFA le ' ~ date_paiement[:10] ~ (' (' ~ (parts|map(attribute=1)|join(' + ')) ~ ')') ~ '. ' ~ ('Votre crédit est entièrement soldé, merci !' if reste_apres == 0 else 'Il vous reste ' ~ (reste_apres|prix) ~ ' FCFA à régler. Merci !') %}
+            <a class="lien-btn" style="background:#25D366;" target="_blank" rel="noopener" href="{{ lien_whatsapp(telephone, msg) }}"><i class="bi bi-whatsapp"></i> Envoyer par WhatsApp</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="nav-links">
+    <a href="/admin/credits"><i class="bi bi-arrow-left"></i> Retour aux crédits</a>
+</div>
+{% endblock %}

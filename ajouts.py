@@ -10,7 +10,7 @@
 # ══════════════════════════════════════════════════════════════════════════
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote
 from flask import request, redirect, session, flash, render_template
 
@@ -126,6 +126,15 @@ def init_db_ajouts():
             quantite_integree NUMERIC(10,3) DEFAULT 0,
             prix_achat INTEGER)''')
 
+        # Échéancier d'un crédit : tranches avec date d'échéance (le « payé » est calculé à partir des versements)
+        c.execute('''CREATE TABLE IF NOT EXISTS credits_tranches (
+            id SERIAL PRIMARY KEY,
+            credit_id INTEGER REFERENCES credits(id) ON DELETE CASCADE,
+            numero INTEGER NOT NULL,
+            montant INTEGER NOT NULL,
+            date_echeance TEXT NOT NULL)''')
+        c.execute("ALTER TABLE credits ADD COLUMN IF NOT EXISTS plan_base INTEGER DEFAULT 0")
+
         # Paiement d'une vente en plusieurs modes (ex : espèces + MoMo) : une ligne par mode
         c.execute('''CREATE TABLE IF NOT EXISTS ventes_paiements (
             id SERIAL PRIMARY KEY,
@@ -143,7 +152,7 @@ def init_db_ajouts():
 
         # Même précaution que pour les autres tables (réplication logique Postgres)
         for t in ['evenements', 'credits', 'credits_lignes', 'credits_paiements',
-                  'arrivages', 'arrivages_lignes', 'ventes_paiements']:
+                  'arrivages', 'arrivages_lignes', 'ventes_paiements', 'credits_tranches']:
             try:
                 c.execute(f"ALTER TABLE {t} REPLICA IDENTITY FULL")
                 conn.commit()
@@ -248,6 +257,74 @@ def _totaux_credit(credit_id):
     paye = q1("SELECT COALESCE(SUM(montant),0) FROM credits_paiements WHERE credit_id=?", (credit_id,))
     return (total[0] if total else 0), (paye[0] if paye else 0)
 
+PERIODICITES_TRANCHES = (7, 15, 30)
+
+def _statuts_tranches(tranches, paye_total, plan_base, today_iso):
+    """tranches : [(id, numero, montant, date_echeance)] triées par numero.
+    Les versements remplissent les tranches dans l'ordre (la 1re d'abord).
+    On ne compte que ce qui a été versé depuis la planification (plan_base = déjà payé à ce moment-là)."""
+    disponible = max(0, (paye_total or 0) - (plan_base or 0))
+    resultat = []
+    for tid, numero, montant, echeance in tranches:
+        paye = min(montant, disponible)
+        disponible -= paye
+        if paye >= montant:
+            statut = 'payee'
+        elif echeance and echeance < today_iso:
+            statut = 'retard'
+        elif paye > 0:
+            statut = 'partielle'
+        else:
+            statut = 'a_venir'
+        resultat.append({'id': tid, 'numero': numero, 'montant': montant, 'echeance': echeance,
+                         'paye': paye, 'reste': montant - paye, 'statut': statut})
+    return resultat
+
+def _creer_plan_tranches(credit_id, nb, date_premiere, jours, a_etaler, paye_actuel):
+    """Crée (ou remplace) l'échéancier : `nb` tranches égales, la dernière absorbe l'arrondi.
+    Retourne True si créé."""
+    try:
+        d0 = datetime.strptime(date_premiere, '%Y-%m-%d')
+    except (TypeError, ValueError):
+        return False
+    if not (2 <= nb <= 24) or jours not in PERIODICITES_TRANCHES or a_etaler < nb:
+        return False
+    base = int(a_etaler) // nb
+    montants = [base] * nb
+    montants[-1] += int(a_etaler) - base * nb
+    exe("DELETE FROM credits_tranches WHERE credit_id=?", (credit_id,))
+    derniere = date_premiere
+    for i, m in enumerate(montants):
+        derniere = (d0 + timedelta(days=jours * i)).strftime('%Y-%m-%d')
+        exe("INSERT INTO credits_tranches (credit_id, numero, montant, date_echeance) VALUES (?,?,?,?)",
+            (credit_id, i + 1, m, derniere))
+    exe("UPDATE credits SET plan_base=?, date_limite=? WHERE id=?", (int(paye_actuel), derniere, credit_id))
+    return True
+
+def _kpi_credits(where_bq, params_bq, today_iso):
+    """(nb crédits en cours, total à recevoir, nb en retard, montant en retard) — tient compte des tranches."""
+    rows = qall(f'''SELECT c.id, c.date_limite, COALESCE(c.plan_base,0),
+                          COALESCE((SELECT SUM(total) FROM credits_lignes WHERE credit_id=c.id),0),
+                          COALESCE((SELECT SUM(montant) FROM credits_paiements WHERE credit_id=c.id),0)
+                   FROM credits c WHERE c.statut='en_cours'{where_bq}''', params_bq)
+    ids = [r[0] for r in rows]
+    tr_par_credit = {}
+    if ids:
+        for tr in qall("SELECT credit_id, id, numero, montant, date_echeance FROM credits_tranches WHERE credit_id = ANY(%s) ORDER BY credit_id, numero", (ids,)):
+            tr_par_credit.setdefault(tr[0], []).append(tr[1:])
+    total_du, nb_retard, montant_retard = 0, 0, 0
+    for cid, date_limite, plan_base, total, paye in rows:
+        reste = (total or 0) - (paye or 0)
+        total_du += reste
+        if tr_par_credit.get(cid):
+            retard = sum(t_['reste'] for t_ in _statuts_tranches(tr_par_credit[cid], paye, plan_base, today_iso) if t_['statut'] == 'retard')
+        else:
+            retard = reste if (date_limite and date_limite < today_iso and reste > 0) else 0
+        if retard > 0:
+            nb_retard += 1
+            montant_retard += retard
+    return len(rows), total_du, nb_retard, montant_retard
+
 @app.route('/admin/credits')
 def admin_credits():
     try:
@@ -256,51 +333,62 @@ def admin_credits():
         filtre = request.args.get('statut', 'en_cours')
         if filtre not in ('en_cours', 'solde', 'annule', 'tous'):
             filtre = 'en_cours'
+        recherche = request.args.get('q', '').strip()
         today_iso = datetime.now().strftime('%Y-%m-%d')
 
         where_bq, params_bq = boutique_filtre_sql('c.boutique_id')
         sql = '''SELECT c.id, c.client_nom, c.telephone, COALESCE(b.nom,''), c.date_credit,
                         c.date_limite, c.statut, c.notes,
                         COALESCE((SELECT SUM(total) FROM credits_lignes WHERE credit_id=c.id),0),
-                        COALESCE((SELECT SUM(montant) FROM credits_paiements WHERE credit_id=c.id),0)
+                        COALESCE((SELECT SUM(montant) FROM credits_paiements WHERE credit_id=c.id),0),
+                        COALESCE(c.plan_base,0)
                  FROM credits c LEFT JOIN boutiques b ON c.boutique_id=b.id WHERE 1=1'''
         params = []
         if filtre != 'tous':
             sql += " AND c.statut = ?"
             params.append(filtre)
+        if recherche:
+            sql += " AND (c.client_nom ILIKE ? OR COALESCE(c.telephone,'') ILIKE ?)"
+            params += [f'%{recherche}%', f'%{recherche}%']
         sql += where_bq
         params += list(params_bq)
         sql += " ORDER BY c.date_limite ASC NULLS LAST, c.id DESC LIMIT 300"
         rows = qall(sql, tuple(params))
 
         ids = [r[0] for r in rows]
-        lignes_par_credit, paiements_par_credit = {}, {}
+        lignes_par_credit, paiements_par_credit, tranches_par_credit = {}, {}, {}
         if ids:
             for l in qall("SELECT credit_id, produit_nom, quantite, prix_unitaire, total FROM credits_lignes WHERE credit_id = ANY(%s) ORDER BY id", (ids,)):
                 lignes_par_credit.setdefault(l[0], []).append(l[1:])
-            for p in qall("SELECT credit_id, montant, mode_paiement, date_paiement, notes FROM credits_paiements WHERE credit_id = ANY(%s) ORDER BY id DESC", (ids,)):
-                paiements_par_credit.setdefault(p[0], []).append(p[1:])
+            for p in qall('''SELECT p.credit_id, p.id, p.montant, p.mode_paiement, p.date_paiement, p.notes, COALESCE(u.nom,'')
+                           FROM credits_paiements p LEFT JOIN users u ON p.employe_id = u.id
+                           WHERE p.credit_id = ANY(%s) ORDER BY p.id DESC''', (ids,)):
+                paiements_par_credit.setdefault(p[0], []).append(
+                    {'id': p[1], 'montant': p[2], 'mode': p[3], 'date': p[4], 'notes': p[5], 'employe': p[6]})
+            for tr in qall("SELECT credit_id, id, numero, montant, date_echeance FROM credits_tranches WHERE credit_id = ANY(%s) ORDER BY credit_id, numero", (ids,)):
+                tranches_par_credit.setdefault(tr[0], []).append(tr[1:])
 
         credits = []
         for r in rows:
-            reste = (r[8] or 0) - (r[9] or 0)
+            total, paye, plan_base = r[8] or 0, r[9] or 0, r[10] or 0
+            reste = total - paye
+            tranches = _statuts_tranches(tranches_par_credit.get(r[0], []), paye, plan_base, today_iso)
+            prochaine = next((t_ for t_ in tranches if t_['statut'] != 'payee'), None) if r[6] == 'en_cours' else None
+            if tranches:
+                en_retard = bool(r[6] == 'en_cours' and any(t_['statut'] == 'retard' for t_ in tranches))
+            else:
+                en_retard = bool(r[6] == 'en_cours' and r[5] and r[5] < today_iso and reste > 0)
             credits.append({
                 'id': r[0], 'client_nom': r[1], 'telephone': r[2], 'boutique': r[3],
                 'date_credit': r[4], 'date_limite': r[5], 'statut': r[6], 'notes': r[7],
-                'total': r[8] or 0, 'paye': r[9] or 0, 'reste': reste,
-                'en_retard': bool(r[6] == 'en_cours' and r[5] and r[5] < today_iso and reste > 0),
+                'total': total, 'paye': paye, 'reste': reste, 'en_retard': en_retard,
                 'lignes': lignes_par_credit.get(r[0], []),
                 'paiements': paiements_par_credit.get(r[0], []),
+                'tranches': tranches, 'prochaine': prochaine,
+                'nb_tranches_payees': sum(1 for t_ in tranches if t_['statut'] == 'payee'),
             })
 
-        base_kpi = f'''SELECT COUNT(*), COALESCE(SUM(t.total - t.paye),0) FROM (
-              SELECT c.id,
-                     COALESCE((SELECT SUM(total) FROM credits_lignes WHERE credit_id=c.id),0) AS total,
-                     COALESCE((SELECT SUM(montant) FROM credits_paiements WHERE credit_id=c.id),0) AS paye
-              FROM credits c WHERE c.statut='en_cours' {{extra}}{where_bq}) t'''
-        kpi = q1(base_kpi.replace('{extra}', ''), params_bq) or (0, 0)
-        kpi_retard = q1(base_kpi.replace('{extra}', "AND c.date_limite IS NOT NULL AND c.date_limite < ?"),
-                        (today_iso,) + params_bq) or (0, 0)
+        nb_en_cours, total_du, nb_retard, montant_retard = _kpi_credits(where_bq, params_bq, today_iso)
 
         bid = boutique_active()
         produits = []
@@ -314,8 +402,8 @@ def admin_credits():
             b = q1("SELECT nom FROM boutiques WHERE id=?", (bid,))
             boutique_nom = b[0] if b else ''
 
-        return render_template('admin_credits.html', credits=credits, filtre=filtre,
-            nb_en_cours=kpi[0], total_du=kpi[1], nb_retard=kpi_retard[0], montant_retard=kpi_retard[1],
+        return render_template('admin_credits.html', credits=credits, filtre=filtre, recherche=recherche,
+            nb_en_cours=nb_en_cours, total_du=total_du, nb_retard=nb_retard, montant_retard=montant_retard,
             produits=produits, boutique_nom=boutique_nom, boutique_ok=bid is not None,
             modes_paiement=MODES_PAIEMENT, today_iso=today_iso)
     except Exception as e:
@@ -389,7 +477,21 @@ def ajouter_credit():
             exe("UPDATE produits SET stock = stock - ? WHERE id=?", (qty, pid))
             total += tot
         verifier_alertes_stock()
-        flash(f'✅ Crédit enregistré pour "{client_nom}" : {format_prix(total)} FCFA à recevoir — stock mis à jour')
+        plan_txt = ''
+        try:
+            nb_tr = int(request.form.get('nb_tranches') or 0)
+        except ValueError:
+            nb_tr = 0
+        if nb_tr >= 2:
+            try:
+                jours = int(request.form.get('periodicite') or 30)
+            except ValueError:
+                jours = 30
+            if _creer_plan_tranches(credit_id, nb_tr, request.form.get('date_premiere') or '', jours, total, 0):
+                plan_txt = f', à payer en {nb_tr} tranches'
+            else:
+                flash('⚠️ Échéancier non créé (indiquez la date de la 1re tranche) : vous pouvez le planifier depuis la fiche du crédit')
+        flash(f'✅ Crédit enregistré pour "{client_nom}" : {format_prix(total)} FCFA à recevoir{plan_txt} — stock mis à jour')
     except Exception as e:
         print(f"❌ Erreur ajouter_credit: {e}")
         flash('❌ Erreur lors de l\'enregistrement du crédit')
@@ -397,6 +499,8 @@ def ajouter_credit():
 
 @app.route('/admin/credits/paiement/<int:id>', methods=['POST'])
 def payer_credit(id):
+    """Enregistre un versement (une tranche). Il peut être réglé avec 1 ou 2 modes (ex : espèces + MoMo) :
+    chaque mode donne une ligne datée dans l'historique."""
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
@@ -404,34 +508,156 @@ def payer_credit(id):
         if not credit or credit[1] != 'en_cours':
             flash('❌ Crédit introuvable ou déjà soldé/annulé')
             return redirect('/admin/credits')
-        try:
-            montant = int(float(request.form.get('montant', 0) or 0))
-        except ValueError:
-            montant = 0
-        mode = request.form.get('mode_paiement', 'Espèces')
-        if mode not in MODES_PAIEMENT:
-            mode = 'Espèces'
+        parts = []
+        for suffixe in ('', '2'):
+            try:
+                montant = int(float(request.form.get('montant' + suffixe, 0) or 0))
+            except ValueError:
+                montant = 0
+            mode = request.form.get('mode_paiement' + suffixe, 'Espèces')
+            if mode not in MODES_PAIEMENT:
+                mode = 'Espèces'
+            if montant > 0:
+                parts.append((montant, mode))
         notes = request.form.get('notes', '').strip()
+        montant_total = sum(m for m, _ in parts)
         total, paye = _totaux_credit(id)
         reste = total - paye
-        if montant <= 0:
+        if montant_total <= 0:
             flash('❌ Le montant du versement doit être supérieur à 0')
             return redirect('/admin/credits')
-        if montant > reste:
-            flash(f'❌ Ce versement dépasse le reste à payer ({format_prix(reste)} FCFA)')
+        if montant_total > reste:
+            flash(f'❌ Ce versement ({format_prix(montant_total)} FCFA) dépasse le reste à payer ({format_prix(reste)} FCFA)')
             return redirect('/admin/credits')
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        exe('''INSERT INTO credits_paiements (credit_id, montant, mode_paiement, date_paiement, notes, employe_id)
-               VALUES (?,?,?,?,?,?)''', (id, montant, mode, now, notes, session.get('user_id', 1)))
-        if paye + montant >= total:
+        for montant, mode in parts:
+            exe('''INSERT INTO credits_paiements (credit_id, montant, mode_paiement, date_paiement, notes, employe_id)
+                   VALUES (?,?,?,?,?,?)''', (id, montant, mode, now, notes, session.get('user_id', 1)))
+        detail = ' + '.join(f'{format_prix(m)} {mo}' for m, mo in parts)
+        if paye + montant_total >= total:
             exe("UPDATE credits SET statut='solde' WHERE id=?", (id,))
-            flash(f'✅ Versement de {format_prix(montant)} FCFA reçu — le crédit de "{credit[0]}" est entièrement soldé 🎉')
+            flash(f'✅ Versement de {format_prix(montant_total)} FCFA reçu ({detail}) — le crédit de "{credit[0]}" est entièrement soldé 🎉')
         else:
-            flash(f'✅ Versement de {format_prix(montant)} FCFA reçu de "{credit[0]}" — reste {format_prix(reste - montant)} FCFA')
+            flash(f'✅ Versement de {format_prix(montant_total)} FCFA reçu de "{credit[0]}" ({detail}) — reste {format_prix(reste - montant_total)} FCFA')
     except Exception as e:
         print(f"❌ Erreur payer_credit: {e}")
         flash('❌ Erreur lors de l\'enregistrement du versement')
     return redirect('/admin/credits')
+
+@app.route('/admin/credits/tranches/<int:id>', methods=['POST'])
+def planifier_tranches_credit(id):
+    """Planifie (ou replanifie) le reste à payer en tranches égales, avec une date d'échéance chacune."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        credit = q1("SELECT client_nom, statut FROM credits WHERE id=?", (id,))
+        if not credit or credit[1] != 'en_cours':
+            flash('❌ Crédit introuvable ou déjà soldé/annulé')
+            return redirect('/admin/credits')
+        total, paye = _totaux_credit(id)
+        reste = total - paye
+        try:
+            nb = int(request.form.get('nb_tranches') or 0)
+            jours = int(request.form.get('periodicite') or 30)
+        except ValueError:
+            nb, jours = 0, 30
+        if _creer_plan_tranches(id, nb, request.form.get('date_premiere') or '', jours, reste, paye):
+            flash(f'📅 "{credit[0]}" : reste {format_prix(reste)} FCFA planifié en {nb} tranches')
+        else:
+            flash('❌ Échéancier non créé : choisissez 2 à 24 tranches, une date de début valide, et un reste supérieur au nombre de tranches')
+    except Exception as e:
+        print(f"❌ Erreur planifier_tranches_credit: {e}")
+        flash('❌ Erreur lors de la planification')
+    return redirect('/admin/credits')
+
+@app.route('/admin/credits/tranches/supprimer/<int:id>')
+def supprimer_tranches_credit(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        exe("DELETE FROM credits_tranches WHERE credit_id=?", (id,))
+        exe("UPDATE credits SET plan_base=0 WHERE id=?", (id,))
+        flash('🗑️ Échéancier supprimé (les versements déjà reçus restent enregistrés)')
+    except Exception as e:
+        print(f"❌ Erreur supprimer_tranches_credit: {e}")
+        flash('❌ Erreur lors de la suppression de l\'échéancier')
+    return redirect('/admin/credits')
+
+@app.route('/admin/credits/recu/<int:paiement_id>')
+def recu_versement_credit(paiement_id):
+    """Reçu d'un versement (avec les autres modes réglés au même moment) — imprimable / envoyable par WhatsApp."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        p = q1('''SELECT p.credit_id, p.date_paiement, c.client_nom, c.telephone, COALESCE(b.nom,''), COALESCE(u.nom,''), p.notes
+                   FROM credits_paiements p JOIN credits c ON p.credit_id = c.id
+                   LEFT JOIN boutiques b ON c.boutique_id = b.id LEFT JOIN users u ON p.employe_id = u.id
+                   WHERE p.id=?''', (paiement_id,))
+        if not p:
+            flash('❌ Versement introuvable')
+            return redirect('/admin/credits')
+        credit_id, date_paiement = p[0], p[1]
+        parts = qall("SELECT id, montant, mode_paiement FROM credits_paiements WHERE credit_id=? AND date_paiement=? ORDER BY id", (credit_id, date_paiement))
+        dernier_id = max(x[0] for x in parts) if parts else paiement_id
+        total, _ = _totaux_credit(credit_id)
+        paye_jusque = q1("SELECT COALESCE(SUM(montant),0) FROM credits_paiements WHERE credit_id=? AND id<=?", (credit_id, dernier_id))
+        paye_jusque = paye_jusque[0] if paye_jusque else 0
+        return render_template('admin_credit_recu.html', credit_id=credit_id, date_paiement=date_paiement,
+            client=p[2], telephone=p[3], boutique=p[4], employe=p[5], notes=p[6],
+            parts=[(x[1], x[2]) for x in parts], montant_total=sum(x[1] for x in parts),
+            total_credit=total, paye_jusque=paye_jusque, reste_apres=total - paye_jusque)
+    except Exception as e:
+        print(f"❌ Erreur recu_versement_credit: {e}")
+        flash('❌ Erreur lors du chargement du reçu')
+        return redirect('/admin/credits')
+
+@app.route('/admin/credits/versements')
+def admin_credits_versements():
+    """Journal des versements reçus, par date et par moyen de paiement."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        aujourdhui = datetime.now().strftime('%Y-%m-%d')
+        date_debut = request.args.get('date_debut') or datetime.now().replace(day=1).strftime('%Y-%m-%d')
+        date_fin = request.args.get('date_fin') or aujourdhui
+        mode = request.args.get('mode', '')
+        recherche = request.args.get('q', '').strip()
+
+        where_bq, params_bq = boutique_filtre_sql('c.boutique_id')
+        sql = '''SELECT p.id, p.date_paiement, c.client_nom, c.telephone, p.montant, p.mode_paiement, p.notes,
+                        c.id, COALESCE(u.nom,'')
+                 FROM credits_paiements p JOIN credits c ON p.credit_id = c.id
+                 LEFT JOIN users u ON p.employe_id = u.id
+                 WHERE DATE(p.date_paiement::timestamp) BETWEEN ? AND ?'''
+        params = [date_debut, date_fin]
+        if mode in MODES_PAIEMENT:
+            sql += " AND p.mode_paiement = ?"
+            params.append(mode)
+        if recherche:
+            sql += " AND c.client_nom ILIKE ?"
+            params.append(f'%{recherche}%')
+        sql += where_bq + " ORDER BY p.date_paiement DESC, p.id DESC LIMIT 1000"
+        params += list(params_bq)
+        rows = qall(sql, tuple(params))
+
+        versements = [{'id': r[0], 'date': r[1], 'client': r[2], 'telephone': r[3], 'montant': r[4],
+                       'mode': r[5], 'notes': r[6], 'credit_id': r[7], 'employe': r[8]} for r in rows]
+        par_mode = {m: 0 for m in MODES_PAIEMENT}
+        par_jour = {}
+        for v in versements:
+            par_mode[v['mode']] = par_mode.get(v['mode'], 0) + v['montant']
+            jour = (v['date'] or '')[:10]
+            j = par_jour.setdefault(jour, {m: 0 for m in MODES_PAIEMENT})
+            j[v['mode']] = j.get(v['mode'], 0) + v['montant']
+        recap_jours = [{'jour': j, 'modes': par_jour[j], 'total': sum(par_jour[j].values())} for j in sorted(par_jour, reverse=True)]
+
+        return render_template('admin_credits_versements.html', versements=versements, par_mode=par_mode,
+            total=sum(par_mode.values()), recap_jours=recap_jours, modes_paiement=MODES_PAIEMENT,
+            date_debut=date_debut, date_fin=date_fin, mode=mode, recherche=recherche)
+    except Exception as e:
+        print(f"❌ Erreur admin_credits_versements: {e}")
+        flash('Erreur lors du chargement du journal des versements')
+        return redirect('/admin/credits')
 
 @app.route('/admin/credits/annuler/<int:id>')
 def annuler_credit(id):
