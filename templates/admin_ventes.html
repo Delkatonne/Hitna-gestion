@@ -674,7 +674,7 @@
     <div class="modal-content">
         <h3><i class="bi bi-person"></i> Informations client</h3>
         <input type="text" id="adminClientNameInput" placeholder="Nom du client" autocomplete="off">
-        <input type="tel" id="adminClientPhoneInput" placeholder="<i class="bi bi-telephone-fill"></i> Téléphone (pour la fiche client)" autocomplete="off" style="margin-top:10px;">
+        <input type="tel" id="adminClientPhoneInput" placeholder="Téléphone (pour la fiche client)" autocomplete="off" style="margin-top:10px;">
         <div class="btn-group">
             <button class="btn-confirm" onclick="adminConfirmClientName()"><i class="bi bi-check-circle-fill"></i> Confirmer</button>
             <button class="btn-skip" onclick="adminSkipClientName()"><i class="bi bi-skip-forward-fill"></i> Passer</button>
@@ -702,6 +702,17 @@
                 <select id="tier-select-${pid}" style="width:100%; padding:8px; margin:8px 0; border:2px solid #e0e0e0; border-radius:8px; font-size:13px;">
                     ${options}
                 </select>
+                <div style="display:flex; gap:6px; margin:6px 0 4px 0;">
+                    <input type="number" id="units-input-${pid}" min="1" step="1" inputmode="numeric"
+                           placeholder="Ou saisir un nombre d'unités"
+                           onkeydown="if(event.key==='Enter'){event.preventDefault();adminAjouterParUnites(${pid});}"
+                           style="flex:1; min-width:0; padding:8px; border:2px solid #e0e0e0; border-radius:8px; font-size:13px;">
+                    <button type="button" onclick="adminAjouterParUnites(${pid})"
+                            style="padding:8px 10px; border:none; border-radius:8px; background:#17a2b8; color:#fff; font-size:12px; cursor:pointer; white-space:nowrap;">
+                        Ajouter en unités
+                    </button>
+                </div>
+                <div id="units-msg-${pid}" style="font-size:11px; color:#28a745; min-height:14px;"></div>
             `;
         });
     }
@@ -766,6 +777,49 @@
         alert(` Aucun produit trouvé pour le code "${code}".\nVous pouvez l'associer depuis la fiche du produit.`);
     }
 
+    // Une ligne de panier par couple (produit, palier) : on peut donc mélanger
+    // carton + pack + unités du même produit sur un seul reçu.
+    function adminCleLigne(id, tierId) { return tierId ? (id + '_t' + tierId) : String(id); }
+
+    // Unités de base déjà présentes dans le panier pour ce produit (hors la ligne exceptKey)
+    function adminUnitesAutresLignes(id, exceptKey) {
+        let t = 0;
+        Object.keys(adminCart).forEach(k => {
+            const it = adminCart[k];
+            if (String(it.id) === String(id) && k !== exceptKey) {
+                t += it.tierId ? it.qty * it.unitEquiv : it.qty;
+            }
+        });
+        return adminArrondirQte(t);
+    }
+
+    // Ajoute qty à la ligne (produit, palier). qty = nb de paliers, ou nb d'unités si tier == null.
+    // Retourne false si le stock total du produit serait dépassé.
+    function adminAjouterLigne(id, card, stock, tier, qty) {
+        const key = adminCleLigne(id, tier ? tier.id : null);
+        const equiv = tier ? adminArrondirQte(tier.quantite) : 1;
+        const deja = adminCart[key] ? adminCart[key].qty : 0;
+        if (adminArrondirQte(adminUnitesAutresLignes(id, key) + (deja + qty) * equiv) > stock) return false;
+        if (adminCart[key]) {
+            adminCart[key].qty = adminArrondirQte(deja + qty);
+        } else if (tier) {
+            adminCart[key] = {
+                key: key, id: id, name: card.getAttribute('data-nom'),
+                price: tier.prix, stock: stock, fractionnable: false, step: 1, qty: qty,
+                tierId: tier.id, tierNom: tier.nom, unitEquiv: equiv
+            };
+        } else {
+            const frac = card.getAttribute('data-fractionnable') === '1';
+            adminCart[key] = {
+                key: key, id: id, name: card.getAttribute('data-nom'),
+                price: parseFloat(card.getAttribute('data-price')), stock: stock,
+                fractionnable: frac, step: frac ? 0.5 : 1, qty: qty,
+                aLUnite: !!(PALIERS[id] && PALIERS[id].length)
+            };
+        }
+        return true;
+    }
+
     function adminAjouterAuPanier(id) {
         const card = document.getElementById('card-' + id);
         if (!card) return;
@@ -774,34 +828,11 @@
         const tiers = PALIERS[id];
         const tierSelect = document.getElementById('tier-select-' + id);
         if (tiers && tiers.length > 0 && tierSelect) {
-            const idx = parseInt(tierSelect.value, 10);
-            const tier = tiers[idx];
-            const equivUnites = adminArrondirQte(tier.quantite);
-
-            if (adminCart[id] && adminCart[id].tierId === tier.id) {
-                const nouvelleQty = adminCart[id].qty + 1;
-                if (adminArrondirQte(nouvelleQty * equivUnites) <= stock) {
-                    adminCart[id].qty = nouvelleQty;
-                } else {
-                    alert(`Stock insuffisant ! Il reste ${adminFormaterQte(stock)} unités`);
-                }
-            } else {
-                if (equivUnites > stock) {
-                    alert(`Stock insuffisant pour "${tier.nom}" ! Il reste ${adminFormaterQte(stock)} unités`);
-                    return;
-                }
-                adminCart[id] = {
-                    id: id,
-                    name: card.getAttribute('data-nom'),
-                    price: tier.prix,
-                    stock: stock,
-                    fractionnable: false,
-                    step: 1,
-                    qty: 1,
-                    tierId: tier.id,
-                    tierNom: tier.nom,
-                    unitEquiv: equivUnites
-                };
+            const tier = tiers[parseInt(tierSelect.value, 10)];
+            if (!adminAjouterLigne(id, card, stock, tier, 1)) {
+                const dispo = adminArrondirQte(stock - adminUnitesAutresLignes(id, null));
+                alert(`Stock insuffisant pour "${tier.nom}" ! Il reste ${adminFormaterQte(dispo)} unité(s) disponible(s)`);
+                return;
             }
             card.classList.add('in-cart');
             adminRenderCart();
@@ -810,90 +841,114 @@
 
         const fractionnable = card.getAttribute('data-fractionnable') === '1';
         const step = fractionnable ? 0.5 : 1;
-
-        if (adminCart[id] && !adminCart[id].tierId) {
-            const nouvelleQty = adminArrondirQte(adminCart[id].qty + step);
-            if (nouvelleQty <= stock) {
-                adminCart[id].qty = nouvelleQty;
-            } else {
-                alert(`Stock insuffisant ! Il reste ${adminFormaterQte(stock)} unités`);
-            }
-        } else {
-            if (stock < step) {
-                alert('Ce produit n\'a plus assez de stock');
-                return;
-            }
-            adminCart[id] = {
-                id: id,
-                name: card.getAttribute('data-nom'),
-                price: parseFloat(card.getAttribute('data-price')),
-                stock: stock,
-                fractionnable: fractionnable,
-                step: step,
-                qty: 1
-            };
+        const existe = !!adminCart[adminCleLigne(id, null)];
+        if (!adminAjouterLigne(id, card, stock, null, existe ? step : 1)) {
+            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminArrondirQte(stock - adminUnitesAutresLignes(id, null)))} unité(s)`);
+            return;
         }
         card.classList.add('in-cart');
         adminRenderCart();
     }
 
-    function adminChangerQuantitePanier(id, delta) {
-        if (!adminCart[id]) return;
-        if (adminCart[id].tierId) {
-            const nouvelleQty = adminCart[id].qty + delta;
-            if (adminArrondirQte(nouvelleQty * adminCart[id].unitEquiv) > adminCart[id].stock) {
-                alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminCart[id].stock)} unités`);
+    // Saisie d'un nombre d'unités : l'application répartit automatiquement en
+    // cartons / packs (du plus grand au plus petit palier) + unités restantes.
+    function adminAjouterParUnites(id) {
+        const card = document.getElementById('card-' + id);
+        const input = document.getElementById('units-input-' + id);
+        const msg = document.getElementById('units-msg-' + id);
+        if (!card || !input) return;
+        const stock = parseFloat(card.getAttribute('data-stock'));
+        const n = Math.floor(parseFloat(input.value));
+        if (!n || n <= 0) {
+            alert('Entrez un nombre d\'unités valide (ex : 26)');
+            return;
+        }
+        const dispo = adminArrondirQte(stock - adminUnitesAutresLignes(id, null));
+        if (n > dispo) {
+            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(dispo)} unité(s) disponible(s)`);
+            return;
+        }
+        const tiers = (PALIERS[id] || []).filter(t => t.quantite > 0)
+                                         .slice().sort((a, b) => b.quantite - a.quantite);
+        let reste = n;
+        const resume = [];
+        tiers.forEach(t => {
+            if (t.quantite <= 1) return;               // le palier "unité" est géré après
+            const k = Math.floor(adminArrondirQte(reste / t.quantite) + 1e-9);
+            if (k > 0) {
+                adminAjouterLigne(id, card, stock, t, k);
+                resume.push(`${k} × ${t.nom}`);
+                reste = adminArrondirQte(reste - k * t.quantite);
+            }
+        });
+        if (reste > 0) {
+            const palierUnite = tiers.find(t => t.quantite === 1);
+            adminAjouterLigne(id, card, stock, palierUnite || null, reste);
+            resume.push(`${adminFormaterQte(reste)} × ${palierUnite ? palierUnite.nom : 'unité'}`);
+        }
+        input.value = '';
+        if (msg) msg.textContent = `✔ ${n} unités = ${resume.join(' + ')}`;
+        card.classList.add('in-cart');
+        adminRenderCart();
+    }
+
+    function adminChangerQuantitePanier(key, delta) {
+        const item = adminCart[key];
+        if (!item) return;
+        const autres = adminUnitesAutresLignes(item.id, key);
+        if (item.tierId) {
+            const n = item.qty + delta;
+            if (n < 1) { adminRetirerDuPanier(key); return; }
+            if (adminArrondirQte(autres + n * item.unitEquiv) > item.stock) {
+                alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminArrondirQte(item.stock - autres))} unité(s) disponible(s)`);
                 return;
             }
-            if (nouvelleQty < 1) {
-                adminRetirerDuPanier(id);
-                return;
-            }
-            adminCart[id].qty = nouvelleQty;
+            item.qty = n;
             adminRenderCart();
             return;
         }
-        const step = adminCart[id].step || 1;
-        const nouvelleQty = adminArrondirQte(adminCart[id].qty + delta);
-        if (nouvelleQty > adminCart[id].stock) {
-            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminCart[id].stock)} unités`);
+        const step = item.step || 1;
+        const n = adminArrondirQte(item.qty + delta);
+        if (adminArrondirQte(autres + n) > item.stock) {
+            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminArrondirQte(item.stock - autres))} unité(s) disponible(s)`);
             return;
         }
-        if (nouvelleQty < step) {
-            adminRetirerDuPanier(id);
-            return;
-        }
-        adminCart[id].qty = nouvelleQty;
+        if (n < step) { adminRetirerDuPanier(key); return; }
+        item.qty = n;
         adminRenderCart();
     }
 
-    function adminSetQuantitePanier(id, valeur) {
-        if (!adminCart[id]) return;
+    // Saisie directe d'une quantité (ex: 0.5, 2.5) pour les produits vendables en fraction.
+    function adminSetQuantitePanier(key, valeur) {
+        const item = adminCart[key];
+        if (!item) return;
         let q = adminArrondirQte(parseFloat(valeur));
-        if (isNaN(q) || q <= 0) {
-            adminRetirerDuPanier(id);
-            return;
+        if (isNaN(q) || q <= 0) { adminRetirerDuPanier(key); return; }
+        const max = adminArrondirQte(item.stock - adminUnitesAutresLignes(item.id, key));
+        if (q > max) {
+            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(max)} unité(s) disponible(s)`);
+            q = max;
         }
-        if (q > adminCart[id].stock) {
-            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminCart[id].stock)} unités`);
-            q = adminCart[id].stock;
-        }
-        adminCart[id].qty = q;
+        if (q <= 0) { adminRetirerDuPanier(key); return; }
+        item.qty = q;
         adminRenderCart();
     }
 
-    function adminRetirerDuPanier(id) {
-        delete adminCart[id];
-        const card = document.getElementById('card-' + id);
-        if (card) card.classList.remove('in-cart');
+    function adminRetirerDuPanier(key) {
+        const item = adminCart[key];
+        delete adminCart[key];
+        if (item && !Object.values(adminCart).some(it => String(it.id) === String(item.id))) {
+            const card = document.getElementById('card-' + item.id);
+            if (card) card.classList.remove('in-cart');
+        }
         adminRenderCart();
     }
 
     function adminRenderCart() {
         const cartList = document.getElementById('adminCartList');
-        const ids = Object.keys(adminCart);
+        const keys = Object.keys(adminCart);
 
-        if (ids.length === 0) {
+        if (keys.length === 0) {
             cartList.innerHTML = '<div class="cart-empty" id="adminCartEmpty"> Ajoutez des produits depuis la liste ci-dessus</div>';
             document.getElementById('adminTotalDisplay').style.display = 'none';
             document.getElementById('adminPaiementWrap').style.display = 'none';
@@ -903,8 +958,8 @@
 
         let html = '';
         let total = 0;
-        ids.forEach(id => {
-            const item = adminCart[id];
+        keys.forEach(key => {
+            const item = adminCart[key];
             const subtotal = Math.round(item.qty * item.price);
             total += subtotal;
             const step = item.step || 1;
@@ -912,33 +967,37 @@
             let qtyControl;
             if (item.tierId) {
                 qtyControl = `
-                    <button type="button" onclick="adminChangerQuantitePanier(${id}, -1)">-</button>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', -1)">-</button>
                     <span>${item.qty}</span>
-                    <button type="button" onclick="adminChangerQuantitePanier(${id}, 1)">+</button>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', 1)">+</button>
                 `;
             } else if (item.fractionnable) {
+                // Produit vendable en fraction : champ modifiable directement
+                // (0.5 = 1/2 carton, 0.25 = 1/4 carton, etc.)
                 qtyControl = `
-                    <button type="button" onclick="adminChangerQuantitePanier(${id}, -${step})">-</button>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', -${step})">-</button>
                     <input type="number" class="cart-item-qty-input" value="${adminFormaterQte(item.qty)}"
                            step="0.01" min="0.01"
-                           onchange="adminSetQuantitePanier(${id}, this.value)"
+                           onchange="adminSetQuantitePanier('${key}', this.value)"
                            style="width:55px; text-align:center; border:1px solid #ccc; border-radius:6px; padding:4px;">
-                    <button type="button" onclick="adminChangerQuantitePanier(${id}, ${step})">+</button>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', ${step})">+</button>
                 `;
             } else {
                 qtyControl = `
-                    <button type="button" onclick="adminChangerQuantitePanier(${id}, -1)">-</button>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', -1)">-</button>
                     <span>${adminFormaterQte(item.qty)}</span>
-                    <button type="button" onclick="adminChangerQuantitePanier(${id}, 1)">+</button>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', 1)">+</button>
                 `;
             }
 
+            const suffixe = item.tierId ? ' — <small>' + item.tierNom + '</small>'
+                          : (item.aLUnite ? ' — <small>à l\'unité</small>' : '');
             html += `
                 <div class="cart-item">
-                    <div class="cart-item-name">${item.name}${item.tierId ? ' — <small>' + item.tierNom + '</small>' : (item.fractionnable ? ' <small style="color:#856404;"></small>' : '')}</div>
+                    <div class="cart-item-name">${item.name}${suffixe}</div>
                     <div class="cart-item-qty">${qtyControl}</div>
                     <div class="cart-item-subtotal">${subtotal.toLocaleString()} FCFA</div>
-                    <button type="button" class="cart-item-remove" onclick="adminRetirerDuPanier(${id})"></button>
+                    <button type="button" class="cart-item-remove" onclick="adminRetirerDuPanier('${key}')"></button>
                 </div>
             `;
         });

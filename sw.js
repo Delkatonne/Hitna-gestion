@@ -8,7 +8,7 @@
 //    via la file d'attente IndexedDB, pas par le cache HTTP)
 // ============================================================
 
-const CACHE_VERSION = 'hitna-v3';
+const CACHE_VERSION = 'hitna-v4';
 const APP_SHELL = [
   '/static/style.css',
   '/static/db.js',
