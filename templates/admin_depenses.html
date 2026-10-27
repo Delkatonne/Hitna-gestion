@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Dépenses - HITNA{% endblock %}
+{% block page_title %}<i class="bi bi-receipt"></i> Dépenses{% endblock %}
+{% block page_subtitle %}Achats de produits, renouvellement de stock, transport et autres dépenses{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/hitna-ui.css') }}?v=1">
+{% endblock %}
+
+{% block content %}
+<!-- Application React (data-no-datefr : les dates y sont déjà formatées en jj/mm/aaaa) -->
+<div id="app-root" data-no-datefr>
+    <div class="hx-chargement">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="mt-2">Chargement…</div>
+    </div>
+</div>
+<noscript><div class="alert alert-warning">JavaScript est nécessaire pour afficher cette page.</div></noscript>
+{% endblock %}
+
+{% block extra_js %}
+    <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+    <script src="{{ url_for('static', filename='js/hitna-core.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/page-depenses.js') }}?v=1"></script>
+{% endblock %}

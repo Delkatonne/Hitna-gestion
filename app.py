@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify, url_for, send_file
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
-import hashlib, os, random, string, io, json, uuid, socket, zipfile, calendar
+import hashlib, os, re, random, string, io, json, uuid, socket, zipfile, calendar
 from decimal import Decimal
 import bcrypt
 import psycopg2
@@ -184,6 +184,7 @@ BACKUP_TABLES = [
     'reservations_produits', 'reservations_lignes', 'archive_reservations',
     'evenements', 'credits', 'credits_lignes', 'credits_paiements', 'arrivages', 'arrivages_lignes',
     'ventes_paiements', 'credits_tranches',
+    'depenses', 'comptes_tresorerie', 'mouvements_tresorerie',
 ]
 
 def generer_backup_json():
@@ -1100,6 +1101,31 @@ def inject_now():
         ctx['nb_commandes_nouvelles'] = 0
         ctx['nb_messages_non_lus'] = 0
     return ctx
+
+# ──────────────────────────────────────────────────────────────
+# FORMAT DES DATES — tout l'affichage utilise jj/mm/aaaa
+# (les dates restent stockées en ISO aaaa-mm-jj dans la base)
+# ──────────────────────────────────────────────────────────────
+_RE_DATE_ISO = re.compile(r'^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?)?')
+
+def fmt_date_fr(valeur, avec_heure=False):
+    """date / datetime / texte ISO  ->  'jj/mm/aaaa' (+ ' hh:mm' si avec_heure)."""
+    if valeur is None or valeur == '':
+        return ''
+    if isinstance(valeur, datetime):
+        return valeur.strftime('%d/%m/%Y %H:%M' if avec_heure else '%d/%m/%Y')
+    if hasattr(valeur, 'strftime'):
+        return valeur.strftime('%d/%m/%Y')
+    m = _RE_DATE_ISO.match(str(valeur).strip())
+    if not m:
+        return str(valeur)
+    jour = f"{m.group(3)}/{m.group(2)}/{m.group(1)}"
+    if avec_heure and m.group(4):
+        return f"{jour} {m.group(4)}:{m.group(5)}"
+    return jour
+
+app.jinja_env.filters['datefr'] = fmt_date_fr
+app.jinja_env.filters['datetimefr'] = lambda v: fmt_date_fr(v, avec_heure=True)
 
 def get_all_roles():
     try:
@@ -3087,48 +3113,8 @@ def dashboard():
             return redirect('/login')
         archiver_si_necessaire()
         verifier_alertes_stock()
-        bid = boutique_active()
-        cache_key = f'dashboard_data_{bid or "toutes"}'
-        cached_data = get_cached(cache_key, 60)
-        if cached_data:
-            (total_jour, nb_produits, stock_total, nb_stock_bas, 
-             stock_bas, top_produits, stats_vendeurs,
-             ventes_7_jours, ventes_par_heure) = cached_data
-        else:
-            where_s, params_s = boutique_filtre_sql('boutique_id')
-            where_p, params_p = boutique_filtre_sql('boutique_id')
-            total_jour = q1(f"SELECT COALESCE(SUM(total),0) FROM sorties WHERE DATE(date_sortie)=CURRENT_DATE{where_s}", params_s)
-            total_jour = total_jour[0] if total_jour else 0
-            nb_produits = q1(f"SELECT COUNT(*) FROM produits WHERE 1=1{where_p}", params_p)
-            nb_produits = nb_produits[0] if nb_produits else 0
-            stock_total = q1(f"SELECT COALESCE(SUM(stock),0) FROM produits WHERE 1=1{where_p}", params_p)
-            stock_total = stock_total[0] if stock_total else 0
-            nb_stock_bas = q1(f"SELECT COUNT(*) FROM produits WHERE stock<=stock_min{where_p}", params_p)
-            nb_stock_bas = nb_stock_bas[0] if nb_stock_bas else 0
-            stock_bas = qall(f"SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min{where_p} LIMIT 20", params_p)
-            where_p2, params_p2 = boutique_filtre_sql('p.boutique_id')
-            top_produits = qall(f'''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
-                FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
-                WHERE 1=1{where_p2}
-                GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 5''', params_p2)
-            stats_vendeurs = qall(f'''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
-                FROM sorties s JOIN users u ON s.employe_id=u.id
-                WHERE DATE(s.date_sortie)=CURRENT_DATE{where_s} GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''', params_s)
-            ventes_7_jours = qall(f'''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0)
-                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'{where_s}
-                GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''', params_s)
-            ventes_par_heure = qall(f'''SELECT EXTRACT(HOUR FROM date_sortie::timestamp)::int,COALESCE(SUM(total),0)
-                FROM sorties WHERE DATE(date_sortie::timestamp) = CURRENT_DATE{where_s}
-                GROUP BY 1 ORDER BY 1''', params_s)
-            set_cached(cache_key, (total_jour, nb_produits, stock_total, nb_stock_bas, 
-                                   stock_bas, top_produits, stats_vendeurs,
-                                   ventes_7_jours, ventes_par_heure))
-        return render_template('dashboard.html',
-            total_jour=total_jour, nb_produits=nb_produits,
-            stock_total=stock_total, nb_stock_bas=nb_stock_bas,
-            stock_bas=stock_bas,
-            top_produits=top_produits, stats_vendeurs=stats_vendeurs,
-            ventes_7_jours=ventes_7_jours, ventes_par_heure=ventes_par_heure)
+        # Les chiffres sont servis par /api/dashboard (finances.py) et affichés par React.
+        return render_template('dashboard.html')
     except Exception as e:
         print(f"❌ Erreur dashboard: {e}")
         flash('Erreur lors du chargement du dashboard')
@@ -5014,25 +5000,25 @@ def export_excel_comptable():
         # Feuille 2 : Ventes
         _feuille_excel(wb, "Ventes",
             ["Date", "Produit", "Quantité", "Prix unitaire (FCFA)", "Total (FCFA)", "Client", "Vendeur"],
-            [(v[0], v[1], float(v[2] or 0), v[3], v[4], v[5] or '', v[6]) for v in ventes],
+            [(fmt_date_fr(v[0], True), v[1], float(v[2] or 0), v[3], v[4], v[5] or '', v[6]) for v in ventes],
             largeurs=[18, 28, 12, 18, 14, 20, 18])
 
         # Feuille 3 : Achats
         _feuille_excel(wb, "Achats (entrées de stock)",
             ["Date", "Produit", "Quantité", "Prix unitaire (FCFA)", "Total (FCFA)", "Fournisseur", "Enregistré par"],
-            [(a[0], a[1], float(a[2] or 0), a[3], a[4], a[5] or '', a[6]) for a in achats],
+            [(fmt_date_fr(a[0], True), a[1], float(a[2] or 0), a[3], a[4], a[5] or '', a[6]) for a in achats],
             largeurs=[18, 28, 12, 18, 14, 22, 18])
 
         # Feuille 4 : Charges
         _feuille_excel(wb, "Charges",
             ["Date", "Catégorie", "Libellé", "Montant (FCFA)", "Enregistré par"],
-            [(c[0], c[1], c[2], c[3], c[4]) for c in charges],
+            [(fmt_date_fr(c[0]), c[1], c[2], c[3], c[4]) for c in charges],
             largeurs=[14, 22, 32, 16, 18])
 
         # Feuille 5 : Pertes
         _feuille_excel(wb, "Pertes",
             ["Date", "Produit", "Quantité", "Motif", "Total (FCFA)", "Enregistré par"],
-            [(p[0], p[1], float(p[2] or 0), p[3], p[4], p[5]) for p in pertes],
+            [(fmt_date_fr(p[0], True), p[1], float(p[2] or 0), p[3], p[4], p[5]) for p in pertes],
             largeurs=[18, 28, 12, 18, 14, 18])
 
         # Format monétaire sur les feuilles de détail
@@ -5132,8 +5118,8 @@ def export_excel_clients():
 
         wb = Workbook()
         wb.remove(wb.active)
-        lignes = [(c[0], c[1], c[2] or '', c[3] or 0, round(c[4] or 0), c[5].split(' ')[0] if c[5] else '',
-                   c[6] or '', c[7].split(' ')[0] if c[7] else '', c[8] or 0) for c in clients]
+        lignes = [(c[0], c[1], c[2] or '', c[3] or 0, round(c[4] or 0), fmt_date_fr(c[5]),
+                   c[6] or '', fmt_date_fr(c[7]), c[8] or 0) for c in clients]
         ws = _feuille_excel(wb, "Clients",
             ["Nom", "Téléphone", "Adresse", "Nb achats", "Total dépensé (FCFA)", "Dernier achat", "Notes", "Client depuis", "Points fidélité"],
             lignes, largeurs=[22, 16, 24, 12, 20, 14, 30, 14, 14])
@@ -5354,41 +5340,8 @@ def admin_stats():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        bid = boutique_active()
-        cache_key = f'stats_data_{bid or "toutes"}'
-        cached_data = get_cached(cache_key, 120)
-        if cached_data:
-            ventes_jour, ventes_mois, top_produits, marge, marge_produits, charges_totales = cached_data
-        else:
-            where_s, params_s = boutique_filtre_sql('boutique_id')
-            ventes_jour = qall(f'''SELECT DATE(date_sortie::timestamp),COALESCE(SUM(total),0),COUNT(*)
-                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '7 days'{where_s}
-                GROUP BY DATE(date_sortie::timestamp) ORDER BY DATE(date_sortie::timestamp)''', params_s)
-            ventes_mois = qall(f'''SELECT TO_CHAR(date_sortie::timestamp,'YYYY-MM'),COALESCE(SUM(total),0),COUNT(*)
-                FROM sorties WHERE date_sortie::timestamp >= NOW() - INTERVAL '6 months'{where_s}
-                GROUP BY 1 ORDER BY 1''', params_s)
-            where_p, params_p = boutique_filtre_sql('p.boutique_id')
-            top_produits = qall(f'''SELECT p.nom,COALESCE(SUM(s.quantite),0) as tv
-                FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
-                WHERE 1=1{where_p}
-                GROUP BY p.id,p.nom ORDER BY tv DESC LIMIT 10''', params_p)
-            marge = q1(f'''SELECT COALESCE((SELECT SUM(total) FROM sorties WHERE 1=1{where_s}),0),
-                                 COALESCE((SELECT SUM(total) FROM entrees WHERE 1=1{where_s}),0)''', params_s + params_s)
-            marge = marge if marge else (0,0)
-            where_c, params_c = boutique_filtre_sql('boutique_id')
-            charges_totales = q1(f"SELECT COALESCE(SUM(montant),0) FROM charges WHERE 1=1{where_c}", params_c)
-            charges_totales = charges_totales[0] if charges_totales else 0
-            marge_produits = qall(f'''SELECT p.nom,COALESCE(SUM(s.total),0),COALESCE(SUM(e.total),0),
-                COALESCE(SUM(s.total),0)-COALESCE(SUM(e.total),0)
-                FROM produits p LEFT JOIN sorties s ON p.id=s.produit_id
-                LEFT JOIN entrees e ON p.id=e.produit_id WHERE 1=1{where_p}
-                GROUP BY p.id,p.nom
-                HAVING COALESCE(SUM(s.total),0)+COALESCE(SUM(e.total),0)>0
-                ORDER BY 4 DESC LIMIT 10''', params_p)
-            set_cached(cache_key, (ventes_jour, ventes_mois, top_produits, marge, marge_produits, charges_totales))
-        return render_template('admin_stats.html', ventes_jour=ventes_jour, ventes_mois=ventes_mois,
-            top_produits=top_produits, marge_totale=marge, marge_produits=marge_produits,
-            charges_totales=charges_totales)
+        # Les chiffres sont servis par /api/stats (finances.py) et affichés par React.
+        return render_template('admin_stats.html')
     except Exception as e:
         print(f"❌ Erreur admin_stats: {e}")
         flash('Erreur lors du chargement des statistiques')
@@ -6784,6 +6737,7 @@ init_db()
 import sys
 sys.modules.setdefault('app', sys.modules[__name__])  # évite un double chargement avec "python app.py"
 import ajouts  # noqa: E402,F401
+import finances  # noqa: E402,F401  (dépenses, trésorerie, API du dashboard et des statistiques)
 
 # ──────────────────────────────────────────────────────────────
 # LANCEMENT (uniquement en local, ex: python app.py)
