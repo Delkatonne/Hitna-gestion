@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Catalogue {{ fournisseur[1] }} - HITNA{% endblock %}
+{% block page_title %}<i class="bi bi-tags"></i> Catalogue · {{ fournisseur[1] }}{% endblock %}
+{% block page_subtitle %}Prix d'achat payés à ce fournisseur{% endblock %}
+
+{% block content %}
+<p><a href="/admin/fournisseurs"><i class="bi bi-arrow-left"></i> Retour aux fournisseurs</a></p>
+<p style="color:#666; font-size:14px;">
+    Saisissez le prix d'achat payé à ce fournisseur pour chaque produit. Laissez vide si ce fournisseur
+    ne fournit pas le produit. Le prix est aussi mis à jour à chaque entrée de stock faite avec ce fournisseur.
+</p>
+
+<form method="post" action="/admin/fournisseurs/{{ fournisseur[0] }}/catalogue">
+    <div style="overflow-x:auto; background:white; border-radius:12px; padding:12px;">
+        <table style="width:100%; border-collapse:collapse;">
+            <thead>
+                <tr style="text-align:left; color:#555;">
+                    <th style="padding:8px;">Produit</th>
+                    <th style="padding:8px; text-align:right;">Prix moyen actuel</th>
+                    <th style="padding:8px;">Prix chez ce fournisseur (FCFA)</th>
+                    <th style="padding:8px;">Dernière mise à jour</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for l in lignes %}
+                <tr style="border-top:1px solid #eee;">
+                    <td style="padding:8px;">{{ l.nom }}</td>
+                    <td style="padding:8px; text-align:right;">{{ "{:,.0f}".format(l.prix_moyen).replace(",", " ") }}</td>
+                    <td style="padding:8px;">
+                        <input type="number" name="prix_{{ l.id }}" min="0" step="0.01"
+                               value="{{ l.prix if l.prix is not none else '' }}"
+                               style="width:150px; padding:6px; border:2px solid #e0e0e0; border-radius:6px;">
+                    </td>
+                    <td style="padding:8px;">{{ l.maj or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" style="padding:12px; color:#888;">Aucun produit dans cette boutique.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <button type="submit" style="margin-top:14px; background:#1e3c72; color:white; border:none; border-radius:10px; padding:12px 20px; font-weight:bold;">
+        Enregistrer le catalogue
+    </button>
+</form>
+{% endblock %}

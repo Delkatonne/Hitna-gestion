@@ -775,6 +775,38 @@ def init_db():
         #    pouvoir stocker des demi-cartons, quarts, etc. Les valeurs
         #    entières existantes (ex: 20) deviennent 20.000 — aucune
         #    perte de données.
+        # ── COÛTS & MARGES : prix d'achat moyen pondéré par produit, et coût
+        #    figé au moment de chaque vente (le bénéfice d'une vente passée ne change pas).
+        try:
+            c.execute("ALTER TABLE produits ADD COLUMN IF NOT EXISTS prix_achat NUMERIC(12,2) DEFAULT 0")
+            c.execute("ALTER TABLE sorties ADD COLUMN IF NOT EXISTS cout_unitaire NUMERIC(12,2)")
+            c.execute("ALTER TABLE archive_ventes ADD COLUMN IF NOT EXISTS cout_unitaire NUMERIC(12,2)")
+            c.execute("""UPDATE produits p SET prix_achat = sub.pu FROM (
+                           SELECT DISTINCT ON (produit_id) produit_id, prix_unitaire AS pu
+                           FROM entrees ORDER BY produit_id, id DESC) sub
+                         WHERE sub.produit_id = p.id AND COALESCE(p.prix_achat, 0) = 0""")
+
+            # Catalogue fournisseur : prix payé à chaque fournisseur pour chaque produit
+            c.execute("""CREATE TABLE IF NOT EXISTS fournisseur_produits (
+                           id SERIAL PRIMARY KEY, fournisseur_id INTEGER, produit_id INTEGER,
+                           prix_achat NUMERIC(12,2), date_maj TEXT, boutique_id INTEGER,
+                           UNIQUE (fournisseur_id, produit_id))""")
+
+            # Coût des ventes passées sans coût figé : prix d'achat de la dernière
+            # entrée (active ou archivée) faite avant la vente.
+            for table_v, col_date in (('sorties', 'date_sortie'), ('archive_ventes', 'date_vente')):
+                c.execute(f"""UPDATE {table_v} v SET cout_unitaire = sub.pu FROM (
+                                SELECT v2.id, (SELECT x.pu FROM (
+                                        SELECT produit_id, prix_unitaire AS pu, date_entree AS dt FROM entrees
+                                        UNION ALL
+                                        SELECT produit_id, prix_unitaire, date_entree FROM archive_entrees) x
+                                    WHERE x.produit_id = v2.produit_id AND x.dt <= v2.{col_date}
+                                    ORDER BY x.dt DESC LIMIT 1) AS pu
+                                FROM {table_v} v2 WHERE v2.cout_unitaire IS NULL) sub
+                              WHERE sub.id = v.id AND sub.pu IS NOT NULL""")
+        except Exception as e:
+            print(f"⚠️ Erreur migration coûts/marges: {e}")
+
         colonnes_a_convertir = [
             ('produits', 'stock'),
             ('sorties', 'quantite'),
@@ -980,7 +1012,7 @@ def archiver_hebdomadaire():
 
         cm.execute('''SELECT s.id,s.produit_id,s.quantite,s.prix_unitaire,s.total,
                              s.date_sortie,s.client,s.employe_id,p.nom,u.nom,s.groupe_vente,s.client_id,s.palier_nom,
-                             s.boutique_id,s.mode_paiement
+                             s.boutique_id,s.mode_paiement,s.cout_unitaire
                       FROM sorties s JOIN produits p ON s.produit_id=p.id
                       JOIN users u ON s.employe_id=u.id
                       WHERE DATE(s.date_sortie)>=%s AND DATE(s.date_sortie)<=%s''',
@@ -991,9 +1023,9 @@ def archiver_hebdomadaire():
                            (id, produit_id, quantite, prix_unitaire, total, date_vente,
                             employe_id, client, archive_date, semaine, annee,
                             produit_nom, employe_nom, groupe_vente, client_id, palier_nom,
-                            boutique_id, mode_paiement)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                       (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9],v[10],v[11],v[12],v[13],v[14]))
+                            boutique_id, mode_paiement, cout_unitaire)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                       (v[0],v[1],v[2],v[3],v[4],v[5],v[7],v[6],now_s,sem,annee,v[8],v[9],v[10],v[11],v[12],v[13],v[14],v[15]))
             cm.execute("DELETE FROM sorties WHERE id=%s",(v[0],))
 
         cm.execute('''SELECT e.id,e.produit_id,e.quantite,e.prix_unitaire,e.total,
@@ -2011,6 +2043,12 @@ def modifier_produit(id):
         if doublon:
             flash(message_doublon_produit(doublon) + ' — modification annulée')
             return redirect('/admin/produits')
+        prix_achat_brut = request.form.get('prix_achat', '').strip()
+        if prix_achat_brut:
+            try:
+                exe("UPDATE produits SET prix_achat=? WHERE id=?", (round(float(prix_achat_brut), 2), id))
+            except ValueError:
+                pass
         ok = exe("UPDATE produits SET nom=?, prix=?, stock=?, stock_min=?, unite_id=?, categorie_id=?, valeur_unite=?, vente_fractionnable=?, code_barre=? WHERE id=?", 
             (nom, prix, stock, smin, unite_id, categorie_id, valeur_unite, vente_fractionnable, code_barre, id))
         if ok:
@@ -2433,7 +2471,17 @@ def entrees_list():
             where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
             produits = qall(f"SELECT id,nom,stock,COALESCE(vente_fractionnable,0) FROM produits WHERE 1=1{where_bq2} ORDER BY nom", params_bq2)
             set_cached(cache_key, (entrees, produits))
-        return render_template('entrees.html', entrees=entrees, produits=produits)
+        where_fp, params_fp = boutique_filtre_sql('fp.boutique_id')
+        catalogue = {}
+        for nom_f, pid_c, pa_c in qall(f'''SELECT f.nom, fp.produit_id, fp.prix_achat
+                                           FROM fournisseur_produits fp
+                                           JOIN fournisseurs f ON f.id = fp.fournisseur_id
+                                           WHERE 1=1{where_fp}''', params_fp):
+            catalogue.setdefault(nom_f, {})[str(pid_c)] = float(pa_c or 0)
+        where_f, params_f = boutique_filtre_sql('boutique_id')
+        fournisseurs_noms = [r[0] for r in qall(f"SELECT nom FROM fournisseurs WHERE 1=1{where_f} ORDER BY nom", params_f)]
+        return render_template('entrees.html', entrees=entrees, produits=produits,
+                               catalogue=catalogue, fournisseurs_noms=fournisseurs_noms)
     except Exception as e:
         print(f"❌ Erreur entrees_list: {e}")
         flash('Erreur lors du chargement des entrées')
@@ -2542,7 +2590,7 @@ def _traiter_vente_cart(cart, client, employe_id, telephone=None, mode_paiement=
             continue
         if pid <= 0 or qty_selection <= 0:
             continue
-        p = q1("SELECT nom, prix, stock, vente_fractionnable, boutique_id FROM produits WHERE id=?", (pid,))
+        p = q1("SELECT nom, prix, stock, vente_fractionnable, boutique_id, prix_achat FROM produits WHERE id=?", (pid,))
         if not p:
             erreurs.append(f'Produit #{pid} introuvable')
             continue
@@ -2570,9 +2618,9 @@ def _traiter_vente_cart(cart, client, employe_id, telephone=None, mode_paiement=
             continue
 
         insert_ok = exe("""INSERT INTO sorties
-            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id, palier_nom, boutique_id, mode_paiement)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (pid, qty_base, prix_unitaire, total, now, client, employe_id, groupe_vente, client_id, palier_nom, p[4], mode_paiement))
+            (produit_id, quantite, prix_unitaire, total, date_sortie, client, employe_id, groupe_vente, client_id, palier_nom, boutique_id, mode_paiement, cout_unitaire)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (pid, qty_base, prix_unitaire, total, now, client, employe_id, groupe_vente, client_id, palier_nom, p[4], mode_paiement, round(float(p[5] or 0), 2)))
         if not insert_ok:
             erreurs.append(f'Échec d\'enregistrement pour "{p[0]}" (erreur serveur)')
             continue
@@ -2646,6 +2694,38 @@ def _annuler_vente(groupe_vente, annule_par_id, motif=None):
     return True, f"✅ Vente annulée ({motif}), stock restauré : " + ", ".join(noms)
 
 
+def _mettre_a_jour_prix_achat(pid, qty_recue, pu_recu):
+    """Recalcule le prix d'achat moyen pondéré (CMUP) du produit après une entrée."""
+    r = q1("SELECT stock, COALESCE(prix_achat, 0) FROM produits WHERE id=?", (pid,))
+    if not r:
+        return
+    stock_actuel = max(float(r[0] or 0), 0.0)
+    pa_actuel = float(r[1] or 0)
+    if stock_actuel > 0 and pa_actuel > 0:
+        nouveau = (stock_actuel * pa_actuel + qty_recue * pu_recu) / (stock_actuel + qty_recue)
+    else:
+        nouveau = pu_recu
+    exe("UPDATE produits SET prix_achat=? WHERE id=?", (round(nouveau, 2), pid))
+
+
+def _maj_catalogue_fournisseur(fournisseur_id, produit_id, prix, boutique_id):
+    exe("""INSERT INTO fournisseur_produits (fournisseur_id, produit_id, prix_achat, date_maj, boutique_id)
+           VALUES (?,?,?,?,?)
+           ON CONFLICT (fournisseur_id, produit_id)
+           DO UPDATE SET prix_achat=EXCLUDED.prix_achat, date_maj=EXCLUDED.date_maj""",
+        (fournisseur_id, produit_id, prix, datetime.now().strftime('%Y-%m-%d'), boutique_id))
+
+
+def _memoriser_prix_fournisseur(nom_fournisseur, pid, pu, boutique_id):
+    """Après une entrée faite avec un fournisseur connu, son catalogue garde le dernier prix payé."""
+    nom = (nom_fournisseur or '').strip()
+    if not nom:
+        return
+    f = q1("SELECT id FROM fournisseurs WHERE nom=? AND boutique_id=?", (nom, boutique_id))
+    if f:
+        _maj_catalogue_fournisseur(f[0], pid, pu, boutique_id)
+
+
 def _traiter_entree(pid, qty, pu, fournisseur, employe_id):
     """Retourne (ok: bool, message: str)."""
     try:
@@ -2666,6 +2746,8 @@ def _traiter_entree(pid, qty, pu, fournisseur, employe_id):
         (pid, qty, pu, total, now, fournisseur or '', employe_id, p[2]))
     if not insert_ok:
         return False, f'❌ Échec d\'enregistrement de l\'entrée pour "{p[0]}" (erreur serveur)'
+    _mettre_a_jour_prix_achat(pid, qty, pu)
+    _memoriser_prix_fournisseur(fournisseur, pid, pu, p[2])
     exe("UPDATE produits SET stock=stock+? WHERE id=?", (qty, pid))
     verifier_alertes_stock()
     return True, f'✅ Entrée : +{format_qte(qty)} {p[0]}'
@@ -3625,6 +3707,45 @@ def modifier_fournisseur(id):
         print(f"❌ Erreur modifier_fournisseur: {e}")
         flash('❌ Erreur lors de la modification')
     return redirect('/admin/fournisseurs')
+
+@app.route('/admin/fournisseurs/<int:id>/catalogue', methods=['GET', 'POST'])
+def catalogue_fournisseur(id):
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        f = q1("SELECT id, nom, boutique_id FROM fournisseurs WHERE id=?", (id,))
+        if not f:
+            flash('❌ Fournisseur introuvable')
+            return redirect('/admin/fournisseurs')
+        if request.method == 'POST':
+            nb = 0
+            for (pid,) in qall("SELECT id FROM produits WHERE boutique_id=?", (f[2],)):
+                brut = request.form.get(f'prix_{pid}', '').strip()
+                if brut == '':
+                    exe("DELETE FROM fournisseur_produits WHERE fournisseur_id=? AND produit_id=?", (id, pid))
+                    continue
+                try:
+                    prix = round(float(brut), 2)
+                except ValueError:
+                    continue
+                if prix > 0:
+                    _maj_catalogue_fournisseur(id, pid, prix, f[2])
+                    nb += 1
+            flash(f'✅ Catalogue de {f[1]} enregistré ({nb} prix)')
+            return redirect(f'/admin/fournisseurs/{id}/catalogue')
+
+        produits_b = qall("SELECT id, nom, COALESCE(prix_achat, 0) FROM produits WHERE boutique_id=? AND COALESCE(actif, 1)=1 ORDER BY nom", (f[2],))
+        prix_f = {r[0]: (r[1], r[2]) for r in qall("SELECT produit_id, prix_achat, date_maj FROM fournisseur_produits WHERE fournisseur_id=?", (id,))}
+        lignes = []
+        for pr in produits_b:
+            prix, maj = prix_f.get(pr[0], (None, None))
+            lignes.append({'id': pr[0], 'nom': pr[1], 'prix_moyen': float(pr[2] or 0), 'prix': prix, 'maj': maj})
+        return render_template('admin_fournisseur_catalogue.html', fournisseur=f, lignes=lignes)
+    except Exception as e:
+        print(f"❌ Erreur catalogue_fournisseur: {e}")
+        flash('❌ Erreur lors du chargement du catalogue')
+        return redirect('/admin/fournisseurs')
+
 
 @app.route('/admin/fournisseurs/supprimer/<int:id>')
 def supprimer_fournisseur(id):

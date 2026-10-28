@@ -385,7 +385,10 @@
         <div class="add-form">
             <input type="number" name="quantite" id="quantite" placeholder="Quantité" required>
             <input type="number" name="prix_unitaire" id="prix_unitaire" placeholder="Prix unitaire (FCFA)" required>
-            <input type="text" name="fournisseur" id="fournisseur" placeholder="Fournisseur">
+            <input type="text" name="fournisseur" id="fournisseur" placeholder="Fournisseur" list="fournisseursList" autocomplete="off">
+            <datalist id="fournisseursList">
+                {% for nom in fournisseurs_noms %}<option value="{{ nom }}">{% endfor %}
+            </datalist>
             <button type="submit" id="submitBtn" disabled>✅ Valider l'entrée</button>
         </div>
     </form>
@@ -547,6 +550,7 @@
         searchInput.value = product.nom;
         productDropdownEl.style.display = 'none';
         submitBtn.disabled = false;
+        suggererPrixFournisseur();
         document.getElementById('quantite').focus();
     }
     
@@ -618,6 +622,18 @@
         return confirm(`Confirmer l'entrée de ${quantite} ${selectedProduit.nom} pour ${quantite * prix} FCFA ?`);
     });
     
+    // ── Prix d'achat suggéré d'après le catalogue du fournisseur ──
+    const CATALOGUE_FOURNISSEURS = {{ catalogue|tojson }};
+    function suggererPrixFournisseur() {
+        if (!selectedProduit) return;
+        const nomF = document.getElementById('fournisseur').value.trim();
+        const prixF = (CATALOGUE_FOURNISSEURS[nomF] || {})[String(selectedProduit.id)];
+        if (prixF !== undefined) {
+            document.getElementById('prix_unitaire').value = Math.round(prixF);
+        }
+    }
+    document.getElementById('fournisseur').addEventListener('change', suggererPrixFournisseur);
+
     // Mettre à jour les totaux des jours dans l'en-tête
     document.addEventListener('DOMContentLoaded', function() {
         const daySeparators = document.querySelectorAll('.day-separator');

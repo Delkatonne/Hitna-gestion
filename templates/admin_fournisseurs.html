@@ -187,6 +187,7 @@
                     <td id="adr-{{ f[0] }}">{{ f[5] or '-' }}</td>
                     <td style="white-space:nowrap;">
                         <button onclick="activerEdition({{ f[0] }})" class="btn-small" style="background:#ffc107; color:#333;"><i class="bi bi-pencil-square"></i> Modifier</button>
+                        <a href="/admin/fournisseurs/{{ f[0] }}/catalogue" style="background:#17a2b8; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-size:13px;"><i class="bi bi-tags"></i> Prix</a>
                         <a href="/admin/fournisseurs/supprimer/{{ f[0] }}"
                             onclick="return confirm('Supprimer ce fournisseur ?')"
                             style="background:#dc3545; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-size:13px;"><i class="bi bi-trash"></i> Supprimer</a>

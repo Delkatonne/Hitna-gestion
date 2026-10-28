@@ -511,6 +511,11 @@
 {% block page_subtitle %}Enregistrer des ventes et suivre l'activité{% endblock %}
 
 {% block content %}
+<div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+    <a href="/export/pdf_employe" target="_blank" style="background:#17a2b8; color:white; font-weight:bold; text-decoration:none; padding:10px 16px; border-radius:10px; font-size:14px;">
+        <i class="bi bi-file-earmark-text"></i> Exporter le point du jour (PDF)
+    </a>
+</div>
 <!-- Statistiques des vendeurs -->
 {% if stats_vendeurs %}
 <div class="stats-vendeurs">

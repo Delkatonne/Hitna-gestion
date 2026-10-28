@@ -9,6 +9,11 @@
 {% endblock %}
 
 {% block content %}
+<div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+    <a href="/export/pdf_dashboard" target="_blank" style="background:#1e3c72; color:white; font-weight:bold; text-decoration:none; padding:10px 16px; border-radius:10px; font-size:14px;">
+        <i class="bi bi-file-earmark-pdf"></i> Exporter la vue d'ensemble (PDF)
+    </a>
+</div>
 <!-- Application React (data-no-datefr : les dates y sont déjà formatées en jj/mm/aaaa) -->
 <div id="app-root" data-no-datefr>
     <div class="hx-chargement">

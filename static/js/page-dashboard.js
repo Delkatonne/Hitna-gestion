@@ -83,6 +83,10 @@
             sous=${html`${k.nb_ventes_jour} vente(s) · <${HX.Variation} valeur=${k.variation_jour} /> vs hier`} />
         </div>
         <div className="col-6 col-lg-4 col-xl-2">
+          <${Kpi} titre="Bénéfice brut du jour" icone="graph-up-arrow" couleur="vert" valeur=${HX.fmtNum(d.benefices.jour.benefice)} unite="FCFA"
+            sous=${d.benefices.jour.marge_pct !== null ? 'Marge ' + d.benefices.jour.marge_pct + ' %' : 'Aucune vente aujourd\'hui'} />
+        </div>
+        <div className="col-6 col-lg-4 col-xl-2">
           <${Kpi} titre="Ventes du mois" icone="calendar-month" valeur=${HX.fmtNum(k.ventes_mois)} unite="FCFA"
             sous=${html`${k.nb_ventes_mois} vente(s) · <${HX.Variation} valeur=${k.variation_mois} /> vs même période du mois dernier`} />
         </div>
@@ -110,6 +114,20 @@
         ${k.commandes_nouvelles > 0 ? html`<div className="col-6 col-lg-3"><${Alerte} icone="bag-check" lien="/admin/commandes" valeur=${k.commandes_nouvelles} libelle="Nouvelle(s) commande(s)" /></div>` : null}
         ${k.messages_non_lus > 0 ? html`<div className="col-6 col-lg-3"><${Alerte} icone="envelope" lien="/admin/messages" valeur=${k.messages_non_lus} libelle="Message(s) non lu(s)" /></div>` : null}
       </div>` : null}
+
+      <div className="row g-3">
+        <div className="col-12">
+          <${Carte} titre="Bénéfice par produit (mois en cours)" icone="graph-up-arrow">
+            ${d.benefices.par_produit.length
+              ? html`<div className="table-responsive"><table className="table table-sm align-middle mb-0">
+                  <thead><tr><th>Produit</th><th className="text-end">Ventes (FCFA)</th><th className="text-end">Coût (FCFA)</th><th className="text-end">Bénéfice (FCFA)</th><th className="text-end">Marge</th></tr></thead>
+                  <tbody>${d.benefices.par_produit.map(function (p) {
+                    return html`<tr key=${p.nom}><td>${p.nom}</td><td className="text-end">${HX.fmtNum(p.ca)}</td><td className="text-end">${HX.fmtNum(p.cout)}</td><td className="text-end">${HX.fmtNum(p.benefice)}</td><td className="text-end">${p.marge_pct === null ? '-' : p.marge_pct + ' %'}</td></tr>`;
+                  })}</tbody></table></div>`
+              : html`<${Vide} icone="graph-up-arrow" texte="Aucune vente ce mois-ci" />`}
+          <//>
+        </div>
+      </div>
 
       <div className="row g-3">
         <div className="col-lg-8">

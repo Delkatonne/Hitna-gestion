@@ -7,13 +7,17 @@
 # que servir les pages-coquilles et les données.
 # Chargé par app.py avec :  import finances
 # ══════════════════════════════════════════════════════════════════════════
+import io
 import uuid
 from datetime import datetime, date, timedelta
 
-from flask import request, session, jsonify, render_template, redirect
+from flask import request, session, jsonify, render_template, redirect, send_file
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 from app import (app, q1, qall, get_db, release_db, clear_cache,
-                 boutique_active, boutique_filtre_sql)
+                 boutique_active, boutique_filtre_sql,
+                 format_prix, add_header_to_pdf, add_logo_to_pdf)
 
 CATEGORIES_DEPENSES = [
     'Achat de nouveaux produits',
@@ -248,6 +252,54 @@ def _soldes_comptes():
     return comptes
 
 
+# ──────────────────────────────────────────────────────────────
+# BÉNÉFICES — coût des ventes = quantité × coût unitaire figé à la vente
+# (ou prix d'achat actuel du produit si la vente est antérieure à ce suivi)
+# ──────────────────────────────────────────────────────────────
+_COUTS_U = """
+    SELECT s.date_sortie::timestamp AS d, s.total AS total, s.quantite AS qte,
+           COALESCE(s.cout_unitaire, p.prix_achat, 0) AS cout,
+           COALESCE(p.nom, 'Produit supprimé') AS produit, s.boutique_id AS boutique_id
+    FROM sorties s
+    LEFT JOIN produits p ON p.id = s.produit_id
+    UNION ALL
+    SELECT a.date_vente::timestamp, a.total, a.quantite,
+           COALESCE(a.cout_unitaire, p.prix_achat, 0),
+           COALESCE(a.produit_nom, p.nom, ''), a.boutique_id
+    FROM archive_ventes a
+    LEFT JOIN produits p ON p.id = a.produit_id
+"""
+
+
+def _marge(debut, fin_exclue, bq, bp):
+    """Retourne (ca, cout) sur la période."""
+    r = q1(f'''SELECT COALESCE(SUM(v.total), 0), COALESCE(SUM(v.qte * v.cout), 0)
+               FROM ({_COUTS_U}) v WHERE v.d >= ?::date AND v.d < ?::date{bq}''',
+           (debut.isoformat(), fin_exclue.isoformat()) + bp)
+    return (_n(r[0]), _n(r[1])) if r else (0.0, 0.0)
+
+
+def _bloc_benefice(ca, cout):
+    benefice = round(ca - cout, 2)
+    return {'ca': ca, 'cout': cout, 'benefice': benefice,
+            'marge_pct': round(benefice / ca * 100, 1) if ca else None}
+
+
+def _benefices_par_produit(debut, fin_exclue, bq, bp):
+    rows = qall(f'''SELECT v.produit, COALESCE(SUM(v.qte), 0), COALESCE(SUM(v.total), 0),
+                          COALESCE(SUM(v.qte * v.cout), 0)
+                   FROM ({_COUTS_U}) v WHERE v.d >= ?::date AND v.d < ?::date{bq}
+                   GROUP BY v.produit ORDER BY SUM(v.total - v.qte * v.cout) DESC LIMIT 15''',
+                (debut.isoformat(), fin_exclue.isoformat()) + bp)
+    resultat = []
+    for r in rows:
+        bloc = _bloc_benefice(_n(r[2]), _n(r[3]))
+        resultat.append({'nom': r[0], 'quantite': _n(r[1]), 'ca': bloc['ca'],
+                         'cout': bloc['cout'], 'benefice': bloc['benefice'],
+                         'marge_pct': bloc['marge_pct']})
+    return resultat
+
+
 @app.route('/api/dashboard')
 def api_dashboard():
     if not _admin():
@@ -281,6 +333,13 @@ def api_dashboard():
         ca_hier, _ = ventes(hier, aujourdhui)
         ca_mois, nb_mois = ventes(debut_mois, demain)
         ca_mois_prec, _ = ventes(debut_mois_prec, meme_periode_fin)
+        ca_j, cout_j = _marge(aujourdhui, demain, bq, bp)
+        ca_m, cout_m = _marge(debut_mois, demain, bq, bp)
+        benefices = {
+            'jour': _bloc_benefice(ca_j, cout_j),
+            'mois': _bloc_benefice(ca_m, cout_m),
+            'par_produit': _benefices_par_produit(debut_mois, demain, bq, bp),
+        }
 
         achats_mois = somme(f'({_ACHATS_U}) a', debut_mois, demain)
         pertes_mois = somme(f'({_PERTES_U}) p', debut_mois, demain)
@@ -366,6 +425,7 @@ def api_dashboard():
                 'commandes_nouvelles': int(nb_cmd[0]) if nb_cmd else 0,
                 'messages_non_lus': int(nb_msg[0]) if nb_msg else 0,
             },
+            'benefices': benefices,
             'ventes_14_jours': serie_14,
             'ventes_par_heure': serie_heures,
             'top_produits': [{'nom': r[0], 'quantite': _n(r[1]), 'total': _n(r[2])} for r in top],
@@ -937,6 +997,202 @@ def api_tresorerie_mouvement_supprimer(mvt_id):
     except Exception as e:
         print(f"Erreur api_tresorerie_mouvement_supprimer: {e}")
         return _err('Erreur lors de la suppression', 500)
+
+
+# ──────────────────────────────────────────────────────────────
+# EXPORT PDF — VUE D'ENSEMBLE DU TABLEAU DE BORD (admin)
+# Réutilise exactement les données de /api/dashboard.
+# ──────────────────────────────────────────────────────────────
+def _pdf_date_fr(valeur):
+    try:
+        return datetime.strptime(str(valeur)[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+    except (ValueError, TypeError):
+        return str(valeur)
+
+
+def _pdf_pct(valeur):
+    return f"{valeur:+.1f} %" if isinstance(valeur, (int, float)) else "-"
+
+
+@app.route('/export/pdf_dashboard')
+def export_pdf_dashboard():
+    if not _admin():
+        return _non_autorise()
+    try:
+        rv = api_dashboard()
+        if isinstance(rv, tuple):  # erreur renvoyée par l'API
+            return rv
+        d = rv.get_json()
+        k = d['kpis']
+
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        bleu = (0.12, 0.24, 0.45)
+        gris = (0.5, 0.5, 0.5)
+        date_str = datetime.now().strftime('%d/%m/%Y')
+        marge = 50
+
+        def nouvelle_page():
+            c.showPage()
+            add_header_to_pdf(c, width, height)
+            add_logo_to_pdf(c, width, height)
+            return height - 100
+
+        def section(y, titre):
+            if y < 120:
+                y = nouvelle_page()
+            c.setFont("Helvetica-Bold", 12)
+            c.setFillColorRGB(*bleu)
+            c.drawString(marge, y, titre)
+            c.setStrokeColorRGB(0.8, 0.8, 0.8)
+            c.setLineWidth(0.5)
+            c.line(marge, y - 5, width - marge, y - 5)
+            return y - 22
+
+        def ligne(y, cols, xs, gras=False, couleur=(0, 0, 0)):
+            if y < 60:
+                y = nouvelle_page()
+            c.setFont("Helvetica-Bold" if gras else "Helvetica", 9)
+            c.setFillColorRGB(*couleur)
+            for txt, x in zip(cols, xs):
+                c.drawString(x, y, str(txt))
+            return y - 15
+
+        def entete(y, cols, xs):
+            return ligne(y, cols, xs, gras=True, couleur=(0.35, 0.35, 0.35))
+
+        # ── Page 1 : titre + indicateurs clés ──
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        c.setFont("Helvetica-Bold", 16)
+        c.setFillColorRGB(*bleu)
+        c.drawString(marge, height - 125, f"VUE D'ENSEMBLE - {date_str}")
+        y = height - 155
+
+        y = section(y, "Indicateurs clés")
+        indicateurs = [
+            ("Ventes du jour", f"{format_prix(k['ventes_jour'])} FCFA  ({k['nb_ventes_jour']} vente(s), {_pdf_pct(k['variation_jour'])} vs hier)"),
+            ("Bénéfice brut du jour", f"{format_prix(d['benefices']['jour']['benefice'])} FCFA  (marge {_pdf_pct(d['benefices']['jour']['marge_pct'])})"),
+            ("Ventes du mois", f"{format_prix(k['ventes_mois'])} FCFA  ({k['nb_ventes_mois']} vente(s), {_pdf_pct(k['variation_mois'])} vs mois précédent)"),
+            ("Achats du mois", f"{format_prix(k['achats_mois'])} FCFA"),
+            ("Charges du mois", f"{format_prix(k['charges_mois'])} FCFA"),
+            ("Dépenses du mois", f"{format_prix(k['depenses_mois'])} FCFA"),
+            ("Pertes du mois", f"{format_prix(k['pertes_mois'])} FCFA"),
+            ("Bénéfice net du mois", f"{format_prix(k['benefice_net_mois'])} FCFA"),
+            ("Trésorerie totale", f"{format_prix(k['tresorerie_totale'])} FCFA"),
+            ("Crédits clients en cours", f"{format_prix(k['credits_en_cours'])} FCFA  ({k['nb_credits']} crédit(s))"),
+            ("Valeur du stock", f"{format_prix(k['valeur_stock'])} FCFA  ({k['nb_produits']} produit(s))"),
+            ("Alertes stock", f"{k['nb_ruptures']} rupture(s), {k['nb_stock_bas']} sous le minimum"),
+        ]
+        for libelle, valeur in indicateurs:
+            y = ligne(y, [libelle, valeur], [marge, 230])
+        y -= 15
+
+        # ── Ventes des 14 derniers jours ──
+        y = section(y, "Ventes des 14 derniers jours")
+        xs = [marge, 200, 330]
+        y = entete(y, ["Date", "Total (FCFA)", "Ventes"], xs)
+        for j in d['ventes_14_jours']:
+            y = ligne(y, [_pdf_date_fr(j['date']), format_prix(j['total']), j['nb']], xs)
+        y -= 15
+
+        # ── Top produits (30 derniers jours) ──
+        y = section(y, "Top produits (30 derniers jours)")
+        xs = [marge, 300, 400]
+        if d['top_produits']:
+            y = entete(y, ["Produit", "Quantité", "Total (FCFA)"], xs)
+            for p_ in d['top_produits']:
+                y = ligne(y, [str(p_['nom'])[:40], f"{p_['quantite']:g}", format_prix(p_['total'])], xs)
+        else:
+            y = ligne(y, ["Aucune vente sur la période."], [marge], couleur=gris)
+        y -= 15
+
+        # ── Bénéfice par produit (mois) ──
+        y = section(y, "Bénéfice par produit (mois en cours)")
+        xs = [marge, 250, 320, 390, 460]
+        if d['benefices']['par_produit']:
+            y = entete(y, ["Produit", "Ventes", "Coût", "Bénéfice", "Marge"], xs)
+            for p_ in d['benefices']['par_produit']:
+                y = ligne(y, [str(p_['nom'])[:30], format_prix(p_['ca']), format_prix(p_['cout']),
+                              format_prix(p_['benefice']),
+                              f"{p_['marge_pct']} %" if p_['marge_pct'] is not None else "-"], xs)
+        else:
+            y = ligne(y, ["Aucune vente ce mois-ci."], [marge], couleur=gris)
+        y -= 15
+
+        # ── Modes de paiement (mois) ──
+        y = section(y, "Modes de paiement (mois en cours)")
+        xs = [marge, 300]
+        if d['modes_paiement']:
+            y = entete(y, ["Mode", "Total (FCFA)"], xs)
+            for m in d['modes_paiement']:
+                y = ligne(y, [m['mode'], format_prix(m['total'])], xs)
+        else:
+            y = ligne(y, ["Aucune vente ce mois-ci."], [marge], couleur=gris)
+        y -= 15
+
+        # ── Vendeurs (aujourd'hui) ──
+        y = section(y, "Vendeurs (aujourd'hui)")
+        xs = [marge, 300, 400]
+        if d['vendeurs']:
+            y = entete(y, ["Vendeur", "Ventes", "Total (FCFA)"], xs)
+            for v in d['vendeurs']:
+                y = ligne(y, [str(v['nom'])[:30], v['nb'], format_prix(v['total'])], xs)
+        else:
+            y = ligne(y, ["Aucune vente aujourd'hui."], [marge], couleur=gris)
+        y -= 15
+
+        # ── Dernières ventes ──
+        y = section(y, "Dernières ventes")
+        xs = [marge, 120, 200, 320, 420]
+        if d['dernieres_ventes']:
+            y = entete(y, ["Date", "Client", "Vendeur", "Mode", "Total (FCFA)"], xs)
+            for v in d['dernieres_ventes']:
+                y = ligne(y, [_pdf_date_fr(v['date']), str(v['client'] or '-')[:16],
+                              str(v['vendeur'] or '-')[:16], str(v['mode'] or '-')[:14],
+                              format_prix(v['total'])], xs)
+        else:
+            y = ligne(y, ["Aucune vente récente."], [marge], couleur=gris)
+        y -= 15
+
+        # ── Stock bas ──
+        y = section(y, "Produits en stock bas")
+        xs = [marge, 330, 410]
+        if d['stock_bas']:
+            y = entete(y, ["Produit", "Stock", "Minimum"], xs)
+            for p_ in d['stock_bas']:
+                y = ligne(y, [str(p_['nom'])[:40], f"{p_['stock']:g}", f"{p_['stock_min']:g}"], xs)
+        else:
+            y = ligne(y, ["Aucun produit sous le stock minimum."], [marge], couleur=gris)
+        y -= 15
+
+        # ── Soldes des comptes ──
+        y = section(y, "Soldes des comptes")
+        xs = [marge, 230, 330, 440]
+        if d['comptes']:
+            y = entete(y, ["Compte", "Boutique", "Type", "Solde (FCFA)"], xs)
+            for cpt in d['comptes']:
+                y = ligne(y, [str(cpt['nom'])[:28], str(cpt['boutique'] or '-')[:18],
+                              str(cpt['type'])[:16], format_prix(cpt['solde'])], xs)
+        else:
+            y = ligne(y, ["Aucun compte."], [marge], couleur=gris)
+
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(*gris)
+        c.drawString(marge, 30, f"HITNA - Vue d'ensemble du {date_str} - Généré automatiquement")
+        c.save()
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"vue_ensemble_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        print(f"Erreur export_pdf_dashboard: {e}")
+        return _err('Impossible de générer le PDF', 500)
 
 
 init_db_finances()
