@@ -52,6 +52,9 @@
       ${f.data ? html`<div className="text-muted">
         <${Icone} nom="calendar-range" /> Du ${HX.fmtDate(f.data.debut)} au ${HX.fmtDate(f.data.fin)}
       </div>` : null}
+      ${f.data ? html`<a href=${'/export/pdf_stats?jours=' + jours} target="_blank"
+          style=${{ marginLeft: 'auto', background: '#1e3c72', color: 'white', padding: '8px 14px', borderRadius: '10px', textDecoration: 'none', fontWeight: 'bold' }}>
+          <${Icone} nom="file-earmark-pdf" /> Exporter en PDF</a>` : null}
     </div>`;
 
     if (f.chargement && !f.data) return html`<div className="hx-page">${selecteur}<${HX.Chargement} /></div>`;

@@ -1195,4 +1195,156 @@ def export_pdf_dashboard():
         return _err('Impossible de générer le PDF', 500)
 
 
+# ──────────────────────────────────────────────────────────────
+# EXPORT PDF — PAGE STATISTIQUES (admin)
+# Réutilise les données de /api/stats pour la période choisie (?jours=...).
+# ──────────────────────────────────────────────────────────────
+@app.route('/export/pdf_stats')
+def export_pdf_stats():
+    if not _admin():
+        return _non_autorise()
+    try:
+        rv = api_stats()
+        if isinstance(rv, tuple):  # erreur renvoyée par l'API
+            return rv
+        d = rv.get_json()
+        k = d['kpis']
+
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        bleu = (0.12, 0.24, 0.45)
+        gris = (0.5, 0.5, 0.5)
+        marge = 50
+        date_str = datetime.now().strftime('%d/%m/%Y')
+        periode = f"Du {_pdf_date_fr(d['debut'])} au {_pdf_date_fr(d['fin'])} ({d['jours']} jours)"
+
+        def nouvelle_page():
+            c.showPage()
+            add_header_to_pdf(c, width, height)
+            add_logo_to_pdf(c, width, height)
+            return height - 100
+
+        def section(y, titre):
+            if y < 120:
+                y = nouvelle_page()
+            c.setFont("Helvetica-Bold", 12)
+            c.setFillColorRGB(*bleu)
+            c.drawString(marge, y, titre)
+            c.setStrokeColorRGB(0.8, 0.8, 0.8)
+            c.setLineWidth(0.5)
+            c.line(marge, y - 5, width - marge, y - 5)
+            return y - 22
+
+        def ligne(y, cols, xs, gras=False, couleur=(0, 0, 0)):
+            if y < 60:
+                y = nouvelle_page()
+            c.setFont("Helvetica-Bold" if gras else "Helvetica", 9)
+            c.setFillColorRGB(*couleur)
+            for txt, x in zip(cols, xs):
+                c.drawString(x, y, str(txt))
+            return y - 15
+
+        def tableau(y, titre, entetes, xs, lignes, message_vide):
+            y = section(y, titre)
+            if not lignes:
+                y = ligne(y, [message_vide], [marge], couleur=gris)
+                return y - 15
+            y = ligne(y, entetes, xs, gras=True, couleur=(0.35, 0.35, 0.35))
+            for cols in lignes:
+                y = ligne(y, cols, xs)
+            return y - 15
+
+        # ── Page 1 : titre + indicateurs ──
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        c.setFont("Helvetica-Bold", 16)
+        c.setFillColorRGB(*bleu)
+        c.drawString(marge, height - 125, f"STATISTIQUES - {date_str}")
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(*gris)
+        c.drawString(marge, height - 142, periode)
+        y = height - 170
+
+        y = section(y, "Indicateurs clés")
+        indicateurs = [
+            ("Chiffre d'affaires", f"{format_prix(k['ca'])} FCFA  ({_pdf_pct(k['variation_ca'])} vs période précédente)"),
+            ("Nombre de ventes", f"{k['nb_ventes']}  ({_pdf_pct(k['variation_nb'])})"),
+            ("Panier moyen", f"{format_prix(k['panier_moyen'])} FCFA"),
+            ("Articles vendus", f"{k['nb_articles']:g}"),
+            ("Achats de stock", f"{format_prix(k['achats'])} FCFA"),
+            ("Marge brute", f"{format_prix(k['marge_brute'])} FCFA"),
+            ("Charges", f"{format_prix(k['charges'])} FCFA"),
+            ("Dépenses enregistrées", f"{format_prix(k['depenses'])} FCFA"),
+            ("Pertes", f"{format_prix(k['pertes'])} FCFA"),
+            ("Résultat", f"{format_prix(k['resultat'])} FCFA"),
+        ]
+        for libelle, valeur in indicateurs:
+            y = ligne(y, [libelle, valeur], [marge, 230])
+        y -= 15
+
+        # ── Évolution des ventes ──
+        libelle_serie = "Évolution des ventes (par mois)" if d['granularite'] == 'mois' else "Évolution des ventes (par jour)"
+        xs = [marge, 200, 330]
+        lignes = [[(_pdf_date_fr(s['cle']) if len(s['cle']) == 10 else s['cle']),
+                   format_prix(s['total']), s['nb']] for s in d['serie']]
+        y = tableau(y, libelle_serie, ["Période", "Total (FCFA)", "Ventes"], xs, lignes, "Aucune donnée.")
+
+        # ── Meilleurs produits ──
+        y = tableau(y, "Meilleurs produits", ["Produit", "Quantité", "Total (FCFA)"], [marge, 300, 400],
+                    [[str(p_['nom'])[:40], f"{p_['quantite']:g}", format_prix(p_['total'])] for p_ in d['top_produits']],
+                    "Aucune vente sur la période.")
+
+        # ── Modes de paiement ──
+        y = tableau(y, "Modes de paiement", ["Mode", "Total (FCFA)"], [marge, 300],
+                    [[m['mode'], format_prix(m['total'])] for m in d['modes_paiement']],
+                    "Aucune vente sur la période.")
+
+        # ── Performance des vendeurs ──
+        y = tableau(y, "Performance des vendeurs", ["Vendeur", "Ventes", "Total (FCFA)"], [marge, 300, 400],
+                    [[str(v['nom'])[:30], v['nb'], format_prix(v['total'])] for v in d['vendeurs']],
+                    "Aucune vente sur la période.")
+
+        # ── Ventes par jour de la semaine ──
+        y = tableau(y, "Ventes par jour de la semaine", ["Jour", "Total (FCFA)"], [marge, 300],
+                    [[j['jour'], format_prix(j['total'])] for j in d['jours_semaine']],
+                    "Aucune donnée.")
+
+        # ── Produits en stock sans vente ──
+        y = tableau(y, "Produits en stock sans vente sur la période", ["Produit", "Stock", "Valeur (FCFA)"], [marge, 300, 400],
+                    [[str(p_['nom'])[:40], f"{p_['stock']:g}", format_prix(p_['valeur'])] for p_ in d['produits_dormants']],
+                    "Aucun produit dormant.")
+
+        # ── Dépenses et charges par catégorie ──
+        y = tableau(y, "Dépenses par catégorie", ["Catégorie", "Total (FCFA)"], [marge, 300],
+                    [[str(x['categorie'])[:40], format_prix(x['total'])] for x in d['depenses_par_categorie']],
+                    "Aucune dépense sur la période.")
+        y = tableau(y, "Charges par catégorie", ["Catégorie", "Total (FCFA)"], [marge, 300],
+                    [[str(x['categorie'])[:40], format_prix(x['total'])] for x in d['charges_par_categorie']],
+                    "Aucune charge sur la période.")
+
+        # ── Résultat mensuel (12 derniers mois) ──
+        y = tableau(y, "Résultat mensuel (12 derniers mois)",
+                    ["Mois", "Ventes", "Achats", "Charges", "Dépenses", "Résultat"], [marge, 150, 230, 310, 390, 470],
+                    [[m['libelle'], format_prix(m['ventes']), format_prix(m['achats']), format_prix(m['charges']),
+                      format_prix(m['depenses']), format_prix(m['resultat'])] for m in d['mensuel']],
+                    "Aucune donnée.")
+
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(*gris)
+        c.drawString(marge, 30, f"HITNA - Statistiques du {date_str} - Généré automatiquement")
+        c.save()
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"statistiques_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        print(f"Erreur export_pdf_stats: {e}")
+        return _err('Impossible de générer le PDF', 500)
+
+
 init_db_finances()
