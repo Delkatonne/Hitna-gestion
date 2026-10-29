@@ -20,6 +20,8 @@ app.secret_key = os.environ.get('SECRET_KEY', 'hitna_secret')
 # Session conservée 30 jours : sans ça, le cookie disparaît quand le téléphone ferme l'onglet
 app.permanent_session_lifetime = _timedelta(days=30)
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = bool(os.environ.get('RENDER'))   # RENDER est défini automatiquement sur Render
 
 # ──────────────────────────────────────────────────────────────
 # FILTRE JINJA : affichage propre des quantités décimales
@@ -156,19 +158,49 @@ def _get_pool():
             url = url.replace('postgres://', 'postgresql://', 1)
         if not url:
             raise RuntimeError("DATABASE_URL manquante.")
-        _db_pool = pg_pool.ThreadedConnectionPool(minconn=1, maxconn=10, dsn=url)
+        # keepalives : le serveur / le pooler de la base coupe les connexions restées inactives ;
+        # ces options détectent la coupure au lieu de laisser une connexion « morte » dans le pool.
+        _db_pool = pg_pool.ThreadedConnectionPool(
+            minconn=1, maxconn=10, dsn=url, connect_timeout=15,
+            keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
         print("✅ Pool de connexions PostgreSQL initialisé")
     return _db_pool
 
+_DERNIER_USAGE = {}   # id(connexion) -> instant de la dernière utilisation
+
 def get_db():
-    return _get_pool().getconn()
+    """Connexion du pool, vérifiée si elle est restée inutilisée un moment (connexion coupée côté serveur)."""
+    pool = _get_pool()
+    for _ in range(3):
+        conn = pool.getconn()
+        try:
+            if conn.closed:
+                raise psycopg2.OperationalError('connexion fermée')
+            if time() - _DERNIER_USAGE.get(id(conn), 0) > 20:
+                cur = conn.cursor()
+                cur.execute('SELECT 1')
+                cur.close()
+                conn.rollback()
+            _DERNIER_USAGE[id(conn)] = time()
+            return conn
+        except Exception:
+            _DERNIER_USAGE.pop(id(conn), None)
+            try:
+                pool.putconn(conn, close=True)
+            except Exception:
+                pass
+    return pool.getconn()
 
 def release_db(conn):
     """Remettre la connexion dans le pool plutôt que la fermer."""
     try:
-        _get_pool().putconn(conn)
+        _DERNIER_USAGE[id(conn)] = time()
+        _get_pool().putconn(conn, close=bool(getattr(conn, 'closed', 0)))
     except Exception:
         pass
+
+def _erreur_connexion(e):
+    return isinstance(e, (psycopg2.OperationalError, psycopg2.InterfaceError))
 
 # ──────────────────────────────────────────────────────────────
 # SAUVEGARDE DE LA BASE DE DONNÉES
@@ -217,7 +249,7 @@ def generer_backup_json():
                 release_db(conn)
     return data
 
-def q1(sql, params=()):
+def q1(sql, params=(), _essai=1):
     """fetchone — retourne un tuple ou None."""
     conn = None
     try:
@@ -235,12 +267,18 @@ def q1(sql, params=()):
                 conn.rollback()
             except Exception:
                 pass
+        if _essai == 1 and _erreur_connexion(e):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return q1(sql, params, _essai=2)
         return None
     finally:
         if conn:
             release_db(conn)
 
-def qall(sql, params=()):
+def qall(sql, params=(), _essai=1):
     """fetchall — retourne une liste de tuples."""
     conn = None
     try:
@@ -258,12 +296,18 @@ def qall(sql, params=()):
                 conn.rollback()
             except Exception:
                 pass
+        if _essai == 1 and _erreur_connexion(e):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return qall(sql, params, _essai=2)
         return []
     finally:
         if conn:
             release_db(conn)
 
-def exe(sql, params=(), returning=False):
+def exe(sql, params=(), returning=False, _essai=1):
     """INSERT / UPDATE / DELETE avec commit. returning=True retourne le nouvel id.
     Retourne False en cas d'échec (permet aux routes de détecter un vrai échec)."""
     conn = None
@@ -282,7 +326,16 @@ def exe(sql, params=(), returning=False):
     except Exception as e:
         print(f"❌ Erreur exe: {e}")
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        if _essai == 1 and _erreur_connexion(e):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return exe(sql, params, returning, _essai=2)
         return False
     finally:
         if conn:
@@ -1338,13 +1391,41 @@ def verify_password(password, stored_hash, user_id=None):
 # ──────────────────────────────────────────────────────────────
 # ROUTES AUTH
 # ──────────────────────────────────────────────────────────────
+def _page_accueil_de_la_session():
+    """Page d'accueil de l'utilisateur connecté, ou None s'il n'y a pas de session."""
+    if not session.get('user_id'):
+        return None
+    return '/dashboard' if session.get('role') == 'admin' else '/vente'
+
 @app.route('/')
 def accueil():
-    return redirect('/login')
+    return redirect(_page_accueil_de_la_session() or '/login')
+
+@app.route('/healthz')
+def healthz():
+    """Réponse immédiate, sans base de données : sert de test de santé et de « réveil » du service."""
+    return 'ok', 200, {'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8'}
+
+@app.route('/erreur-temporaire')
+def erreur_temporaire():
+    return reponse_serveur_occupe()
+
+def reponse_serveur_occupe():
+    """Page affichée quand le serveur ou la base de données ne répond pas encore (réveil de Render, connexion coupée).
+    On ne renvoie JAMAIS vers /login pour une simple erreur technique : la session reste valide."""
+    return render_template('erreur_temporaire.html'), 503, {'Retry-After': '5', 'Cache-Control': 'no-store'}
+
+@app.errorhandler(psycopg2.OperationalError)
+@app.errorhandler(psycopg2.InterfaceError)
+def erreur_base_indisponible(e):
+    print(f"❌ Base de données indisponible: {e}")
+    return reponse_serveur_occupe()
 
 @app.route('/login', methods=['GET','POST'])
 def login():
     try:
+        if request.method == 'GET' and _page_accueil_de_la_session():
+            return redirect(_page_accueil_de_la_session())
         if request.method == 'POST':
             ip = _get_client_ip()
             locked, attente_s = login_is_locked(ip)
@@ -3178,8 +3259,7 @@ def vente():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        flash(f'❌ Erreur: {str(e)}')
-        return redirect('/login')
+        return reponse_serveur_occupe()
 
 def _recuperer_lignes_recu(groupe_vente):
     """Retourne (lignes, archivee) pour un groupe_vente, en cherchant d'abord dans
@@ -3413,14 +3493,17 @@ def dashboard():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        archiver_si_necessaire()
-        verifier_alertes_stock()
+        # Ces deux tâches de fond ne doivent jamais empêcher l'affichage du tableau de bord
+        try:
+            archiver_si_necessaire()
+            verifier_alertes_stock()
+        except Exception as e:
+            print(f"❌ Tâches de fond du dashboard: {e}")
         # Les chiffres sont servis par /api/dashboard (finances.py) et affichés par React.
         return render_template('dashboard.html')
     except Exception as e:
         print(f"❌ Erreur dashboard: {e}")
-        flash('Erreur lors du chargement du dashboard')
-        return redirect('/login')
+        return reponse_serveur_occupe()
 
 # ─── PERTES ──────────────────────────────────────────────────────
 @app.route('/admin/pertes')

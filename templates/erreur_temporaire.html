@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#1e3c72">
+    <title>HITNA - Connexion en cours</title>
+    <style>
+        body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+               background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #1e3c72; }
+        .boite { background: #fff; border-radius: 16px; padding: 32px 28px; max-width: 420px; width: calc(100% - 32px); text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+        h1 { font-size: 20px; margin: 16px 0 8px; }
+        p { color: #555; line-height: 1.5; margin: 0 0 18px; font-size: 15px; }
+        .roue { width: 42px; height: 42px; border: 4px solid #dbe4f5; border-top-color: #2a5298; border-radius: 50%; margin: 0 auto; animation: tour 1s linear infinite; }
+        @keyframes tour { to { transform: rotate(360deg); } }
+        .bouton { display: inline-block; background: #2a5298; color: #fff; border: 0; border-radius: 10px; padding: 11px 22px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; }
+        small { display: block; margin-top: 14px; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="boite">
+        <div class="roue" aria-hidden="true"></div>
+        <h1>Le serveur démarre</h1>
+        <p>Après une période d'inactivité, le serveur met quelques secondes à se réveiller.
+           Votre session est conservée : la page se rechargera toute seule.</p>
+        <button class="bouton" type="button" onclick="location.reload()">Réessayer maintenant</button>
+        <small>Nouvelle tentative automatique dans <span id="compte">6</span> s</small>
+    </div>
+    <script>
+        var reste = 6, el = document.getElementById('compte');
+        setInterval(function () { reste--; if (el) el.textContent = Math.max(reste, 0); if (reste <= 0) location.reload(); }, 1000);
+    </script>
+</body>
+</html>
