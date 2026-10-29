@@ -798,6 +798,14 @@ def init_db():
                            date_creation TEXT, employe_id INTEGER, boutique_id INTEGER,
                            donnees_json TEXT, pdf BYTEA)""")
 
+            # Actualités (publicités) : texte + média stocké en base (le disque Render n'est pas durable)
+            c.execute("""CREATE TABLE IF NOT EXISTS actualites (
+                           id SERIAL PRIMARY KEY, titre TEXT, texte TEXT, lien TEXT,
+                           date_publication TEXT, actif INTEGER DEFAULT 1, date_creation TEXT)""")
+            c.execute("""CREATE TABLE IF NOT EXISTS actualites_medias (
+                           id SERIAL PRIMARY KEY, actualite_id INTEGER, type_media TEXT,
+                           mime TEXT, nom_fichier TEXT, taille INTEGER, data BYTEA)""")
+
             # Coût des ventes passées sans coût figé : prix d'achat de la dernière
             # entrée (active ou archivée) faite avant la vente.
             for table_v, col_date in (('sorties', 'date_sortie'), ('archive_ventes', 'date_vente')):
@@ -2358,7 +2366,19 @@ def historique_produit():
         mouvements = []
         stats = {'ventes': 0, 'achats': 0, 'pertes': 0, 'annule': 0, 'nb': 0}
 
-        if recherche:
+        type_f = request.args.get('type', 'tous')
+        if type_f not in ('tous', 'sorties', 'entrees'):
+            type_f = 'tous'
+        date_re = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+        date_debut = request.args.get('debut', '').strip()
+        date_fin = request.args.get('fin', '').strip()
+        if not date_re.match(date_debut):
+            date_debut = ''
+        if not date_re.match(date_fin):
+            date_fin = ''
+
+        # Toujours chargé : sans nom de produit, on voit les mouvements de tous les produits.
+        if True:
             like = f'%{recherche}%'
             bid = boutique_active()
             c_s = " AND s.boutique_id=?" if bid is not None else ""
@@ -2367,6 +2387,19 @@ def historique_produit():
             c_pe = " AND pe.boutique_id=?" if bid is not None else ""
             c_va = " AND va.boutique_id=?" if bid is not None else ""
             params8 = (like, bid) * 8 if bid is not None else (like,) * 8
+
+            # Filtres optionnels : type de mouvement et période
+            filtre_sql, filtre_params = '', ()
+            if type_f == 'sorties':
+                filtre_sql += " AND type_mvt IN ('vente', 'perte')"
+            elif type_f == 'entrees':
+                filtre_sql += " AND type_mvt IN ('entree', 'annulation')"
+            if date_debut:
+                filtre_sql += " AND CAST(date_col AS timestamp) >= CAST(? AS date)"
+                filtre_params += (date_debut,)
+            if date_fin:
+                filtre_sql += " AND CAST(date_col AS timestamp) < CAST(? AS date) + INTERVAL '1 day'"
+                filtre_params += (date_fin,)
 
             mouvements = qall(f'''
                 SELECT date_col, type_mvt, quantite, prix_unitaire, total,
@@ -2435,8 +2468,9 @@ def historique_produit():
                     FROM archive_ventes_annulees a
                     WHERE a.produit_nom ILIKE ?{c_a}
                 ) tout_mouvements
+                WHERE 1=1{filtre_sql}
                 ORDER BY date_col DESC
-                LIMIT 500''', params8)
+                LIMIT 500''', params8 + filtre_params)
 
             for m in mouvements:
                 type_mvt, total = m[1], (m[4] or 0)
@@ -2451,7 +2485,8 @@ def historique_produit():
                     stats['annule'] += total
 
         return render_template('admin_historique_produit.html',
-            recherche=recherche, mouvements=mouvements, stats=stats, suggestions=suggestions)
+            recherche=recherche, mouvements=mouvements, stats=stats, suggestions=suggestions,
+            type_f=type_f, date_debut=date_debut, date_fin=date_fin)
     except Exception as e:
         print(f"❌ Erreur historique_produit: {e}")
         flash("❌ Erreur lors du chargement de l'historique produit")

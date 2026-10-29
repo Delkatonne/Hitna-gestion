@@ -125,6 +125,10 @@
           <${Kpi} titre="Dépenses enregistrées" icone="receipt" couleur="orange" valeur=${HX.fmtNum(k.depenses)} unite="FCFA" sous="Page Dépenses" />
         </div>
         <div className="col-6 col-lg-3">
+          <${Kpi} titre="Ventes annulées" icone="x-circle" couleur="rouge" valeur=${HX.fmtNum(d.annulations.kpis.montant)} unite="FCFA"
+            sous=${d.annulations.kpis.nb + ' vente(s) annulée(s)'} />
+        </div>
+        <div className="col-6 col-lg-3">
           <${Kpi} titre="Pertes" icone="trash3" couleur="gris" valeur=${HX.fmtNum(k.pertes)} unite="FCFA" sous="Casse, vol, péremption" />
         </div>
       </div>
@@ -204,7 +208,42 @@
         </div>
       </div>
 
-      <${Carte} titre="Résultat mensuel (12 derniers mois)" icone="bar-chart-steps"
+<div className="row g-3">
+        <div className="col-lg-6">
+          <${Carte} titre="Ventes annulées par motif" icone="x-circle">
+            ${d.annulations.par_motif.length
+              ? html`<div className="table-responsive"><table className="table table-sm mb-0">
+                  <thead><tr><th>Motif</th><th className="text-end">Nombre</th><th className="text-end">Montant (FCFA)</th></tr></thead>
+                  <tbody>${d.annulations.par_motif.map(function (m) {
+                    return html`<tr key=${m.nom}><td>${m.nom}</td><td className="text-end">${m.nb}</td><td className="text-end">${HX.fmtNum(m.montant)}</td></tr>`;
+                  })}</tbody></table></div>`
+              : html`<div className="text-muted">Aucune vente annulée sur la période.</div>`}
+          <//>
+        </div>
+        <div className="col-lg-6">
+          <${Carte} titre="Ventes annulées par employé" icone="people">
+            ${d.annulations.par_employe.length
+              ? html`<div className="table-responsive"><table className="table table-sm mb-0">
+                  <thead><tr><th>Employé</th><th className="text-end">Nombre</th><th className="text-end">Montant (FCFA)</th></tr></thead>
+                  <tbody>${d.annulations.par_employe.map(function (m) {
+                    return html`<tr key=${m.nom}><td>${m.nom}</td><td className="text-end">${m.nb}</td><td className="text-end">${HX.fmtNum(m.montant)}</td></tr>`;
+                  })}</tbody></table></div>`
+              : html`<div className="text-muted">Aucune vente annulée sur la période.</div>`}
+          <//>
+        </div>
+        </div>
+
+      <${Carte} titre="Détail des ventes annulées" icone="list-ul">
+        ${d.annulations.liste.length
+          ? html`<div className="table-responsive"><table className="table table-sm align-middle mb-0">
+              <thead><tr><th>Date</th><th>Produit</th><th className="text-end">Qté</th><th className="text-end">Total (FCFA)</th><th>Annulée par</th><th>Motif</th></tr></thead>
+              <tbody>${d.annulations.liste.map(function (a, i) {
+                return html`<tr key=${i}><td>${a.date}</td><td>${a.produit}</td><td className="text-end">${a.quantite}</td><td className="text-end">${HX.fmtNum(a.total)}</td><td>${a.annule_par}</td><td>${a.motif}</td></tr>`;
+              })}</tbody></table></div>`
+          : html`<div className="text-muted">Aucune vente annulée sur la période.</div>`}
+      <//>
+
+            <${Carte} titre="Résultat mensuel (12 derniers mois)" icone="bar-chart-steps"
         actions=${html`<a className="btn btn-sm btn-outline-primary" href="/admin/comptabilite">Tableau comptable</a>`}>
         <${Graphique} type="bar" data=${graphMensuel} legende=${true} taille="grand" options=${optionsArgent} />
         <div className="hx-table-wrap mt-3"><table className="hx-table">

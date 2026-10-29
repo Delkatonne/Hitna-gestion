@@ -9,6 +9,7 @@
 # ══════════════════════════════════════════════════════════════════════════
 import io
 import uuid
+import psycopg2
 from datetime import datetime, date, timedelta
 
 from flask import request, session, jsonify, render_template, redirect, send_file, flash
@@ -18,7 +19,7 @@ from reportlab.pdfgen import canvas
 from app import (app, q1, qall, get_db, release_db, clear_cache,
                  boutique_active, boutique_filtre_sql,
                  format_prix, add_header_to_pdf, add_logo_to_pdf,
-                 _archiver_export, _comptabilite_registre, _comptabilite_resume_mensuel)
+                 _archiver_export, _comptabilite_registre, _comptabilite_resume_mensuel, exe)
 
 CATEGORIES_DEPENSES = [
     'Achat de nouveaux produits',
@@ -301,6 +302,54 @@ def _benefices_par_produit(debut, fin_exclue, bq, bp):
     return resultat
 
 
+# ──────────────────────────────────────────────────────────────
+# VENTES ANNULÉES — journal courant + archives
+# La boutique est gardée dans les archives (boutique_id), comme pour les ventes.
+# ──────────────────────────────────────────────────────────────
+_ANNULATIONS_U = """
+    SELECT a.date_annulation::timestamp AS d, a.total AS total, a.quantite AS qte,
+           COALESCE(a.produit_nom, '-') AS produit, a.client AS client,
+           COALESCE(a.annule_par, '-') AS annule_par, COALESCE(a.motif, '-') AS motif,
+           a.boutique_id AS boutique_id, a.groupe_vente AS groupe
+    FROM ventes_annulees a
+    UNION ALL
+    SELECT b.date_annulation::timestamp, b.total, b.quantite,
+           COALESCE(b.produit_nom, '-'), b.client, COALESCE(b.annule_par, '-'), COALESCE(b.motif, '-'),
+           b.boutique_id, b.groupe_vente
+    FROM archive_ventes_annulees b
+"""
+
+
+def _annulations_resume(debut, fin_exclue, bq, bp):
+    r = q1(f'''SELECT COUNT(DISTINCT COALESCE(x.groupe, x.d::text || x.produit)),
+                      COALESCE(SUM(x.total), 0), COALESCE(SUM(x.qte), 0)
+               FROM ({_ANNULATIONS_U}) x WHERE x.d >= ?::date AND x.d < ?::date{bq}''',
+           (debut.isoformat(), fin_exclue.isoformat()) + bp)
+    if not r:
+        return {'nb': 0, 'montant': 0.0, 'quantite': 0.0}
+    return {'nb': int(r[0] or 0), 'montant': _n(r[1]), 'quantite': _n(r[2])}
+
+
+def _annulations_liste(debut, fin_exclue, bq, bp, limite):
+    rows = qall(f'''SELECT x.d, x.produit, x.qte, x.total, x.client, x.annule_par, x.motif
+                    FROM ({_ANNULATIONS_U}) x WHERE x.d >= ?::date AND x.d < ?::date{bq}
+                    ORDER BY x.d DESC LIMIT {int(limite)}''',
+                (debut.isoformat(), fin_exclue.isoformat()) + bp)
+    return [{'date': r[0].strftime('%d/%m/%Y %H:%M') if r[0] else '-', 'produit': r[1],
+             'quantite': _n(r[2]), 'total': _n(r[3]), 'client': r[4] or '-',
+             'annule_par': r[5], 'motif': r[6]} for r in rows]
+
+
+def _annulations_par(colonne, debut, fin_exclue, bq, bp):
+    if colonne not in ('motif', 'annule_par'):
+        raise ValueError('colonne non autorisée')
+    rows = qall(f'''SELECT x.{colonne}, COUNT(*), COALESCE(SUM(x.total), 0)
+                    FROM ({_ANNULATIONS_U}) x WHERE x.d >= ?::date AND x.d < ?::date{bq}
+                    GROUP BY 1 ORDER BY 3 DESC''',
+                (debut.isoformat(), fin_exclue.isoformat()) + bp)
+    return [{'nom': r[0], 'nb': int(r[1] or 0), 'montant': _n(r[2])} for r in rows]
+
+
 @app.route('/api/dashboard')
 def api_dashboard():
     if not _admin():
@@ -427,6 +476,11 @@ def api_dashboard():
                 'messages_non_lus': int(nb_msg[0]) if nb_msg else 0,
             },
             'benefices': benefices,
+            'annulations': {
+                'jour': _annulations_resume(aujourdhui, demain, bq, bp),
+                'mois': _annulations_resume(debut_mois, demain, bq, bp),
+                'recentes': _annulations_liste(debut_mois, demain, bq, bp, 10),
+            },
             'ventes_14_jours': serie_14,
             'ventes_par_heure': serie_heures,
             'top_produits': [{'nom': r[0], 'quantite': _n(r[1]), 'total': _n(r[2])} for r in top],
@@ -570,6 +624,12 @@ def api_stats():
                 'nb_articles': nb_articles,
                 'achats': achats, 'charges': charges, 'depenses': depenses, 'pertes': pertes,
                 'marge_brute': round(ca - achats, 2), 'resultat': round(ca - achats - charges, 2),
+            },
+            'annulations': {
+                'kpis': _annulations_resume(debut, demain, bq, bp),
+                'par_motif': _annulations_par('motif', debut, demain, bq, bp),
+                'par_employe': _annulations_par('annule_par', debut, demain, bq, bp),
+                'liste': _annulations_liste(debut, demain, bq, bp, 100),
             },
             'serie': serie,
             'top_produits': [{'nom': r[0], 'quantite': _n(r[1]), 'total': _n(r[2])} for r in top],
@@ -1093,6 +1153,7 @@ def export_pdf_dashboard():
             ("Crédits clients en cours", f"{format_prix(k['credits_en_cours'])} FCFA  ({k['nb_credits']} crédit(s))"),
             ("Valeur du stock", f"{format_prix(k['valeur_stock'])} FCFA  ({k['nb_produits']} produit(s))"),
             ("Alertes stock", f"{k['nb_ruptures']} rupture(s), {k['nb_stock_bas']} sous le minimum"),
+            ("Ventes annulées du mois", f"{format_prix(d['annulations']['mois']['montant'])} FCFA  ({d['annulations']['mois']['nb']} vente(s))"),
         ]
         for libelle, valeur in indicateurs:
             y = ligne(y, [libelle, valeur], [marge, 230])
@@ -1163,6 +1224,18 @@ def export_pdf_dashboard():
                               format_prix(v['total'])], xs)
         else:
             y = ligne(y, ["Aucune vente récente."], [marge], couleur=gris)
+        y -= 15
+
+        # ── Ventes annulées (mois en cours) ──
+        y = section(y, "Ventes annulées (mois en cours)")
+        xs = [marge, 135, 235, 300, 370, 440]
+        if d['annulations']['recentes']:
+            y = entete(y, ["Date", "Produit", "Qté", "Total (FCFA)", "Annulée par", "Motif"], xs)
+            for a_ in d['annulations']['recentes']:
+                y = ligne(y, [a_['date'], str(a_['produit'])[:20], f"{a_['quantite']:g}",
+                              format_prix(a_['total']), str(a_['annule_par'])[:12], str(a_['motif'])[:20]], xs)
+        else:
+            y = ligne(y, ["Aucune vente annulée ce mois-ci."], [marge], couleur=gris)
         y -= 15
 
         # ── Stock bas ──
@@ -1283,6 +1356,7 @@ def export_pdf_stats():
             ("Charges", f"{format_prix(k['charges'])} FCFA"),
             ("Dépenses enregistrées", f"{format_prix(k['depenses'])} FCFA"),
             ("Pertes", f"{format_prix(k['pertes'])} FCFA"),
+            ("Ventes annulées", f"{format_prix(d['annulations']['kpis']['montant'])} FCFA  ({d['annulations']['kpis']['nb']} vente(s))"),
             ("Résultat", f"{format_prix(k['resultat'])} FCFA"),
         ]
         for libelle, valeur in indicateurs:
@@ -1328,6 +1402,19 @@ def export_pdf_stats():
         y = tableau(y, "Charges par catégorie", ["Catégorie", "Total (FCFA)"], [marge, 300],
                     [[str(x['categorie'])[:40], format_prix(x['total'])] for x in d['charges_par_categorie']],
                     "Aucune charge sur la période.")
+
+        # ── Ventes annulées ──
+        y = tableau(y, "Ventes annulées par motif", ["Motif", "Nombre", "Montant (FCFA)"], [marge, 300, 400],
+                    [[m['nom'], m['nb'], format_prix(m['montant'])] for m in d['annulations']['par_motif']],
+                    "Aucune vente annulée sur la période.")
+        y = tableau(y, "Ventes annulées par employé", ["Employé", "Nombre", "Montant (FCFA)"], [marge, 300, 400],
+                    [[str(m['nom'])[:30], m['nb'], format_prix(m['montant'])] for m in d['annulations']['par_employe']],
+                    "Aucune vente annulée sur la période.")
+        y = tableau(y, "Détail des ventes annulées", ["Date", "Produit", "Qté", "Total (FCFA)", "Motif"],
+                    [marge, 130, 260, 320, 410],
+                    [[a_['date'], str(a_['produit'])[:24], f"{a_['quantite']:g}", format_prix(a_['total']),
+                      str(a_['motif'])[:22]] for a_ in d['annulations']['liste']],
+                    "Aucune vente annulée sur la période.")
 
         # ── Résultat mensuel (12 derniers mois) ──
         y = tableau(y, "Résultat mensuel (12 derniers mois)",
@@ -1463,6 +1550,127 @@ def archiver_comptabilite():
         print(f"Erreur archiver_comptabilite: {e}")
         flash('❌ Erreur lors de l\'archivage de la comptabilité')
         return redirect('/admin/comptabilite')
+
+
+# ──────────────────────────────────────────────────────────────
+# ACTUALITÉS — publicités (texte + photo ou vidéo) pour le futur site
+# ──────────────────────────────────────────────────────────────
+ACTU_MIMES = {'image/jpeg': 'photo', 'image/png': 'photo', 'image/webp': 'photo',
+              'video/mp4': 'video', 'video/webm': 'video'}
+ACTU_TAILLE_MAX = {'photo': 5 * 1024 * 1024, 'video': 40 * 1024 * 1024}
+
+
+@app.route('/admin/actualites')
+def admin_actualites():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    try:
+        actus = qall("""SELECT a.id, a.titre, a.texte, a.lien, a.date_publication, a.actif,
+                               m.id, m.type_media
+                        FROM actualites a
+                        LEFT JOIN actualites_medias m ON m.actualite_id = a.id
+                        ORDER BY COALESCE(a.date_publication, a.date_creation) DESC, a.id DESC""")
+        edit_id = request.args.get('edit', type=int)
+        edition = q1("SELECT id, titre, texte, lien, date_publication, actif FROM actualites WHERE id=?",
+                     (edit_id,)) if edit_id else None
+        edition_media = q1("SELECT id, type_media, mime FROM actualites_medias WHERE actualite_id=?",
+                           (edit_id,)) if edit_id else None
+        return render_template('admin_actualites.html', actus=actus,
+                               edition=edition, edition_media=edition_media)
+    except Exception as e:
+        print(f"Erreur admin_actualites: {e}")
+        flash('❌ Erreur lors du chargement des actualités')
+        return redirect('/admin')
+
+
+@app.route('/admin/actualites/enregistrer', methods=['POST'])
+def enregistrer_actualite():
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    titre = request.form.get('titre', '').strip()
+    texte = request.form.get('texte', '').strip()
+    lien = request.form.get('lien', '').strip()
+    date_pub = request.form.get('date_publication') or datetime.now().strftime('%Y-%m-%d')
+    actif = 1 if request.form.get('actif') else 0
+    actu_id = request.form.get('id', type=int)
+    if not titre:
+        flash('❌ Le titre est obligatoire')
+        return redirect('/admin/actualites')
+
+    fichier = request.files.get('media')
+    if fichier and fichier.filename:
+        type_m = ACTU_MIMES.get(fichier.mimetype)
+        if not type_m:
+            flash('❌ Format non accepté : photo JPG/PNG/WebP ou vidéo MP4/WebM')
+            return redirect('/admin/actualites')
+        data = fichier.read(ACTU_TAILLE_MAX[type_m] + 1)
+        if len(data) > ACTU_TAILLE_MAX[type_m]:
+            flash('❌ Fichier trop lourd (max 5 Mo pour une photo, 40 Mo pour une vidéo)')
+            return redirect('/admin/actualites')
+
+    if actu_id:
+        ok = exe("UPDATE actualites SET titre=?, texte=?, lien=?, date_publication=?, actif=? WHERE id=?",
+                 (titre, texte, lien, date_pub, actif, actu_id))
+    else:
+        actu_id = exe("""INSERT INTO actualites (titre, texte, lien, date_publication, actif, date_creation)
+                         VALUES (?,?,?,?,?,?)""",
+                      (titre, texte, lien, date_pub, actif, datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+                      returning=True)
+        ok = bool(actu_id)
+    if not ok:
+        flash('❌ Impossible d\'enregistrer l\'actualité')
+        return redirect('/admin/actualites')
+
+    if fichier and fichier.filename:
+        exe("DELETE FROM actualites_medias WHERE actualite_id=?", (actu_id,))
+        exe("""INSERT INTO actualites_medias (actualite_id, type_media, mime, nom_fichier, taille, data)
+               VALUES (?,?,?,?,?,?)""",
+            (actu_id, type_m, fichier.mimetype, fichier.filename[:200], len(data), psycopg2.Binary(data)))
+    flash('✅ Actualité enregistrée')
+    return redirect('/admin/actualites')
+
+
+@app.route('/admin/actualites/<int:id>/supprimer', methods=['POST'])
+def supprimer_actualite(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    exe("DELETE FROM actualites_medias WHERE actualite_id=?", (id,))
+    exe("DELETE FROM actualites WHERE id=?", (id,))
+    flash('🗑️ Actualité supprimée')
+    return redirect('/admin/actualites')
+
+
+@app.route('/actualites/media/<int:media_id>')
+def media_actualite(media_id):
+    r = q1("SELECT mime, data FROM actualites_medias WHERE id=?", (media_id,))
+    if not r:
+        return ('Média introuvable', 404)
+    resp = send_file(io.BytesIO(bytes(r[1])), mimetype=r[0])
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
+
+@app.route('/api/actualites')
+def api_actualites():
+    """Actualités publiées (actives, date atteinte) pour le futur site d'HITNA."""
+    rows = qall("""SELECT a.id, a.titre, a.texte, a.lien, a.date_publication, m.id, m.type_media, m.mime
+                   FROM actualites a
+                   LEFT JOIN actualites_medias m ON m.actualite_id = a.id
+                   WHERE COALESCE(a.actif, 1) = 1 AND COALESCE(a.date_publication, '') <= ?
+                   ORDER BY a.date_publication DESC, a.id DESC""",
+                (datetime.now().strftime('%Y-%m-%d'),))
+    base = request.host_url.rstrip('/')
+    resultat = []
+    for r in rows:
+        media = None
+        if r[5]:
+            media = {'type': r[6], 'mime': r[7], 'url': f"{base}/actualites/media/{r[5]}"}
+        resultat.append({'id': r[0], 'titre': r[1], 'texte': r[2], 'lien': r[3],
+                         'date': r[4], 'media': media})
+    resp = jsonify(resultat)
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
 
 
 init_db_finances()

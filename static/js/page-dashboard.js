@@ -87,6 +87,10 @@
             sous=${d.benefices.jour.marge_pct !== null ? 'Marge ' + d.benefices.jour.marge_pct + ' %' : 'Aucune vente aujourd\'hui'} />
         </div>
         <div className="col-6 col-lg-4 col-xl-2">
+          <${Kpi} titre="Ventes annulées (jour)" icone="x-circle" couleur="rouge" valeur=${HX.fmtNum(d.annulations.jour.montant)} unite="FCFA"
+            sous=${d.annulations.jour.nb + ' vente(s) annulée(s)'} />
+        </div>
+        <div className="col-6 col-lg-4 col-xl-2">
           <${Kpi} titre="Ventes du mois" icone="calendar-month" valeur=${HX.fmtNum(k.ventes_mois)} unite="FCFA"
             sous=${html`${k.nb_ventes_mois} vente(s) · <${HX.Variation} valeur=${k.variation_mois} /> vs même période du mois dernier`} />
         </div>
@@ -114,6 +118,20 @@
         ${k.commandes_nouvelles > 0 ? html`<div className="col-6 col-lg-3"><${Alerte} icone="bag-check" lien="/admin/commandes" valeur=${k.commandes_nouvelles} libelle="Nouvelle(s) commande(s)" /></div>` : null}
         ${k.messages_non_lus > 0 ? html`<div className="col-6 col-lg-3"><${Alerte} icone="envelope" lien="/admin/messages" valeur=${k.messages_non_lus} libelle="Message(s) non lu(s)" /></div>` : null}
       </div>` : null}
+
+      <div className="row g-3">
+        <div className="col-12">
+          <${Carte} titre="Ventes annulées (mois en cours)" icone="x-circle">
+            ${d.annulations.recentes.length
+              ? html`<div className="table-responsive"><table className="table table-sm align-middle mb-0">
+                  <thead><tr><th>Date</th><th>Produit</th><th className="text-end">Qté</th><th className="text-end">Total (FCFA)</th><th>Annulée par</th><th>Motif</th></tr></thead>
+                  <tbody>${d.annulations.recentes.map(function (a, i) {
+                    return html`<tr key=${i}><td>${a.date}</td><td>${a.produit}</td><td className="text-end">${a.quantite}</td><td className="text-end">${HX.fmtNum(a.total)}</td><td>${a.annule_par}</td><td>${a.motif}</td></tr>`;
+                  })}</tbody></table></div>`
+              : html`<${Vide} icone="x-circle" texte="Aucune vente annulée ce mois-ci" />`}
+          <//>
+        </div>
+      </div>
 
       <div className="row g-3">
         <div className="col-12">
