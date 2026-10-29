@@ -954,6 +954,9 @@
                         <span class="icon"><i class="bi bi-envelope"></i></span><span>Messages</span>
                         {% if nb_messages_non_lus %}<span class="nav-badge">{{ nb_messages_non_lus }}</span>{% endif %}
                     </a>
+                    <a href="/admin/actualites" class="nav-link {% if request.endpoint == 'admin_actualites' %}active{% endif %}">
+                        <span class="icon"><i class="bi bi-megaphone"></i></span><span>Actualités</span>
+                    </a>
                 </div>
                 <div class="nav-divider"></div>
                 {% else %}
