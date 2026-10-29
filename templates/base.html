@@ -1424,13 +1424,13 @@
          MOTIF D'ANNULATION DE VENTE — modal + fonctions globales
          réutilisables sur /vente et /admin/ventes.
          ============================================================ -->
-    <div id="annulationModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center; padding:15px;">
-        <div style="background:white; border-radius:16px; padding:20px; max-width:420px; width:92%; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+    <div id="annulationModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center; padding:15px; overflow-y:auto; -webkit-overflow-scrolling:touch;">
+        <div style="background:white; border-radius:16px; padding:20px; max-width:420px; width:92%; max-height:90vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
             <h3 style="color:#dc3545; margin-bottom:6px;"><i class="bi bi-x-circle-fill"></i> Annuler cette vente</h3>
             <p style="font-size:13px; color:#666; margin-bottom:14px;">Le stock sera restauré. Cette action est irréversible.</p>
             <label style="display:block; font-size:13px; margin-bottom:6px; font-weight:600; color:#333;">Motif de l'annulation</label>
             <select id="annulation-motif-select" onchange="document.getElementById('annulation-motif-autre').style.display = this.value === 'Autre' ? 'block' : 'none';"
-                    style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px; margin-bottom:10px; box-sizing:border-box; font-size:14px;">
+                    style="width:100%; padding:12px; border:2px solid #e0e0e0; border-radius:8px; margin-bottom:10px; box-sizing:border-box; font-size:16px;">
                 <option value="Erreur de saisie">Erreur de saisie (mauvais produit/quantité)</option>
                 <option value="Client a changé d'avis">Client a changé d'avis</option>
                 <option value="Erreur de prix">Erreur de prix</option>
@@ -1441,22 +1441,27 @@
                    style="display:none; width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px; margin-bottom:14px; box-sizing:border-box; font-size:14px;">
             <div style="display:flex; gap:10px;">
                 <button type="button" onclick="confirmerAnnulationVente()"
-                        style="flex:1; background:#dc3545; color:white; border:none; padding:11px; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;"><i class="bi bi-x-circle-fill"></i> Confirmer l'annulation</button>
+                        style="flex:1; background:#dc3545; color:white; border:none; padding:14px 11px; min-height:46px; border-radius:8px; cursor:pointer; font-size:15px; font-weight:600; touch-action:manipulation;"><i class="bi bi-x-circle-fill"></i> Confirmer l'annulation</button>
                 <button type="button" onclick="fermerModalAnnulation()"
-                        style="flex:1; background:#6c757d; color:white; border:none; padding:11px; border-radius:8px; cursor:pointer; font-size:14px;">Retour</button>
+                        style="flex:1; background:#6c757d; color:white; border:none; padding:14px 11px; min-height:46px; border-radius:8px; cursor:pointer; font-size:15px; touch-action:manipulation;">Retour</button>
             </div>
         </div>
     </div>
 
     <script>
+        document.body.appendChild(document.getElementById('annulationModal'));
         let _annulationActionUrl = null;
 
         function demanderMotifAnnulation(actionUrl) {
-            _annulationActionUrl = actionUrl;
-            document.getElementById('annulation-motif-select').value = 'Erreur de saisie';
-            document.getElementById('annulation-motif-autre').value = '';
-            document.getElementById('annulation-motif-autre').style.display = 'none';
-            document.getElementById('annulationModal').style.display = 'flex';
+            try {
+                _annulationActionUrl = actionUrl;
+                document.getElementById('annulation-motif-select').value = 'Erreur de saisie';
+                document.getElementById('annulation-motif-autre').value = '';
+                document.getElementById('annulation-motif-autre').style.display = 'none';
+                document.getElementById('annulationModal').style.display = 'flex';
+            } catch (err) {
+                alert('Impossible d\'ouvrir la fenêtre d\'annulation : ' + err.message);
+            }
         }
 
         function fermerModalAnnulation() {
