@@ -5,6 +5,7 @@ import hashlib, os, re, random, string, io, json, uuid, socket, zipfile, calenda
 from decimal import Decimal
 import bcrypt
 import psycopg2
+from datetime import timedelta as _timedelta
 import psycopg2.extras
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -16,6 +17,9 @@ from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'hitna_secret')
+# Session conservée 30 jours : sans ça, le cookie disparaît quand le téléphone ferme l'onglet
+app.permanent_session_lifetime = _timedelta(days=30)
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # ──────────────────────────────────────────────────────────────
 # FILTRE JINJA : affichage propre des quantités décimales
@@ -1368,6 +1372,7 @@ def login():
                     return redirect('/login')
                 
                 login_reset(ip)
+                session.permanent = True
                 session.update({
                     'user_id': user[0],
                     'role': user[4],

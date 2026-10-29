@@ -682,6 +682,17 @@
 
         body.dark-theme {
             background: #1a1a2e;
+            color: #eee;
+        }
+
+        /* Blocs à fond blanc écrit en style direct : restent sombres en mode sombre
+           (sinon le texte clair s'affiche sur fond blanc) */
+        body.dark-theme [style*="background:white"],
+        body.dark-theme [style*="background: white"],
+        body.dark-theme [style*="background:#fff"],
+        body.dark-theme [style*="background: #fff"] {
+            background: #16213e !important;
+            color: #eee;
         }
 
         body.dark-theme .card,
