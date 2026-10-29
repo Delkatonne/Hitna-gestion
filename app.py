@@ -779,51 +779,66 @@ def init_db():
         #    pouvoir stocker des demi-cartons, quarts, etc. Les valeurs
         #    entières existantes (ex: 20) deviennent 20.000 — aucune
         #    perte de données.
-        # ── COÛTS & MARGES : prix d'achat moyen pondéré par produit, et coût
-        #    figé au moment de chaque vente (le bénéfice d'une vente passée ne change pas).
-        try:
-            c.execute("ALTER TABLE produits ADD COLUMN IF NOT EXISTS prix_achat NUMERIC(12,2) DEFAULT 0")
-            c.execute("ALTER TABLE sorties ADD COLUMN IF NOT EXISTS cout_unitaire NUMERIC(12,2)")
-            c.execute("ALTER TABLE archive_ventes ADD COLUMN IF NOT EXISTS cout_unitaire NUMERIC(12,2)")
-            c.execute("""UPDATE produits p SET prix_achat = sub.pu FROM (
-                           SELECT DISTINCT ON (produit_id) produit_id, prix_unitaire AS pu
-                           FROM entrees ORDER BY produit_id, id DESC) sub
-                         WHERE sub.produit_id = p.id AND COALESCE(p.prix_achat, 0) = 0""")
+        # ── COÛTS & MARGES, CATALOGUE FOURNISSEUR, EXPORTS ARCHIVÉS, ACTUALITÉS, CORBEILLE ──
+        # Chaque étape est isolée par un SAVEPOINT : si l'une échoue, elle est ignorée
+        # et les suivantes (ainsi que le reste de l'initialisation) continuent normalement.
+        def _mig(sql):
+            c.execute("SAVEPOINT mig_sp")
+            try:
+                c.execute(sql)
+                c.execute("RELEASE SAVEPOINT mig_sp")
+            except Exception as e:
+                c.execute("ROLLBACK TO SAVEPOINT mig_sp")
+                c.execute("RELEASE SAVEPOINT mig_sp")
+                print(f"⚠️ Migration ignorée ({str(e).strip()[:120]}) : {' '.join(sql.split())[:70]}")
 
-            # Catalogue fournisseur : prix payé à chaque fournisseur pour chaque produit
-            c.execute("""CREATE TABLE IF NOT EXISTS fournisseur_produits (
-                           id SERIAL PRIMARY KEY, fournisseur_id INTEGER, produit_id INTEGER,
-                           prix_achat NUMERIC(12,2), date_maj TEXT, boutique_id INTEGER,
-                           UNIQUE (fournisseur_id, produit_id))""")
+        # Prix d'achat moyen pondéré par produit + coût figé au moment de chaque vente
+        _mig("ALTER TABLE produits ADD COLUMN IF NOT EXISTS prix_achat NUMERIC(12,2) DEFAULT 0")
+        _mig("ALTER TABLE sorties ADD COLUMN IF NOT EXISTS cout_unitaire NUMERIC(12,2)")
+        _mig("ALTER TABLE archive_ventes ADD COLUMN IF NOT EXISTS cout_unitaire NUMERIC(12,2)")
+        _mig("""UPDATE produits p SET prix_achat = sub.pu FROM (
+                    SELECT DISTINCT ON (produit_id) produit_id, prix_unitaire AS pu
+                    FROM entrees ORDER BY produit_id, id DESC) sub
+                WHERE sub.produit_id = p.id AND COALESCE(p.prix_achat, 0) = 0""")
 
-            # Exports PDF archivés (vue d'ensemble, statistiques, comptabilité)
-            c.execute("""CREATE TABLE IF NOT EXISTS exports_archives (
-                           id SERIAL PRIMARY KEY, type TEXT, titre TEXT, periode TEXT,
-                           date_creation TEXT, employe_id INTEGER, boutique_id INTEGER,
-                           donnees_json TEXT, pdf BYTEA)""")
+        # Catalogue fournisseur : prix payé à chaque fournisseur pour chaque produit
+        _mig("""CREATE TABLE IF NOT EXISTS fournisseur_produits (
+                    id SERIAL PRIMARY KEY, fournisseur_id INTEGER, produit_id INTEGER,
+                    prix_achat NUMERIC(12,2), date_maj TEXT, boutique_id INTEGER,
+                    UNIQUE (fournisseur_id, produit_id))""")
 
-            # Actualités (publicités) : texte + média stocké en base (le disque Render n'est pas durable)
-            c.execute("""CREATE TABLE IF NOT EXISTS actualites (
-                           id SERIAL PRIMARY KEY, titre TEXT, texte TEXT, lien TEXT,
-                           date_publication TEXT, actif INTEGER DEFAULT 1, date_creation TEXT)""")
-            c.execute("""CREATE TABLE IF NOT EXISTS actualites_medias (
-                           id SERIAL PRIMARY KEY, actualite_id INTEGER, type_media TEXT,
-                           mime TEXT, nom_fichier TEXT, taille INTEGER, data BYTEA)""")
+        # Exports PDF archivés (vue d'ensemble, statistiques, comptabilité)
+        _mig("""CREATE TABLE IF NOT EXISTS exports_archives (
+                    id SERIAL PRIMARY KEY, type TEXT, titre TEXT, periode TEXT,
+                    date_creation TEXT, employe_id INTEGER, boutique_id INTEGER,
+                    donnees_json TEXT, pdf BYTEA)""")
 
-            # Coût des ventes passées sans coût figé : prix d'achat de la dernière
-            # entrée (active ou archivée) faite avant la vente.
-            for table_v, col_date in (('sorties', 'date_sortie'), ('archive_ventes', 'date_vente')):
-                c.execute(f"""UPDATE {table_v} v SET cout_unitaire = sub.pu FROM (
-                                SELECT v2.id, (SELECT x.pu FROM (
-                                        SELECT produit_id, prix_unitaire AS pu, date_entree AS dt FROM entrees
-                                        UNION ALL
-                                        SELECT produit_id, prix_unitaire, date_entree FROM archive_entrees) x
-                                    WHERE x.produit_id = v2.produit_id AND x.dt <= v2.{col_date}
-                                    ORDER BY x.dt DESC LIMIT 1) AS pu
-                                FROM {table_v} v2 WHERE v2.cout_unitaire IS NULL) sub
-                              WHERE sub.id = v.id AND sub.pu IS NOT NULL""")
-        except Exception as e:
-            print(f"⚠️ Erreur migration coûts/marges: {e}")
+        # Actualités (publicités) : texte + média stocké en base (le disque Render n'est pas durable)
+        _mig("""CREATE TABLE IF NOT EXISTS actualites (
+                    id SERIAL PRIMARY KEY, titre TEXT, texte TEXT, lien TEXT,
+                    date_publication TEXT, actif INTEGER DEFAULT 1, date_creation TEXT)""")
+        _mig("""CREATE TABLE IF NOT EXISTS actualites_medias (
+                    id SERIAL PRIMARY KEY, actualite_id INTEGER, type_media TEXT,
+                    mime TEXT, nom_fichier TEXT, taille INTEGER, data BYTEA)""")
+
+        # Suppression d'un produit en gardant son historique : la fiche reste en base,
+        # marquée « supprimée » (1 = dans la corbeille, 2 = supprimée définitivement)
+        # et cachée partout ; ses mouvements restent liés à elle.
+        _mig("ALTER TABLE produits ADD COLUMN IF NOT EXISTS supprime INTEGER DEFAULT 0")
+        _mig("ALTER TABLE produits_supprimes ADD COLUMN IF NOT EXISTS produit_id INTEGER")
+
+        # Coût des ventes passées sans coût figé : prix d'achat de la dernière
+        # entrée (active ou archivée) faite avant la vente.
+        for table_v, col_date in (('sorties', 'date_sortie'), ('archive_ventes', 'date_vente')):
+            _mig(f"""UPDATE {table_v} v SET cout_unitaire = sub.pu FROM (
+                         SELECT v2.id, (SELECT x.pu FROM (
+                                 SELECT produit_id, prix_unitaire AS pu, date_entree AS dt FROM entrees
+                                 UNION ALL
+                                 SELECT produit_id, prix_unitaire, date_entree FROM archive_entrees) x
+                             WHERE x.produit_id = v2.produit_id AND x.dt <= v2.{col_date}
+                             ORDER BY x.dt DESC LIMIT 1) AS pu
+                         FROM {table_v} v2 WHERE v2.cout_unitaire IS NULL) sub
+                     WHERE sub.id = v.id AND sub.pu IS NOT NULL""")
 
         colonnes_a_convertir = [
             ('produits', 'stock'),
@@ -1224,7 +1239,7 @@ def verifier_alertes_stock():
         produits = qall('''SELECT p.id,p.nom,p.stock,COALESCE(a.seuil,p.stock_min,5), COALESCE(b.nom,'')
             FROM produits p LEFT JOIN alertes_produits a ON p.id=a.produit_id AND a.actif=1
             LEFT JOIN boutiques b ON p.boutique_id = b.id
-            WHERE p.stock<=COALESCE(a.seuil,p.stock_min,5)''')
+            WHERE p.stock<=COALESCE(a.seuil,p.stock_min,5) AND COALESCE(p.supprime,0)=0''')
         if not produits:
             return
         admins = qall("SELECT id FROM users WHERE role='admin' AND actif=1")
@@ -1897,7 +1912,7 @@ def produits_list():
         if cached_data:
             produits, unites, categories, nb_inactifs, nb_ruptures = cached_data
         else:
-            conditions = []
+            conditions = ["COALESCE(p.supprime, 0) = 0"]
             if filtre == 'actifs':
                 conditions.append("COALESCE(p.actif, 1) = 1")
             elif filtre == 'inactifs':
@@ -1928,7 +1943,7 @@ def produits_list():
             unites = qall("SELECT id, nom, symbole FROM unites_mesure WHERE actif = 1 ORDER BY nom")
             categories = qall("SELECT id, nom, icone FROM categories_produits WHERE actif = 1 ORDER BY nom")
             where_bq, params_bq = boutique_filtre_sql('boutique_id')
-            nb_inactifs_row = q1(f"SELECT COUNT(*) FROM produits WHERE COALESCE(actif,1) = 0{where_bq}", params_bq)
+            nb_inactifs_row = q1(f"SELECT COUNT(*) FROM produits WHERE COALESCE(actif,1) = 0 AND COALESCE(supprime,0) = 0{where_bq}", params_bq)
             nb_inactifs = nb_inactifs_row[0] if nb_inactifs_row else 0
             nb_ruptures_row = q1(f"SELECT COUNT(*) FROM produits WHERE stock <= 0 AND COALESCE(actif,1) = 1{where_bq}", params_bq)
             nb_ruptures = nb_ruptures_row[0] if nb_ruptures_row else 0
@@ -1947,7 +1962,7 @@ def produit_nom_existe(nom, boutique_id, exclure_id=None):
     nom = (nom or '').strip()
     if not nom:
         return None
-    sql = "SELECT id, nom, COALESCE(actif,1) FROM produits WHERE LOWER(TRIM(nom)) = LOWER(TRIM(?))"
+    sql = "SELECT id, nom, COALESCE(actif,1) FROM produits WHERE LOWER(TRIM(nom)) = LOWER(TRIM(?)) AND COALESCE(supprime,0)=0"
     params = [nom]
     if boutique_id is None:
         sql += " AND boutique_id IS NULL"
@@ -2083,23 +2098,53 @@ def _row_to_json_safe(row):
     """Convertit un tuple issu de la DB (avec des Decimal) en liste sérialisable en JSON."""
     return [float(v) if isinstance(v, Decimal) else v for v in row]
 
-def _snapshot_produit_avant_suppression(id, supprime_par_id):
-    """Sauvegarde un instantané complet du produit (fiche + historique + paliers)
-    dans la corbeille produits_supprimes, juste avant une suppression forcée.
-    Permet de tout restaurer en cas d'erreur (ex: mauvais produit sélectionné)."""
+def _compter_mouvements_produit(pid):
+    """(ventes, entrées, pertes) encore présentes dans les tables actives pour ce produit."""
+    resultat = []
+    for table in ('sorties', 'entrees', 'pertes'):
+        r = q1(f"SELECT COUNT(*) FROM {table} WHERE produit_id=?", (pid,))
+        resultat.append(int(r[0]) if r and r[0] else 0)
+    return tuple(resultat)
+
+
+def _produit_a_un_historique(pid):
+    """Vrai si le produit a des mouvements, actifs ou déjà archivés par semaine."""
+    if sum(_compter_mouvements_produit(pid)) > 0:
+        return True
+    for table in ('archive_ventes', 'archive_entrees', 'archive_pertes'):
+        if q1(f"SELECT 1 FROM {table} WHERE produit_id=? LIMIT 1", (pid,)):
+            return True
+    return False
+
+
+def _verifier_mot_de_passe_admin(mot_de_passe):
+    r = q1("SELECT password_hash FROM users WHERE id=?", (session.get('user_id'),))
+    return bool(r) and verify_password(mot_de_passe or '', r[0], user_id=session.get('user_id'))
+
+
+def _snapshot_produit_avant_suppression(id, supprime_par_id, avec_mouvements=True, produit_id_conserve=None):
+    """Sauvegarde la fiche du produit dans la corbeille (produits_supprimes).
+    - avec_mouvements=True : l'instantané contient aussi ses ventes/entrées/pertes
+      (suppression complète : la restauration recrée le produit avec son historique).
+    - produit_id_conserve : id de la fiche gardée (cachée) quand l'historique reste en place.
+    Retourne l'id de l'entrée de corbeille, ou None si la sauvegarde a échoué."""
     try:
         produit = q1('''SELECT nom, prix, stock, stock_min, unite_id, categorie_id,
-                                valeur_unite, vente_fractionnable, code_barre, boutique_id
+                                valeur_unite, vente_fractionnable, code_barre, boutique_id,
+                                COALESCE(actif, 1)
                          FROM produits WHERE id=?''', (id,))
         if not produit:
-            return
-        sorties = qall('''SELECT quantite, prix_unitaire, total, date_sortie, client,
-                                  employe_id, groupe_vente, client_id, palier_nom
-                           FROM sorties WHERE produit_id=?''', (id,))
-        entrees = qall('''SELECT quantite, prix_unitaire, total, date_entree, fournisseur, employe_id
-                           FROM entrees WHERE produit_id=?''', (id,))
-        pertes = qall('''SELECT quantite, prix_unitaire, total, motif, date_perte, employe_id
-                          FROM pertes WHERE produit_id=?''', (id,))
+            return None
+        if avec_mouvements:
+            sorties = qall('''SELECT quantite, prix_unitaire, total, date_sortie, client,
+                                      employe_id, groupe_vente, client_id, palier_nom
+                               FROM sorties WHERE produit_id=?''', (id,))
+            entrees = qall('''SELECT quantite, prix_unitaire, total, date_entree, fournisseur, employe_id
+                               FROM entrees WHERE produit_id=?''', (id,))
+            pertes = qall('''SELECT quantite, prix_unitaire, total, motif, date_perte, employe_id
+                              FROM pertes WHERE produit_id=?''', (id,))
+        else:
+            sorties, entrees, pertes = [], [], []
         paliers = qall('''SELECT nom, quantite, prix, actif, ordre FROM paliers_prix WHERE produit_id=?''', (id,))
 
         snapshot = {
@@ -2111,13 +2156,17 @@ def _snapshot_produit_avant_suppression(id, supprime_par_id):
         }
         supprimeur = q1("SELECT nom FROM users WHERE id=?", (supprime_par_id,))
         nom_supprimeur = supprimeur[0] if supprimeur else 'Inconnu'
-        nb_mouvements = len(sorties) + len(entrees) + len(pertes)
+        nb_mouvements = sum(_compter_mouvements_produit(id))
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        exe('''INSERT INTO produits_supprimes (nom, donnees_json, nb_mouvements, date_suppression, supprime_par, boutique_id)
-               VALUES (?,?,?,?,?,?)''',
-            (produit[0], json.dumps(snapshot), nb_mouvements, now, nom_supprimeur, produit[9]))
+        return exe('''INSERT INTO produits_supprimes
+                         (nom, donnees_json, nb_mouvements, date_suppression, supprime_par, boutique_id, produit_id)
+                      VALUES (?,?,?,?,?,?,?)''',
+                   (produit[0], json.dumps(snapshot), nb_mouvements, now, nom_supprimeur,
+                    produit[9], produit_id_conserve),
+                   returning=True) or None
     except Exception as e:
         print(f"⚠️ Erreur snapshot avant suppression du produit #{id}: {e}")
+        return None
 
 def _restaurer_produit_depuis_corbeille(corbeille_id):
     """Recrée un produit (nouvel id) à partir de son instantané dans la corbeille,
@@ -2172,37 +2221,90 @@ def _restaurer_produit_depuis_corbeille(corbeille_id):
     return True, f'✅ "{nom}" restauré avec {nb_s} vente(s), {nb_e} entrée(s), {nb_p} perte(s) et {nb_pal} palier(s) de prix'
 
 
+def _restaurer_depuis_corbeille(corbeille_id):
+    """Restaure une entrée de la corbeille.
+    - Produit supprimé en gardant l'historique : on réactive la même fiche (même numéro,
+      historique intact).
+    - Produit supprimé avec toutes ses données : on le recrée à partir de l'instantané.
+    Retourne (ok: bool, message: str)."""
+    row = q1("SELECT nom, donnees_json, produit_id FROM produits_supprimes WHERE id=?", (corbeille_id,))
+    if not row:
+        return False, "❌ Entrée introuvable dans la corbeille (peut-être déjà restaurée)"
+    pid = row[2]
+    if pid:
+        prod = q1("SELECT id, nom, boutique_id FROM produits WHERE id=? AND COALESCE(supprime,0)=1", (pid,))
+        if prod:
+            code_barre, actif_avant = None, 1
+            try:
+                p = json.loads(row[1]).get('produit', [])
+                code_barre = p[8] if len(p) > 8 else None
+                if len(p) > 10 and p[10] is not None:
+                    actif_avant = int(p[10])
+            except Exception:
+                pass
+            doublon = produit_nom_existe(prod[1], prod[2])
+            if doublon:
+                return False, f'❌ Restauration de "{prod[1]}" impossible : un produit nommé "{doublon[1]}" existe déjà dans cette boutique (renommez-le ou supprimez-le d\'abord)'
+            # Le code-barres doit rester unique : repris par un autre produit ? on restaure sans.
+            if code_barre and q1("SELECT id FROM produits WHERE code_barre=?", (code_barre,)):
+                code_barre = None
+            if not exe("UPDATE produits SET supprime=0, actif=?, code_barre=? WHERE id=?", (actif_avant, code_barre, pid)):
+                return False, f'❌ Échec de la restauration de "{prod[1]}"'
+            exe("DELETE FROM produits_supprimes WHERE id=?", (corbeille_id,))
+            nb_v, nb_e, nb_p = _compter_mouvements_produit(pid)
+            return True, f'✅ "{prod[1]}" restauré avec son historique ({nb_v} vente(s), {nb_e} entrée(s), {nb_p} perte(s))'
+    return _restaurer_produit_depuis_corbeille(corbeille_id)
+
+
+def _supprimer_produit_garder_historique(pid, user_id):
+    """Supprime SEULEMENT le produit : sa fiche est cachée et mise en corbeille, mais elle
+    reste en base, donc ses ventes, entrées et pertes restent intactes et visibles
+    (reçus, historique, statistiques, comptabilité)."""
+    corbeille_id = _snapshot_produit_avant_suppression(pid, user_id, avec_mouvements=False,
+                                                       produit_id_conserve=pid)
+    if not corbeille_id:
+        return False
+    # Le code-barres est libéré (il est gardé dans la corbeille) pour pouvoir être réutilisé.
+    if not exe("UPDATE produits SET supprime=1, actif=0, code_barre=NULL WHERE id=?", (pid,)):
+        exe("DELETE FROM produits_supprimes WHERE id=?", (corbeille_id,))
+        return False
+    return True
+
+
+def _effacer_produit_et_donnees(pid):
+    """Efface la fiche du produit ET ses ventes/entrées/pertes actives (sans sauvegarde)."""
+    exe("DELETE FROM sorties WHERE produit_id=?", (pid,))
+    exe("DELETE FROM entrees WHERE produit_id=?", (pid,))
+    exe("DELETE FROM pertes WHERE produit_id=?", (pid,))
+    exe("DELETE FROM alertes_produits WHERE produit_id=?", (pid,))
+    exe("DELETE FROM fournisseur_produits WHERE produit_id=?", (pid,))
+    exe("DELETE FROM produits WHERE id=?", (pid,))   # les paliers de prix suivent (ON DELETE CASCADE)
+
+
+def _supprimer_produit_et_donnees(pid, user_id):
+    """Supprime le produit ET toutes ses données actives. L'instantané complet est pris
+    AVANT l'effacement : la corbeille peut ainsi tout restaurer. Si la sauvegarde échoue,
+    on n'efface rien."""
+    if not _snapshot_produit_avant_suppression(pid, user_id, avec_mouvements=True):
+        return False
+    _effacer_produit_et_donnees(pid)
+    return True
+
+
 @app.route('/admin/produits/supprimer/<int:id>')
 def supprimer_produit(id):
+    """Suppression simple (lien sans fenêtre) : le produit part à la corbeille, son historique
+    est conservé. L'effacement des données passe par la fenêtre de choix (mot de passe)."""
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        force = request.args.get('force') == '1'
-        p = q1("SELECT nom FROM produits WHERE id=?", (id,))
-        if p:
-            ventes = q1("SELECT COUNT(*) FROM sorties WHERE produit_id=?", (id,))
-            entrees = q1("SELECT COUNT(*) FROM entrees WHERE produit_id=?", (id,))
-            pertes = q1("SELECT COUNT(*) FROM pertes WHERE produit_id=?", (id,))
-            a_des_mouvements = (ventes and ventes[0] > 0) or (entrees and entrees[0] > 0) or (pertes and pertes[0] > 0)
-            if a_des_mouvements and not force:
-                flash(f'❌ "{p[0]}" a des mouvements (ventes/entrées/pertes). Utilise la sélection multiple avec "🚨 Forcer" (mot de passe requis) pour le supprimer quand même.')
-                return redirect('/admin/produits')
-            if a_des_mouvements and force:
-                # Suppression forcée : nécessite le mot de passe admin car c'est
-                # irréversible et efface aussi l'historique (ventes/entrées/pertes).
-                r = q1("SELECT password_hash FROM users WHERE id=?", (session.get('user_id'),))
-                if not r or not verify_password(request.args.get('admin_password', ''), r[0], user_id=session.get('user_id')):
-                    flash('❌ Mot de passe incorrect — suppression forcée annulée')
-                    return redirect('/admin/produits')
-                exe("DELETE FROM sorties WHERE produit_id=?", (id,))
-                exe("DELETE FROM entrees WHERE produit_id=?", (id,))
-                exe("DELETE FROM pertes WHERE produit_id=?", (id,))
-            exe("DELETE FROM alertes_produits WHERE produit_id=?", (id,))
-            _snapshot_produit_avant_suppression(id, session.get('user_id'))
-            exe("DELETE FROM produits WHERE id=?", (id,))
-            flash(f'🗑️ "{p[0]}" supprimé' + (' (avec son historique — récupérable depuis la corbeille)' if a_des_mouvements else ''))
-        else:
+        p = q1("SELECT nom FROM produits WHERE id=? AND COALESCE(supprime,0)=0", (id,))
+        if not p:
             flash('❌ Produit introuvable')
+        elif _supprimer_produit_garder_historique(id, session.get('user_id')):
+            flash(f'🗑️ "{p[0]}" supprimé — son historique est conservé (récupérable depuis la corbeille)')
+        else:
+            flash(f'❌ Impossible de supprimer "{p[0]}"')
     except Exception as e:
         print(f"❌ Erreur supprimer_produit: {e}")
         flash('❌ Erreur lors de la suppression')
@@ -2242,55 +2344,45 @@ def activer_produit(id):
 
 @app.route('/admin/produits/supprimer_multiple', methods=['POST'])
 def supprimer_produits_multiple():
+    """Supprime un ou plusieurs produits. Champ « mode » :
+    - « produit » (défaut) : seulement le produit, son historique est conservé ;
+    - « tout » : le produit et toutes ses données (mot de passe admin obligatoire)."""
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
         ids = request.form.getlist('produit_ids')
-        force = request.form.get('force') == '1'
+        mode = 'tout' if (request.form.get('mode') == 'tout' or request.form.get('force') == '1') else 'produit'
         if not ids:
             flash('⚠️ Aucun produit sélectionné')
             return redirect('/admin/produits')
 
-        if force:
-            # Suppression forcée : mot de passe admin obligatoire, vérifié une
-            # seule fois pour tout le lot. Si incorrect, on n'efface RIEN.
-            r = q1("SELECT password_hash FROM users WHERE id=?", (session.get('user_id'),))
-            if not r or not verify_password(request.form.get('admin_password', ''), r[0], user_id=session.get('user_id')):
-                flash('❌ Mot de passe incorrect — suppression forcée annulée (rien n\'a été supprimé)')
-                return redirect('/admin/produits')
+        if mode == 'tout' and not _verifier_mot_de_passe_admin(request.form.get('admin_password')):
+            flash('❌ Mot de passe incorrect — rien n\'a été supprimé')
+            return redirect('/admin/produits')
 
-        supprimes = []
-        bloques = []
+        user_id = session.get('user_id')
+        supprimes, echecs = [], []
         for id_str in ids:
             try:
-                id = int(id_str)
+                pid = int(id_str)
             except (ValueError, TypeError):
                 continue
-            p = q1("SELECT nom FROM produits WHERE id=?", (id,))
+            p = q1("SELECT nom FROM produits WHERE id=? AND COALESCE(supprime,0)=0", (pid,))
             if not p:
                 continue
-            ventes = q1("SELECT COUNT(*) FROM sorties WHERE produit_id=?", (id,))
-            entrees = q1("SELECT COUNT(*) FROM entrees WHERE produit_id=?", (id,))
-            pertes = q1("SELECT COUNT(*) FROM pertes WHERE produit_id=?", (id,))
-            a_des_mouvements = (ventes and ventes[0] > 0) or (entrees and entrees[0] > 0) or (pertes and pertes[0] > 0)
-            if a_des_mouvements and not force:
-                bloques.append(p[0])
-                continue
-            if a_des_mouvements and force:
-                exe("DELETE FROM sorties WHERE produit_id=?", (id,))
-                exe("DELETE FROM entrees WHERE produit_id=?", (id,))
-                exe("DELETE FROM pertes WHERE produit_id=?", (id,))
-            exe("DELETE FROM alertes_produits WHERE produit_id=?", (id,))
-            if force:
-                _snapshot_produit_avant_suppression(id, session.get('user_id'))
-            exe("DELETE FROM produits WHERE id=?", (id,))
-            supprimes.append(p[0])
+            ok = (_supprimer_produit_et_donnees(pid, user_id) if mode == 'tout'
+                  else _supprimer_produit_garder_historique(pid, user_id))
+            (supprimes if ok else echecs).append(p[0])
 
         if supprimes:
-            flash(f'🗑️ {len(supprimes)} produit(s) supprimé(s)' + (' (récupérables depuis la corbeille) : ' if force else ' : ') + ", ".join(supprimes))
-        if bloques:
-            flash(f'❌ {len(bloques)} produit(s) non supprimé(s) (ont des mouvements — coche "Forcer" pour les supprimer quand même) : {", ".join(bloques)}')
-        if not supprimes and not bloques:
+            detail = ", ".join(supprimes)
+            if mode == 'tout':
+                flash(f'🗑️ {len(supprimes)} produit(s) supprimé(s) avec toutes leurs données (récupérables depuis la corbeille) : {detail}')
+            else:
+                flash(f'🗑️ {len(supprimes)} produit(s) supprimé(s) — historique conservé (récupérables depuis la corbeille) : {detail}')
+        if echecs:
+            flash(f'❌ Échec de la suppression : {", ".join(echecs)}')
+        if not supprimes and not echecs:
             flash('⚠️ Aucun produit valide sélectionné')
     except Exception as e:
         print(f"❌ Erreur supprimer_produits_multiple: {e}")
@@ -2299,45 +2391,127 @@ def supprimer_produits_multiple():
 
 # ══════════════════════════════════════════════════════════════
 # CORBEILLE DES PRODUITS SUPPRIMÉS — restauration après une
-# suppression forcée (nom, prix, stock, historique, paliers).
+# suppression (nom, prix, stock, historique, paliers). Deux modes : historique
+# conservé (fiche cachée) ou suppression complète (instantané recréable).
 # ══════════════════════════════════════════════════════════════
 @app.route('/admin/produits/corbeille')
 def corbeille_produits():
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        where_bq, params_bq = boutique_filtre_sql('boutique_id')
-        entrees = qall(f'''SELECT id, nom, nb_mouvements, date_suppression, supprime_par
-                           FROM produits_supprimes WHERE 1=1{where_bq} ORDER BY date_suppression DESC''', params_bq)
+        where_bq, params_bq = boutique_filtre_sql('ps.boutique_id')
+        # e[2] = nombre de mouvements encore liés au produit (historique conservé)
+        entrees = qall(f'''SELECT ps.id, ps.nom,
+                                  (SELECT COUNT(*) FROM sorties s WHERE s.produit_id = ps.produit_id)
+                                + (SELECT COUNT(*) FROM entrees e WHERE e.produit_id = ps.produit_id)
+                                + (SELECT COUNT(*) FROM pertes pe WHERE pe.produit_id = ps.produit_id),
+                                  ps.date_suppression, ps.supprime_par, ps.produit_id, ps.nb_mouvements
+                           FROM produits_supprimes ps WHERE 1=1{where_bq}
+                           ORDER BY ps.date_suppression DESC''', params_bq)
         return render_template('admin_corbeille_produits.html', entrees=entrees)
     except Exception as e:
         print(f"❌ Erreur corbeille_produits: {e}")
         flash('Erreur lors du chargement de la corbeille')
         return redirect('/admin/produits')
 
+
+def _ids_formulaire(nom='ids'):
+    ids = []
+    for v in request.form.getlist(nom):
+        try:
+            ids.append(int(v))
+        except (ValueError, TypeError):
+            pass
+    return ids
+
+
 @app.route('/admin/produits/corbeille/restaurer/<int:id>', methods=['POST'])
 def restaurer_produit(id):
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        ok, message = _restaurer_produit_depuis_corbeille(id)
+        ok, message = _restaurer_depuis_corbeille(id)
         flash(message)
     except Exception as e:
         print(f"❌ Erreur restaurer_produit: {e}")
         flash('❌ Erreur lors de la restauration')
     return redirect('/admin/produits/corbeille')
 
-@app.route('/admin/produits/corbeille/supprimer_definitivement/<int:id>')
-def purger_corbeille_produit(id):
+
+@app.route('/admin/produits/corbeille/restaurer', methods=['POST'])
+def restaurer_produits_corbeille():
+    """Restaure plusieurs produits de la corbeille d'un coup."""
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        p = q1("SELECT nom FROM produits_supprimes WHERE id=?", (id,))
-        if p:
-            exe("DELETE FROM produits_supprimes WHERE id=?", (id,))
-            flash(f'🗑️ "{p[0]}" définitivement effacé de la corbeille (plus aucune récupération possible)')
+        ids = _ids_formulaire()
+        if not ids:
+            flash('⚠️ Aucun produit sélectionné')
+            return redirect('/admin/produits/corbeille')
+        reussis, echecs = 0, []
+        for cid in ids:
+            ok, message = _restaurer_depuis_corbeille(cid)
+            if ok:
+                reussis += 1
+            else:
+                echecs.append(message)
+        if reussis:
+            flash(f'✅ {reussis} produit(s) restauré(s) avec leur historique')
+        for m in echecs:
+            flash(m)
     except Exception as e:
-        print(f"❌ Erreur purger_corbeille_produit: {e}")
+        print(f"❌ Erreur restaurer_produits_corbeille: {e}")
+        flash('❌ Erreur lors de la restauration')
+    return redirect('/admin/produits/corbeille')
+
+
+@app.route('/admin/produits/corbeille/purger', methods=['POST'])
+def purger_corbeille_produits():
+    """Supprime définitivement des produits de la corbeille. Champ « mode » :
+    - « produit » (défaut) : seulement le produit ; ses ventes, entrées et pertes restent
+      dans l'historique et les statistiques ;
+    - « tout » : le produit et toutes ses données actives (mot de passe admin obligatoire).
+    Les copies déjà archivées par semaine (Archives) ne sont jamais effacées ici."""
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        ids = _ids_formulaire()
+        mode = 'tout' if request.form.get('mode') == 'tout' else 'produit'
+        if not ids:
+            flash('⚠️ Aucun produit sélectionné')
+            return redirect('/admin/produits/corbeille')
+        if mode == 'tout' and not _verifier_mot_de_passe_admin(request.form.get('admin_password')):
+            flash('❌ Mot de passe incorrect — rien n\'a été supprimé')
+            return redirect('/admin/produits/corbeille')
+
+        nb, nb_historique_garde = 0, 0
+        for cid in ids:
+            e = q1("SELECT nom, produit_id FROM produits_supprimes WHERE id=?", (cid,))
+            if not e:
+                continue
+            pid = e[1]
+            if pid:
+                if mode == 'tout':
+                    _effacer_produit_et_donnees(pid)
+                elif _produit_a_un_historique(pid):
+                    # La fiche reste cachée pour que ses mouvements restent visibles.
+                    exe("UPDATE produits SET supprime=2 WHERE id=? AND COALESCE(supprime,0)=1", (pid,))
+                    nb_historique_garde += 1
+                else:
+                    _effacer_produit_et_donnees(pid)   # rien à conserver
+            exe("DELETE FROM produits_supprimes WHERE id=?", (cid,))
+            nb += 1
+
+        if not nb:
+            flash('⚠️ Aucun produit valide sélectionné')
+        elif mode == 'tout':
+            flash(f'🗑️ {nb} produit(s) supprimé(s) définitivement avec toutes leurs données (plus aucune récupération possible)')
+        elif nb_historique_garde:
+            flash(f'🗑️ {nb} produit(s) supprimé(s) définitivement — historique conservé pour {nb_historique_garde} d\'entre eux (ventes, entrées, pertes)')
+        else:
+            flash(f'🗑️ {nb} produit(s) supprimé(s) définitivement (aucun historique à conserver)')
+    except Exception as e:
+        print(f"❌ Erreur purger_corbeille_produits: {e}")
         flash('❌ Erreur lors de la suppression définitive')
     return redirect('/admin/produits/corbeille')
 
@@ -2515,7 +2689,7 @@ def entrees_list():
                 FROM entrees e JOIN produits p ON e.produit_id=p.id
                 WHERE 1=1{where_bq} ORDER BY e.date_entree DESC LIMIT 30''', params_bq)
             where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
-            produits = qall(f"SELECT id,nom,stock,COALESCE(vente_fractionnable,0) FROM produits WHERE 1=1{where_bq2} ORDER BY nom", params_bq2)
+            produits = qall(f"SELECT id,nom,stock,COALESCE(vente_fractionnable,0) FROM produits WHERE COALESCE(supprime,0)=0{where_bq2} ORDER BY nom", params_bq2)
             set_cached(cache_key, (entrees, produits))
         where_fp, params_fp = boutique_filtre_sql('fp.boutique_id')
         catalogue = {}
@@ -3261,7 +3435,7 @@ def pertes_list():
             WHERE 1=1{where_bq}
             ORDER BY p.date_perte DESC LIMIT 100''', params_bq)
         where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
-        produits = qall(f"SELECT id,nom,prix,stock,COALESCE(vente_fractionnable,0) FROM produits WHERE 1=1{where_bq2} ORDER BY nom", params_bq2)
+        produits = qall(f"SELECT id,nom,prix,stock,COALESCE(vente_fractionnable,0) FROM produits WHERE COALESCE(supprime,0)=0{where_bq2} ORDER BY nom", params_bq2)
         s_auj = q1(f"SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE DATE(date_perte)=CURRENT_DATE{where_bq}", params_bq)
         s_auj = s_auj if s_auj else (0,0,0)
         s_mois = q1(f"SELECT COUNT(*),COALESCE(SUM(total),0),COALESCE(SUM(quantite),0) FROM pertes WHERE date_perte::timestamp >= NOW() - INTERVAL '30 days'{where_bq}", params_bq)
@@ -3371,7 +3545,7 @@ def api_stock_bas():
         return jsonify({'error': 'Non autorisé'}), 401
     try:
         where_bq, params_bq = boutique_filtre_sql('boutique_id')
-        rows = qall(f"SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min{where_bq}", params_bq)
+        rows = qall(f"SELECT nom,stock,stock_min FROM produits WHERE stock<=stock_min AND COALESCE(supprime,0)=0{where_bq}", params_bq)
         return jsonify([{'nom':r[0],'stock':r[1],'stock_min':r[2]} for r in rows])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -3483,7 +3657,7 @@ def admin_boutiques():
         if session.get('role') != 'admin':
             return redirect('/login')
         boutiques = qall('''SELECT b.id, b.nom, b.adresse, b.telephone, b.actif,
-                                    (SELECT COUNT(*) FROM produits p WHERE p.boutique_id = b.id) AS nb_produits,
+                                    (SELECT COUNT(*) FROM produits p WHERE p.boutique_id = b.id AND COALESCE(p.supprime,0)=0) AS nb_produits,
                                     (SELECT COUNT(*) FROM users u WHERE u.boutique_id = b.id AND u.role = 'employe') AS nb_employes
                              FROM boutiques b ORDER BY b.nom''')
         return render_template('admin_boutiques.html', boutiques=boutiques,
@@ -3836,7 +4010,7 @@ def commandes_fournisseurs_list():
         commandes = qall(sql, tuple(params))
         where_bq2, params_bq2 = boutique_filtre_sql('boutique_id')
         fournisseurs = qall(f"SELECT id, nom FROM fournisseurs WHERE 1=1{where_bq2} ORDER BY nom", params_bq2)
-        produits = qall(f"SELECT id, nom FROM produits WHERE 1=1{where_bq2} ORDER BY nom", params_bq2)
+        produits = qall(f"SELECT id, nom FROM produits WHERE COALESCE(supprime,0)=0{where_bq2} ORDER BY nom", params_bq2)
         where_bq3, params_bq3 = boutique_filtre_sql('boutique_id')
         nb_en_attente = q1(f"SELECT COUNT(*) FROM commandes_fournisseurs WHERE statut='commandé'{where_bq3}", params_bq3)
         nb_en_attente = nb_en_attente[0] if nb_en_attente else 0
@@ -6784,7 +6958,7 @@ def admin_alertes_produits():
                                    COALESCE(a.actif, 1) as actif
                             FROM produits p
                             LEFT JOIN alertes_produits a ON p.id = a.produit_id
-                            WHERE 1=1{where_bq}
+                            WHERE COALESCE(p.supprime,0)=0{where_bq}
                             ORDER BY p.nom''', params_bq)
         return render_template('admin_alertes_produits.html', produits=produits)
     except Exception as e:
@@ -6830,7 +7004,7 @@ def api_produits():
         cached_data = get_cached(cache_key, 60)
         if cached_data:
             return jsonify(cached_data)
-        produits = qall("SELECT id,nom,prix,stock FROM produits ORDER BY nom")
+        produits = qall("SELECT id,nom,prix,stock FROM produits WHERE COALESCE(supprime,0)=0 ORDER BY nom")
         data = {
             'produits':[{'id':p[0],'nom':p[1],'prix':p[2],'stock':p[3]} for p in produits],
             'timestamp':datetime.now().isoformat()

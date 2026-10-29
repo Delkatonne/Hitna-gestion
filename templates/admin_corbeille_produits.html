@@ -11,73 +11,256 @@
         padding: 14px 18px;
         font-size: 13px;
         color: #1e3c72;
-        margin-bottom: 24px;
+        margin-bottom: 20px;
     }
-    .corbeille-item {
-        background: white;
-        border-radius: 12px;
-        padding: 15px 18px;
-        margin-bottom: 10px;
-        border: 1px solid #e0e0e0;
+    .barre-selection {
         display: flex;
-        justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
-        gap: 12px;
+        gap: 10px;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        background: #f7f9fc;
+        border: 1px solid #e0e6f0;
+        border-radius: 12px;
+        position: sticky;
+        top: 70px;
+        z-index: 5;
     }
-    .corbeille-item .infos h3 { font-size: 15px; color: #1e3c72; margin-bottom: 4px; }
-    .corbeille-item .infos p { font-size: 12px; color: #888; }
-    .corbeille-item .actions { display: flex; gap: 8px; }
-    .corbeille-item .actions button, .corbeille-item .actions a {
-        padding: 8px 14px;
+    .barre-selection label.tout { display: flex; align-items: center; gap: 8px; font-weight: bold; cursor: pointer; }
+    .barre-selection #compteur { font-size: 13px; color: #666; flex: 1; min-width: 110px; }
+    .barre-selection button, .corbeille-item .actions button {
+        padding: 10px 14px;
+        min-height: 44px;
         border-radius: 8px;
-        text-decoration: none;
         font-size: 13px;
         font-weight: bold;
         border: none;
         cursor: pointer;
+        touch-action: manipulation;
     }
+    .barre-selection button:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-vert  { background: #28a745; color: white; }
+    .btn-rouge { background: #dc3545; color: white; }
+    .btn-gris  { background: #6c757d; color: white; }
+    .corbeille-item {
+        background: white;
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        border: 2px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .corbeille-item.selectionne { border-color: #1e3c72; background: #f2f6ff; }
+    .corbeille-item .coche { display: flex; align-items: center; padding: 6px; cursor: pointer; }
+    .corbeille-item .coche input, .barre-selection input[type=checkbox] { width: 22px; height: 22px; cursor: pointer; }
+    .corbeille-item .infos { flex: 1; min-width: 180px; }
+    .corbeille-item .infos h3 { font-size: 15px; color: #1e3c72; margin-bottom: 4px; }
+    .corbeille-item .infos p { font-size: 12px; color: #888; margin: 0; }
+    .corbeille-item .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .badge-type { display: inline-block; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 10px; margin-left: 6px; }
+    .badge-garde { background: #d4edda; color: #1d6b32; }
+    .badge-complet { background: #fff3cd; color: #8a6d1d; }
+
+    #modal-purge {
+        display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 10000;
+        align-items: center; justify-content: center; padding: 15px; overflow-y: auto;
+    }
+    #modal-purge .boite {
+        background: white; color: #222; border-radius: 16px; padding: 20px; width: 100%; max-width: 460px;
+        max-height: 92vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,.3);
+    }
+    #modal-purge h3 { margin: 0 0 6px; color: #dc3545; }
+    #modal-purge .choix {
+        display: flex; gap: 10px; align-items: flex-start; padding: 12px; margin: 10px 0;
+        border: 2px solid #e0e0e0; border-radius: 10px; cursor: pointer; font-size: 13px; line-height: 1.4;
+    }
+    #modal-purge .choix input { width: 20px; height: 20px; margin-top: 2px; flex-shrink: 0; }
+    #modal-purge .choix.actif { border-color: #1e3c72; background: #f2f6ff; }
+    #modal-purge .choix.danger.actif { border-color: #dc3545; background: #fff5f5; }
+    #modal-purge input[type=password] {
+        width: 100%; padding: 12px; border: 2px solid #dc3545; border-radius: 8px; box-sizing: border-box; font-size: 16px;
+    }
+    #modal-purge .boutons { display: flex; gap: 10px; margin-top: 14px; }
+    #modal-purge .boutons button { flex: 1; min-height: 46px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; color: white; }
+
+    body.dark-theme .barre-selection { background: #16213e; border-color: #2a3a63; }
+    body.dark-theme .corbeille-item.selectionne { background: #1b2a4e; }
 </style>
 {% endblock %}
 
 {% block page_title %}<i class="bi bi-trash"></i> Corbeille des produits{% endblock %}
-{% block page_subtitle %}Produits supprimés avec "Forcer" — restaurables avec tout leur historique{% endblock %}
+{% block page_subtitle %}Restaurer ou supprimer définitivement, un par un ou plusieurs à la fois{% endblock %}
 
 {% block content %}
 
 <div class="info-banner">
-    ℹ Chaque suppression forcée d'un produit (avec son historique) est sauvegardée ici automatiquement.
-    Restaurer un produit le recrée (nouveau numéro interne) avec le même nom, prix, stock, ses ventes,
-    entrées, pertes et paliers de prix d'origine.
+    ℹ Les produits supprimés arrivent ici. <b>Restaurer</b> les remet en vente avec leur historique.
+    <b>Supprimer définitivement</b> te laisse choisir : garder leur historique (ventes, entrées, pertes)
+    ou tout effacer.
 </div>
 
 <div class="card">
     {% if entrees %}
-        {% for e in entrees %}
-        <div class="corbeille-item">
-            <div class="infos">
-                <h3><i class="bi bi-box-seam"></i> {{ e[1] }}</h3>
-                <p>{{ e[2] }} mouvement(s) sauvegardé(s) · supprimé le {{ e[3] }} par {{ e[4] }}</p>
-            </div>
-            <div class="actions">
-                <form method="post" action="/admin/produits/corbeille/restaurer/{{ e[0] }}" style="display:inline;"
-                      onsubmit="return confirm('Restaurer \'{{ e[1] }}\' avec tout son historique ?')">
-                    <button type="submit" style="background:#28a745; color:white;"><i class="bi bi-recycle"></i> Restaurer</button>
-                </form>
-                <a href="/admin/produits/corbeille/supprimer_definitivement/{{ e[0] }}"
-                   onclick="return confirm('Effacer définitivement \'{{ e[1] }}\' de la corbeille ? Cette fois, ce sera irréversible.')"
-                   style="background:#dc3545; color:white;"><i class="bi bi-trash"></i> Effacer définitivement</a>
-            </div>
+    <div class="barre-selection">
+        <label class="tout"><input type="checkbox" id="cb-tout" onchange="toutCocher(this.checked)"> Tout sélectionner</label>
+        <span id="compteur">0 sélectionné(s)</span>
+        <button type="button" id="btn-restaurer" class="btn-vert" onclick="restaurerSelection()" disabled>
+            <i class="bi bi-recycle"></i> Restaurer
+        </button>
+        <button type="button" id="btn-purger" class="btn-rouge" onclick="purgerSelection()" disabled>
+            <i class="bi bi-trash"></i> Supprimer définitivement
+        </button>
+    </div>
+
+    {% for e in entrees %}
+    <div class="corbeille-item">
+        <label class="coche">
+            <input type="checkbox" class="cb-item" value="{{ e[0] }}" onchange="majSelection()">
+        </label>
+        <div class="infos">
+            <h3>
+                <i class="bi bi-box-seam"></i> {{ e[1] }}
+                {% if e[5] %}<span class="badge-type badge-garde">Historique conservé</span>
+                {% else %}<span class="badge-type badge-complet">Supprimé avec ses données</span>{% endif %}
+            </h3>
+            <p>
+                {% if e[5] %}{{ e[2] }} mouvement(s) toujours dans l'historique
+                {% else %}{{ e[6] }} mouvement(s) sauvegardé(s){% endif %}
+                · supprimé le {{ e[3] }} par {{ e[4] }}
+            </p>
         </div>
-        {% endfor %}
+        <div class="actions">
+            <button type="button" class="btn-vert" onclick="restaurerIds([{{ e[0] }}])"><i class="bi bi-recycle"></i> Restaurer</button>
+            <button type="button" class="btn-rouge" data-nom="{{ e[1] }}" onclick="ouvrirModalPurge([{{ e[0] }}], this.dataset.nom)"><i class="bi bi-trash"></i></button>
+        </div>
+    </div>
+    {% endfor %}
     {% else %}
         <p style="text-align:center; color:#999; padding:40px;">
-            <i class="bi bi-inbox"></i> La corbeille est vide — aucun produit n'a été supprimé avec historique récemment.
+            <i class="bi bi-inbox"></i> La corbeille est vide — aucun produit supprimé récemment.
         </p>
     {% endif %}
+</div>
+
+<form id="form-restaurer" method="post" action="/admin/produits/corbeille/restaurer" style="display:none;">
+    <div id="restaurer-ids"></div>
+</form>
+
+<div id="modal-purge">
+    <form class="boite" method="post" action="/admin/produits/corbeille/purger" onsubmit="return validerPurge()">
+        <div id="purge-ids"></div>
+        <h3><i class="bi bi-exclamation-triangle-fill"></i> Supprimer définitivement</h3>
+        <p id="purge-libelle" style="margin:0 0 6px; font-weight:bold;"></p>
+
+        <label class="choix actif" id="choix-produit">
+            <input type="radio" name="mode" value="produit" id="purge-mode-produit" checked onchange="majModePurge()">
+            <span><b>Seulement le produit</b><br>
+                Ses ventes, entrées et pertes restent dans l'historique, les statistiques et la comptabilité.</span>
+        </label>
+        <label class="choix danger" id="choix-tout">
+            <input type="radio" name="mode" value="tout" id="purge-mode-tout" onchange="majModePurge()">
+            <span><b>Le produit et toutes ses données</b><br>
+                Ses ventes, entrées et pertes sont effacées. Irréversible, mot de passe requis.</span>
+        </label>
+        <div id="purge-mdp" style="display:none; margin-top:6px;">
+            <input type="password" name="admin_password" id="purge-password" placeholder="Mot de passe admin" autocomplete="current-password">
+        </div>
+        <p style="font-size:11px; color:#888; margin:10px 0 0;">
+            Les ventes déjà archivées dans les Archives ne sont jamais effacées par cette action.
+        </p>
+        <div class="boutons">
+            <button type="button" class="btn-gris" onclick="fermerModalPurge()">Annuler</button>
+            <button type="submit" class="btn-rouge">Confirmer</button>
+        </div>
+    </form>
 </div>
 
 <div class="nav-links">
     <a href="/admin/produits"><i class="bi bi-arrow-left"></i> Retour aux produits</a>
 </div>
+
+<script>
+    // La fenêtre est placée directement sous <body> pour toujours s'afficher au premier plan
+    document.body.appendChild(document.getElementById('modal-purge'));
+
+    function cases() { return Array.from(document.querySelectorAll('.cb-item')); }
+    function idsCoches() { return cases().filter(function (c) { return c.checked; }).map(function (c) { return c.value; }); }
+
+    function majSelection() {
+        var ids = idsCoches(), total = cases().length;
+        var cbTout = document.getElementById('cb-tout');
+        document.getElementById('compteur').textContent = ids.length + ' sélectionné(s)';
+        document.getElementById('btn-restaurer').disabled = ids.length === 0;
+        document.getElementById('btn-purger').disabled = ids.length === 0;
+        if (cbTout) {
+            cbTout.checked = total > 0 && ids.length === total;
+            cbTout.indeterminate = ids.length > 0 && ids.length < total;
+        }
+        cases().forEach(function (c) { c.closest('.corbeille-item').classList.toggle('selectionne', c.checked); });
+    }
+
+    function toutCocher(valeur) {
+        cases().forEach(function (c) { c.checked = valeur; });
+        majSelection();
+    }
+
+    function injecterIds(idConteneur, ids) {
+        var conteneur = document.getElementById(idConteneur);
+        conteneur.innerHTML = '';
+        ids.forEach(function (id) {
+            var input = document.createElement('input');
+            input.type = 'hidden'; input.name = 'ids'; input.value = id;
+            conteneur.appendChild(input);
+        });
+    }
+
+    function restaurerIds(ids) {
+        if (!ids.length) return;
+        if (!confirm('Restaurer ' + ids.length + ' produit(s) avec leur historique ?')) return;
+        injecterIds('restaurer-ids', ids);
+        document.getElementById('form-restaurer').submit();
+    }
+    function restaurerSelection() { restaurerIds(idsCoches()); }
+
+    function purgerSelection() {
+        var ids = idsCoches();
+        if (ids.length) ouvrirModalPurge(ids, ids.length + ' produit(s) sélectionné(s)');
+    }
+
+    function ouvrirModalPurge(ids, libelle) {
+        injecterIds('purge-ids', ids);
+        document.getElementById('purge-libelle').textContent = libelle;
+        document.getElementById('purge-mode-produit').checked = true;
+        document.getElementById('purge-password').value = '';
+        majModePurge();
+        document.getElementById('modal-purge').style.display = 'flex';
+    }
+    function fermerModalPurge() { document.getElementById('modal-purge').style.display = 'none'; }
+
+    function majModePurge() {
+        var tout = document.getElementById('purge-mode-tout').checked;
+        document.getElementById('purge-mdp').style.display = tout ? 'block' : 'none';
+        document.getElementById('choix-tout').classList.toggle('actif', tout);
+        document.getElementById('choix-produit').classList.toggle('actif', !tout);
+    }
+
+    function validerPurge() {
+        var tout = document.getElementById('purge-mode-tout').checked;
+        var n = document.querySelectorAll('#purge-ids input').length;
+        if (tout) {
+            if (!document.getElementById('purge-password').value) {
+                alert('Le mot de passe admin est requis pour tout supprimer.');
+                return false;
+            }
+            return confirm('SUPPRESSION TOTALE : ' + n + ' produit(s) et toutes leurs ventes, entrées et pertes seront effacés.\nCette action est irréversible. Confirmer ?');
+        }
+        return confirm('Supprimer définitivement ' + n + ' produit(s) ?\nLeur historique (ventes, entrées, pertes) sera conservé.');
+    }
+
+    if (document.getElementById('compteur')) majSelection();
+</script>
 {% endblock %}

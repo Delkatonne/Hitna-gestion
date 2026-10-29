@@ -368,22 +368,44 @@
         <button class="clear-search" id="clearSearch" onclick="clearSearch()"><i class="bi bi-x-lg"></i> Effacer</button>
     </div>
 
+    <!-- Fenêtre de choix de suppression -->
+    <div id="modal-suppr" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:10000; align-items:center; justify-content:center; padding:15px; overflow-y:auto;">
+        <form method="post" action="/admin/produits/supprimer_multiple" onsubmit="return validerSuppression()"
+              style="background:white; color:#222; border-radius:16px; padding:20px; width:100%; max-width:460px; max-height:92vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,.3);">
+            <div id="suppr-ids"></div>
+            <h3 style="margin:0 0 6px; color:#dc3545;"><i class="bi bi-trash"></i> Supprimer</h3>
+            <p id="suppr-libelle" style="margin:0 0 6px; font-weight:bold;"></p>
+
+            <label id="suppr-choix-produit" style="display:flex; gap:10px; align-items:flex-start; padding:12px; margin:10px 0; border:2px solid #1e3c72; background:#f2f6ff; border-radius:10px; cursor:pointer; font-size:13px; line-height:1.4;">
+                <input type="radio" name="mode" value="produit" id="suppr-mode-produit" checked onchange="majModeSuppression()" style="width:20px; height:20px; margin-top:2px; flex-shrink:0;">
+                <span><b>Seulement le produit</b><br>
+                    Ses ventes, entrées et pertes restent dans l'historique, les statistiques et la comptabilité. Récupérable depuis la corbeille.</span>
+            </label>
+            <label id="suppr-choix-tout" style="display:flex; gap:10px; align-items:flex-start; padding:12px; margin:10px 0; border:2px solid #e0e0e0; border-radius:10px; cursor:pointer; font-size:13px; line-height:1.4;">
+                <input type="radio" name="mode" value="tout" id="suppr-mode-tout" onchange="majModeSuppression()" style="width:20px; height:20px; margin-top:2px; flex-shrink:0;">
+                <span><b>Le produit et toutes ses données</b><br>
+                    Ses ventes, entrées et pertes sont effacées des listes et des statistiques. Mot de passe requis. Une copie reste dans la corbeille.</span>
+            </label>
+            <div id="suppr-mdp" style="display:none; margin-top:6px;">
+                <input type="password" name="admin_password" id="suppr-password" placeholder="Mot de passe admin" autocomplete="current-password"
+                       style="width:100%; padding:12px; border:2px solid #dc3545; border-radius:8px; box-sizing:border-box; font-size:16px;">
+            </div>
+            <p style="font-size:11px; color:#888; margin:10px 0 0;">Les ventes déjà archivées dans les Archives ne sont jamais effacées par cette action.</p>
+            <div style="display:flex; gap:10px; margin-top:14px;">
+                <button type="button" onclick="fermerModalSuppression()" style="flex:1; min-height:46px; border:none; border-radius:8px; background:#6c757d; color:white; font-size:15px; font-weight:bold; cursor:pointer;">Annuler</button>
+                <button type="submit" style="flex:1; min-height:46px; border:none; border-radius:8px; background:#dc3545; color:white; font-size:15px; font-weight:bold; cursor:pointer;">Confirmer</button>
+            </div>
+        </form>
+    </div>
+
     <!-- Barre d'actions groupées -->
     <div class="bulk-actions-bar" id="bulk-actions-bar">
         <span class="bulk-count" id="bulk-count">0 produit(s) sélectionné(s)</span>
-        <form method="post" action="/admin/produits/supprimer_multiple" id="form-bulk-delete"
-              onsubmit="return confirmSuppressionMultiple()">
-            <div id="hidden-ids-container"></div>
-            <input type="hidden" name="force" id="force-input" value="0">
-            <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#dc3545; margin-right:8px;">
-                <input type="checkbox" id="force-checkbox" onchange="toggleForceDelete(this)" style="width:16px; height:16px;">
-                <i class="bi bi-exclamation-octagon-fill"></i> Forcer (supprime aussi l'historique ventes/entrées/pertes)
-            </label>
-            <input type="password" id="force-password" name="admin_password" placeholder="Mot de passe admin"
-                   autocomplete="current-password"
-                   style="display:none; padding:6px 10px; border:2px solid #dc3545; border-radius:6px; font-size:12px; margin-right:8px;">
-            <button type="submit" class="btn-bulk-delete"><i class="bi bi-trash"></i> Supprimer la sélection</button>
-        </form>
+        <div id="hidden-ids-container" style="display:none;"></div>
+        <button type="button" class="btn-bulk-delete"
+                onclick="ouvrirModalSuppression(Array.from(selectedIds), selectedIds.size + ' produit(s) sélectionné(s)')">
+            <i class="bi bi-trash"></i> Supprimer la sélection
+        </button>
         <button class="btn-bulk-cancel" onclick="deselectionnerTout()"><i class="bi bi-x-lg"></i> Annuler</button>
     </div>
 
@@ -457,7 +479,7 @@
                             {% endif %}
                             <!-- Supprimer seul -->
                             <a href="/admin/produits/supprimer/{{ p[0] }}"
-                               onclick="return confirm('Supprimer {{ p[1] }} ?')"
+                               onclick='return ouvrirModalSuppression([{{ p[0] }}], {{ p[1]|tojson }}, event)'
                                style="background:#dc3545;color:white;padding:5px 10px;border-radius:6px;font-size:12px;text-decoration:none;margin-left:4px;">
                                 <i class="bi bi-trash"></i>
                             </a>
@@ -518,7 +540,7 @@
                    class="card-btn-save" style="background:#17a2b8; text-decoration:none; text-align:center;"><i class="bi bi-check-circle-fill"></i> Réactiver</a>
                 {% endif %}
                 <a href="/admin/produits/supprimer/{{ p[0] }}"
-                   onclick="return confirm('Supprimer {{ p[1] }} ?')"
+                   onclick='return ouvrirModalSuppression([{{ p[0] }}], {{ p[1]|tojson }}, event)'
                    class="card-btn-delete"><i class="bi bi-trash"></i></a>
             </div>
         </div>
@@ -671,34 +693,56 @@ function deselectionnerTout() {
     const cbAll = document.getElementById('select-all-cb');
     if (cbAll) cbAll.checked = false;
     selectedIds.clear();
-    document.getElementById('force-checkbox').checked = false;
-    document.getElementById('force-input').value = '0';
-    document.getElementById('force-password').style.display = 'none';
-    document.getElementById('force-password').value = '';
     updateBulkBar();
     document.querySelectorAll('.selected-row').forEach(r  => r.classList.remove('selected-row'));
     document.querySelectorAll('.selected-card').forEach(c => c.classList.remove('selected-card'));
 }
 
-function toggleForceDelete(checkbox) {
-    document.getElementById('force-input').value = checkbox.checked ? '1' : '0';
-    document.getElementById('force-password').style.display = checkbox.checked ? 'inline-block' : 'none';
-    if (!checkbox.checked) {
-        document.getElementById('force-password').value = '';
-    }
+// La fenêtre de choix est placée directement sous <body> pour toujours s'afficher au premier plan
+document.body.appendChild(document.getElementById('modal-suppr'));
+
+function ouvrirModalSuppression(ids, libelle, evt) {
+    if (evt) evt.preventDefault();
+    const conteneur = document.getElementById('suppr-ids');
+    conteneur.innerHTML = '';
+    ids.forEach(id => {
+        const input = document.createElement('input');
+        input.type = 'hidden'; input.name = 'produit_ids'; input.value = id;
+        conteneur.appendChild(input);
+    });
+    document.getElementById('suppr-libelle').textContent = libelle;
+    document.getElementById('suppr-mode-produit').checked = true;
+    document.getElementById('suppr-password').value = '';
+    majModeSuppression();
+    document.getElementById('modal-suppr').style.display = 'flex';
+    return false;
 }
 
-function confirmSuppressionMultiple() {
-    const n = selectedIds.size;
-    const force = document.getElementById('force-checkbox').checked;
-    if (force) {
-        if (!document.getElementById('force-password').value) {
-            alert(' Le mot de passe admin est requis pour forcer la suppression.');
+function fermerModalSuppression() {
+    document.getElementById('modal-suppr').style.display = 'none';
+}
+
+function majModeSuppression() {
+    const tout = document.getElementById('suppr-mode-tout').checked;
+    document.getElementById('suppr-mdp').style.display = tout ? 'block' : 'none';
+    const cp = document.getElementById('suppr-choix-produit'), ct = document.getElementById('suppr-choix-tout');
+    cp.style.borderColor = tout ? '#e0e0e0' : '#1e3c72';
+    cp.style.background  = tout ? 'transparent' : '#f2f6ff';
+    ct.style.borderColor = tout ? '#dc3545' : '#e0e0e0';
+    ct.style.background  = tout ? '#fff5f5' : 'transparent';
+}
+
+function validerSuppression() {
+    const tout = document.getElementById('suppr-mode-tout').checked;
+    const n = document.querySelectorAll('#suppr-ids input').length;
+    if (tout) {
+        if (!document.getElementById('suppr-password').value) {
+            alert('Le mot de passe admin est requis pour tout supprimer.');
             return false;
         }
-        return confirm(` SUPPRESSION FORCÉE : ${n} produit(s) seront supprimés AVEC leur historique complet de ventes, entrées et pertes.\nCette action est irréversible et affectera vos statistiques passées.\nConfirmer ?`);
+        return confirm('SUPPRESSION TOTALE : ' + n + ' produit(s) et toutes leurs ventes, entrées et pertes seront effacés.\nUne copie reste dans la corbeille. Confirmer ?');
     }
-    return confirm(` Voulez-vous vraiment supprimer ${n} produit(s) ?\nCette action est irréversible.`);
+    return confirm('Supprimer ' + n + ' produit(s) ?\nLeur historique (ventes, entrées, pertes) sera conservé.');
 }
 
 // ── Modal modification ─────────────────────────
