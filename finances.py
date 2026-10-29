@@ -11,13 +11,14 @@ import io
 import uuid
 from datetime import datetime, date, timedelta
 
-from flask import request, session, jsonify, render_template, redirect, send_file
+from flask import request, session, jsonify, render_template, redirect, send_file, flash
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 from app import (app, q1, qall, get_db, release_db, clear_cache,
                  boutique_active, boutique_filtre_sql,
-                 format_prix, add_header_to_pdf, add_logo_to_pdf)
+                 format_prix, add_header_to_pdf, add_logo_to_pdf,
+                 _archiver_export, _comptabilite_registre, _comptabilite_resume_mensuel)
 
 CATEGORIES_DEPENSES = [
     'Achat de nouveaux produits',
@@ -999,6 +1000,14 @@ def api_tresorerie_mouvement_supprimer(mvt_id):
         return _err('Erreur lors de la suppression', 500)
 
 
+def _envoyer_pdf_archive(buffer, type_export, titre, periode, donnees, nom_fichier):
+    """Archive le PDF (et ses données) puis le renvoie en téléchargement."""
+    pdf_bytes = buffer.getvalue()
+    _archiver_export(type_export, titre, periode, donnees, pdf_bytes)
+    return send_file(io.BytesIO(pdf_bytes), as_attachment=True,
+                     download_name=nom_fichier, mimetype='application/pdf')
+
+
 # ──────────────────────────────────────────────────────────────
 # EXPORT PDF — VUE D'ENSEMBLE DU TABLEAU DE BORD (admin)
 # Réutilise exactement les données de /api/dashboard.
@@ -1184,12 +1193,9 @@ def export_pdf_dashboard():
         c.save()
         buffer.seek(0)
 
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name=f"vue_ensemble_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mimetype='application/pdf'
-        )
+        return _envoyer_pdf_archive(buffer, 'dashboard', f"Vue d'ensemble du {date_str}",
+                                    f"Au {date_str}", d,
+                                    f"vue_ensemble_{datetime.now().strftime('%Y%m%d')}.pdf")
     except Exception as e:
         print(f"Erreur export_pdf_dashboard: {e}")
         return _err('Impossible de générer le PDF', 500)
@@ -1336,15 +1342,127 @@ def export_pdf_stats():
         c.save()
         buffer.seek(0)
 
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name=f"statistiques_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mimetype='application/pdf'
-        )
+        return _envoyer_pdf_archive(buffer, 'stats', f"Statistiques ({d['jours']} jours)",
+                                    periode, d,
+                                    f"statistiques_{datetime.now().strftime('%Y%m%d')}.pdf")
     except Exception as e:
         print(f"Erreur export_pdf_stats: {e}")
         return _err('Impossible de générer le PDF', 500)
+
+
+# ──────────────────────────────────────────────────────────────
+# ARCHIVAGE + PDF — TABLEAU COMPTABLE (admin)
+# ──────────────────────────────────────────────────────────────
+@app.route('/admin/comptabilite/archiver', methods=['POST'])
+def archiver_comptabilite():
+    try:
+        if session.get('role') != 'admin':
+            return redirect('/login')
+        bid = boutique_active()
+        annee_txt = request.form.get('annee', '')
+        annee = int(annee_txt) if annee_txt.isdigit() else datetime.now().year
+        date_debut = request.form.get('date_debut') or datetime.now().replace(day=1).strftime('%Y-%m-%d')
+        date_fin = request.form.get('date_fin') or datetime.now().strftime('%Y-%m-%d')
+
+        resume = _comptabilite_resume_mensuel(annee, bid)
+        registre = _comptabilite_registre(date_debut, date_fin, bid)
+        totaux = {k: round(sum(float(m.get(k) or 0) for m in resume), 2)
+                  for k in ('ventes', 'achats', 'charges', 'benefice')}
+        total_recette = sum(float(l.get('recette') or 0) for l in registre)
+        total_depense = sum(float(l.get('depense') or 0) for l in registre)
+
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        bleu = (0.12, 0.24, 0.45)
+        gris = (0.5, 0.5, 0.5)
+        marge = 50
+        date_str = datetime.now().strftime('%d/%m/%Y')
+        periode = f"Grand livre du {_pdf_date_fr(date_debut)} au {_pdf_date_fr(date_fin)}"
+
+        def nouvelle_page():
+            c.showPage()
+            add_header_to_pdf(c, width, height)
+            add_logo_to_pdf(c, width, height)
+            return height - 100
+
+        def section(y, titre):
+            if y < 120:
+                y = nouvelle_page()
+            c.setFont("Helvetica-Bold", 12)
+            c.setFillColorRGB(*bleu)
+            c.drawString(marge, y, titre)
+            c.setStrokeColorRGB(0.8, 0.8, 0.8)
+            c.setLineWidth(0.5)
+            c.line(marge, y - 5, width - marge, y - 5)
+            return y - 22
+
+        def ligne(y, cols, xs, gras=False, couleur=(0, 0, 0)):
+            if y < 60:
+                y = nouvelle_page()
+            c.setFont("Helvetica-Bold" if gras else "Helvetica", 8.5)
+            c.setFillColorRGB(*couleur)
+            for txt, x in zip(cols, xs):
+                c.drawString(x, y, str(txt))
+            return y - 14
+
+        def tableau(y, titre, entetes, xs, lignes, message_vide):
+            y = section(y, titre)
+            if not lignes:
+                return ligne(y, [message_vide], [marge], couleur=gris) - 15
+            y = ligne(y, entetes, xs, gras=True, couleur=(0.35, 0.35, 0.35))
+            for cols in lignes:
+                y = ligne(y, cols, xs)
+            return y - 15
+
+        add_header_to_pdf(c, width, height)
+        add_logo_to_pdf(c, width, height)
+        c.setFont("Helvetica-Bold", 16)
+        c.setFillColorRGB(*bleu)
+        c.drawString(marge, height - 125, f"COMPTABILITÉ {annee} - {date_str}")
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(*gris)
+        c.drawString(marge, height - 142, periode)
+        y = height - 170
+
+        y = section(y, "Totaux de l'année")
+        for libelle, valeur in [
+            ("Ventes", totaux['ventes']), ("Achats", totaux['achats']),
+            ("Charges", totaux['charges']), ("Bénéfice", totaux['benefice']),
+            ("Recettes de la période", total_recette), ("Dépenses de la période", total_depense),
+            ("Solde de la période", total_recette - total_depense),
+        ]:
+            y = ligne(y, [libelle, f"{format_prix(valeur)} FCFA"], [marge, 230])
+        y -= 15
+
+        y = tableau(y, "Résumé mensuel",
+                    ["Mois", "Ventes", "Achats", "Charges", "Bénéfice"], [marge, 170, 260, 350, 440],
+                    [[m.get('libelle') or m.get('cle') or '-', format_prix(m.get('ventes') or 0),
+                      format_prix(m.get('achats') or 0), format_prix(m.get('charges') or 0),
+                      format_prix(m.get('benefice') or 0)] for m in resume],
+                    "Aucune donnée pour cette année.")
+
+        y = tableau(y, "Grand livre (registre détaillé)",
+                    ["Date", "Libellé", "Recette", "Dépense", "Solde"], [marge, 110, 330, 410, 490],
+                    [[_pdf_date_fr(str(l.get('date', ''))), str(l.get('libelle', ''))[:34],
+                      format_prix(l.get('recette') or 0), format_prix(l.get('depense') or 0),
+                      format_prix(l.get('solde') or 0)] for l in registre],
+                    "Aucune écriture sur la période.")
+
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(*gris)
+        c.drawString(marge, 30, f"HITNA - Comptabilité {annee} archivée le {date_str}")
+        c.save()
+
+        donnees = {'annee': annee, 'date_debut': date_debut, 'date_fin': date_fin,
+                   'totaux_annee': totaux, 'resume_mensuel': resume, 'registre': registre,
+                   'total_recette': total_recette, 'total_depense': total_depense}
+        return _envoyer_pdf_archive(buffer, 'comptabilite', f"Comptabilité {annee}", periode,
+                                    donnees, f"comptabilite_{annee}_{datetime.now().strftime('%Y%m%d')}.pdf")
+    except Exception as e:
+        print(f"Erreur archiver_comptabilite: {e}")
+        flash('❌ Erreur lors de l\'archivage de la comptabilité')
+        return redirect('/admin/comptabilite')
 
 
 init_db_finances()

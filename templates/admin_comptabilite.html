@@ -120,6 +120,14 @@
     {% endif %}
 
     <div class="card">
+<form method="post" action="/admin/comptabilite/archiver" style="text-align:right; margin-bottom:12px;">
+    <input type="hidden" name="annee" value="{{ annee }}">
+    <input type="hidden" name="date_debut" value="{{ date_debut }}">
+    <input type="hidden" name="date_fin" value="{{ date_fin }}">
+    <button type="submit" style="background:#1e3c72; color:white; border:none; border-radius:10px; padding:10px 16px; font-weight:bold; cursor:pointer;">
+        <i class="bi bi-archive"></i> Archiver et exporter en PDF
+    </button>
+</form>
         <h2 class="card-title"><i class="bi bi-list-columns"></i> Grand livre — du {{ date_debut }} au {{ date_fin }}</h2>
         {% if registre %}
         <div class="table-container">

@@ -792,6 +792,12 @@ def init_db():
                            prix_achat NUMERIC(12,2), date_maj TEXT, boutique_id INTEGER,
                            UNIQUE (fournisseur_id, produit_id))""")
 
+            # Exports PDF archivés (vue d'ensemble, statistiques, comptabilité)
+            c.execute("""CREATE TABLE IF NOT EXISTS exports_archives (
+                           id SERIAL PRIMARY KEY, type TEXT, titre TEXT, periode TEXT,
+                           date_creation TEXT, employe_id INTEGER, boutique_id INTEGER,
+                           donnees_json TEXT, pdf BYTEA)""")
+
             # Coût des ventes passées sans coût figé : prix d'achat de la dernière
             # entrée (active ou archivée) faite avant la vente.
             for table_v, col_date in (('sorties', 'date_sortie'), ('archive_ventes', 'date_vente')):
@@ -5640,6 +5646,39 @@ def rapport_journalier_jour(jour):
         return redirect('/rapport-journalier')
 
 
+# ─── EXPORTS PDF ARCHIVÉS ─────────────────────────────────────
+def _archiver_export(type_export, titre, periode, donnees, pdf_bytes):
+    """Conserve le PDF exporté et ses données, consultables dans les archives."""
+    try:
+        exe("""INSERT INTO exports_archives (type, titre, periode, date_creation, employe_id, boutique_id, donnees_json, pdf)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (type_export, titre, periode, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+             session.get('user_id'), boutique_active(),
+             json.dumps(donnees, default=str, ensure_ascii=False), psycopg2.Binary(pdf_bytes)))
+    except Exception as e:
+        print(f"⚠️ Erreur archivage export ({type_export}): {e}")
+
+
+def _liste_exports_archives():
+    where_bq, params_bq = boutique_filtre_sql('boutique_id')
+    return qall(f"""SELECT id, type, titre, periode, date_creation, employe_id
+                   FROM exports_archives WHERE 1=1{where_bq}
+                   ORDER BY id DESC LIMIT 200""", params_bq)
+
+
+@app.route('/admin/archives/export/<int:id>')
+def telecharger_export_archive(id):
+    if session.get('role') != 'admin':
+        return redirect('/login')
+    r = q1("SELECT titre, pdf FROM exports_archives WHERE id=?", (id,))
+    if not r:
+        flash('❌ Export introuvable')
+        return redirect('/admin/archives?type=exports')
+    nom = re.sub(r'[^A-Za-z0-9_-]+', '_', r[0] or 'export')[:60]
+    return send_file(io.BytesIO(bytes(r[1])), as_attachment=True,
+                     download_name=f"{nom}.pdf", mimetype='application/pdf')
+
+
 @app.route('/admin/archives')
 def admin_archives():
     try:
@@ -5756,7 +5795,7 @@ def admin_archives():
         total_annule_ca = nb_annulees_arch[1] if nb_annulees_arch else 0
 
         return render_template('archives.html', 
-            archives=rows, 
+            archives=rows, exports_archives=_liste_exports_archives(), 
             type_archive=type_arch,
             ventes_archive=ventes_archive,
             entrees_archive=entrees_archive,

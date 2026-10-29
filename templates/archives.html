@@ -382,6 +382,9 @@
     <button class="tab-btn {% if type_data == 'annulees' %}active{% endif %}" data-type="annulees" onclick="switchTab('annulees')">
         🚫 Ventes annulées archivées
     </button>
+    <button class="tab-btn {% if type_data == 'exports' %}active{% endif %}" data-type="exports" onclick="switchTab('exports')">
+        📄 Exports PDF
+    </button>
 </div>
 
 <!-- Recherche par date et/ou par produit — unique, s'applique aux 4 onglets -->
@@ -736,6 +739,35 @@
 </div>
 
 <!-- Contenu Ventes annulées -->
+<div id="tab-exports" class="tab-content {% if type_data == 'exports' %}active{% endif %}">
+    {% if exports_archives %}
+    <table style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr style="text-align:left;">
+                <th style="padding:8px;">Date de l'export</th>
+                <th style="padding:8px;">Type</th>
+                <th style="padding:8px;">Titre</th>
+                <th style="padding:8px;">Période</th>
+                <th style="padding:8px;">Fichier</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for e in exports_archives %}
+            <tr style="border-top:1px solid #eee;">
+                <td style="padding:8px;">{{ e[4] }}</td>
+                <td style="padding:8px;">{{ {"dashboard": "Vue d'ensemble", "stats": "Statistiques", "comptabilite": "Comptabilité"}.get(e[1], e[1]) }}</td>
+                <td style="padding:8px;">{{ e[2] }}</td>
+                <td style="padding:8px;">{{ e[3] or '-' }}</td>
+                <td style="padding:8px;"><a href="/admin/archives/export/{{ e[0] }}" style="background:#1e3c72; color:white; padding:6px 12px; border-radius:6px; text-decoration:none; font-size:13px;"><i class="bi bi-file-earmark-pdf"></i> Télécharger</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="plage-info vide">📭 Aucun export archivé pour l'instant. Les PDF de la vue d'ensemble, des statistiques et de la comptabilité apparaîtront ici.</div>
+    {% endif %}
+</div>
+
 <div id="tab-annulees" class="tab-content {% if type_data == 'annulees' %}active{% endif %}">
     {% if plage_annulees and plage_annulees[0] %}
         <div class="plage-info">📦 Données archivées disponibles : du <strong>{{ plage_annulees[0].split(' ')[0] }}</strong> au <strong>{{ plage_annulees[1].split(' ')[0] }}</strong></div>
