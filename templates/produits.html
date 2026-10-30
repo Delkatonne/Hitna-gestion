@@ -369,7 +369,7 @@
     </div>
 
     <!-- Fenêtre de choix de suppression -->
-    <div id="modal-suppr" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:10000; align-items:center; justify-content:center; padding:15px; overflow-y:auto;">
+    <div id="modal-suppr" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; background:rgba(0,0,0,.6); z-index:10000; align-items:center; justify-content:center; padding:15px; overflow-y:auto;">
         <form method="post" action="/admin/produits/supprimer_multiple" onsubmit="return validerSuppression()"
               style="background:white; color:#222; border-radius:16px; padding:20px; width:100%; max-width:460px; max-height:92vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,.3);">
             <div id="suppr-ids"></div>

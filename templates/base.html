@@ -225,7 +225,7 @@
         .sidebar-overlay {
             display: none;
             position: fixed;
-            inset: 0;
+            top: 0; right: 0; bottom: 0; left: 0;
             background: rgba(0,0,0,0.45);
             z-index: 999;
         }
@@ -1235,6 +1235,13 @@
                 .catch(err => console.log('Erreur notifications:', err));
         }
 
+        // Les textes des notifications peuvent venir d'un utilisateur : on les affiche comme du texte, jamais comme du HTML
+        function echapperHtml(valeur) {
+            return String(valeur === null || valeur === undefined ? '' : valeur)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         function mettreAJourBadge() {
             const badge = document.getElementById('notificationBadge');
             if (totalNonLus > 0) {
@@ -1258,10 +1265,11 @@
             notifications.forEach(notif => {
                 const typeClass = notif.type === 'stock_bas' ? 'stock-bas' : '';
                 html += `
-                    <div class="notification-item ${typeClass}" onclick="ouvrirNotification(${notif.id}, '${notif.lien}')">
-                        <div class="title">${notif.title}</div>
-                        <div class="message">${notif.message}</div>
-                        <div class="date">${notif.date}</div>
+                    <div class="notification-item ${typeClass}" data-id="${echapperHtml(notif.id)}" data-lien="${echapperHtml(notif.lien)}"
+                         onclick="ouvrirNotification(this.dataset.id, this.dataset.lien)">
+                        <div class="title">${echapperHtml(notif.title)}</div>
+                        <div class="message">${echapperHtml(notif.message)}</div>
+                        <div class="date">${echapperHtml(notif.date)}</div>
                     </div>
                 `;
             });
@@ -1400,7 +1408,7 @@
          Bibliothèque chargée à la demande (pas au chargement de la page)
          pour ne pas ralentir l'appli ni gêner le mode hors ligne.
          ============================================================ -->
-    <div id="scannerModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center; padding:15px;">
+    <div id="scannerModal" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center; padding:15px;">
         <div style="background:white; border-radius:16px; padding:20px; max-width:420px; width:92%; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
             <h3 style="color:#1e3c72; margin-bottom:12px;"><i class="bi bi-camera-fill"></i> Scanner un code-barres</h3>
             <div id="scanner-reader" style="width:100%; border-radius:10px; overflow:hidden; background:#000; min-height:200px;"></div>
@@ -1471,7 +1479,7 @@
          MOTIF D'ANNULATION DE VENTE — modal + fonctions globales
          réutilisables sur /vente et /admin/ventes.
          ============================================================ -->
-    <div id="annulationModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center; padding:15px; overflow-y:auto; -webkit-overflow-scrolling:touch;">
+    <div id="annulationModal" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center; padding:15px; overflow-y:auto; -webkit-overflow-scrolling:touch;">
         <div style="background:white; border-radius:16px; padding:20px; max-width:420px; width:92%; max-height:90vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
             <h3 style="color:#dc3545; margin-bottom:6px;"><i class="bi bi-x-circle-fill"></i> Annuler cette vente</h3>
             <p style="font-size:13px; color:#666; margin-bottom:14px;">Le stock sera restauré. Cette action est irréversible.</p>
@@ -1486,11 +1494,11 @@
             </select>
             <input type="text" id="annulation-motif-autre" placeholder="Précisez le motif..."
                    style="display:none; width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px; margin-bottom:14px; box-sizing:border-box; font-size:14px;">
-            <div style="display:flex; gap:10px;">
+            <div style="display:flex;">
                 <button type="button" onclick="confirmerAnnulationVente()"
-                        style="flex:1; background:#dc3545; color:white; border:none; padding:14px 11px; min-height:46px; border-radius:8px; cursor:pointer; font-size:15px; font-weight:600; touch-action:manipulation;"><i class="bi bi-x-circle-fill"></i> Confirmer l'annulation</button>
+                        style="flex:1; margin-right:5px; background:#dc3545; color:white; border:none; padding:14px 11px; min-height:46px; border-radius:8px; cursor:pointer; font-size:15px; font-weight:600; touch-action:manipulation;"><i class="bi bi-x-circle-fill"></i> Confirmer l'annulation</button>
                 <button type="button" onclick="fermerModalAnnulation()"
-                        style="flex:1; background:#6c757d; color:white; border:none; padding:14px 11px; min-height:46px; border-radius:8px; cursor:pointer; font-size:15px; touch-action:manipulation;">Retour</button>
+                        style="flex:1; margin-left:5px; background:#6c757d; color:white; border:none; padding:14px 11px; min-height:46px; border-radius:8px; cursor:pointer; font-size:15px; touch-action:manipulation;">Retour</button>
             </div>
         </div>
     </div>
@@ -1499,15 +1507,27 @@
         document.body.appendChild(document.getElementById('annulationModal'));
         let _annulationActionUrl = null;
 
+        // Appelée par le lien « Annuler » : `return demanderMotifAnnulation(...)`.
+        //  - renvoie false  → la fenêtre s'est bien affichée, le lien ne bouge pas ;
+        //  - renvoie true   → la fenêtre n'a pas pu s'afficher (ancien téléphone, erreur…) :
+        //                     le lien s'ouvre normalement sur la page de confirmation.
+        // Si cette fonction n'existe même pas (script bloqué), le lien s'ouvre aussi.
         function demanderMotifAnnulation(actionUrl) {
             try {
+                const modal = document.getElementById('annulationModal');
                 _annulationActionUrl = actionUrl;
                 document.getElementById('annulation-motif-select').value = 'Erreur de saisie';
                 document.getElementById('annulation-motif-autre').value = '';
                 document.getElementById('annulation-motif-autre').style.display = 'none';
-                document.getElementById('annulationModal').style.display = 'flex';
+                modal.style.display = 'flex';
+                const r = modal.firstElementChild.getBoundingClientRect();
+                const visible = r.width > 120 && r.height > 60 && r.top < window.innerHeight && r.bottom > 0;
+                if (visible) return false;
+                modal.style.display = 'none';
+                _annulationActionUrl = null;
+                return true;
             } catch (err) {
-                alert('Impossible d\'ouvrir la fenêtre d\'annulation : ' + err.message);
+                return true;
             }
         }
 

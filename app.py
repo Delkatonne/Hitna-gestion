@@ -3345,13 +3345,45 @@ def _recuperer_lignes_recu(groupe_vente):
     return lignes, archivee
 
 
-@app.route('/vente/annuler/<groupe_vente>', methods=['POST'])
+def _motif_annulation_depuis_formulaire():
+    """Motif choisi dans la fenêtre d'annulation ou sur la page de confirmation.
+    « Autre » exige une précision. Retourne (motif, message_d_erreur)."""
+    motif = (request.form.get('motif') or '').strip()
+    if motif == 'Autre':
+        precision = (request.form.get('motif_autre') or '').strip()
+        if not precision:
+            return None, '⚠️ Merci de préciser le motif de l\'annulation'
+        motif = precision
+    return motif[:200], None
+
+
+def _page_confirmation_annulation(groupe_vente, url_action, url_retour):
+    """Page de confirmation d'annulation : un simple formulaire, sans JavaScript ni fenêtre
+    flottante. Elle fonctionne sur tous les téléphones, même quand la fenêtre d'annulation
+    ne peut pas s'afficher."""
+    lignes = qall('''SELECT p.nom, s.quantite, s.prix_unitaire, s.total, s.client, s.date_sortie, u.nom, s.palier_nom
+                      FROM sorties s JOIN produits p ON s.produit_id = p.id
+                      JOIN users u ON s.employe_id = u.id
+                      WHERE s.groupe_vente = ? ORDER BY s.id''', (groupe_vente,))
+    if not lignes:
+        flash('❌ Vente introuvable (déjà annulée, ou archivée après minuit)')
+        return redirect(url_retour)
+    return render_template('annuler_vente.html', lignes=lignes, url_action=url_action,
+                           url_retour=url_retour, total=sum(l[3] or 0 for l in lignes))
+
+
+@app.route('/vente/annuler/<groupe_vente>', methods=['GET', 'POST'])
 def annuler_vente_employe(groupe_vente):
     try:
         if 'user_id' not in session or session.get('role') != 'employe':
             flash('❌ Accès réservé aux employés')
             return redirect('/login')
-        motif = request.form.get('motif', '')
+        if request.method == 'GET':
+            return _page_confirmation_annulation(groupe_vente, f'/vente/annuler/{groupe_vente}', '/vente')
+        motif, erreur = _motif_annulation_depuis_formulaire()
+        if erreur:
+            flash(erreur)
+            return redirect(f'/vente/annuler/{groupe_vente}')
         ok, message = _annuler_vente(groupe_vente, session.get("user_id"), motif)
         flash(message)
     except Exception as e:
@@ -3360,12 +3392,17 @@ def annuler_vente_employe(groupe_vente):
     return redirect('/vente')
 
 
-@app.route('/admin/ventes/annuler/<groupe_vente>', methods=['POST'])
+@app.route('/admin/ventes/annuler/<groupe_vente>', methods=['GET', 'POST'])
 def annuler_vente_admin(groupe_vente):
     try:
         if session.get('role') != 'admin':
             return redirect('/login')
-        motif = request.form.get('motif', '')
+        if request.method == 'GET':
+            return _page_confirmation_annulation(groupe_vente, f'/admin/ventes/annuler/{groupe_vente}', '/admin/ventes')
+        motif, erreur = _motif_annulation_depuis_formulaire()
+        if erreur:
+            flash(erreur)
+            return redirect(f'/admin/ventes/annuler/{groupe_vente}')
         ok, message = _annuler_vente(groupe_vente, session.get("user_id"), motif)
         flash(message)
     except Exception as e:
