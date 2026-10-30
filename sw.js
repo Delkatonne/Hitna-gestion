@@ -96,6 +96,23 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // API (compteurs, notifications, chiffres...) : réseau d'abord pour des valeurs toujours à jour, cache en secours.
+  // Seul /api/produits (catalogue utilisé hors ligne) reste servi depuis le cache en priorité.
+  if (url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/produits')) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (reponseCacheable(res)) {
+            const resClone = res.clone();
+            caches.open(CACHE_VERSION).then((cache) => cache.put(req, resClone));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
   // Assets statiques et API GET : cache-first avec mise à jour en arrière-plan
   if (url.pathname.startsWith('/static/') || url.pathname.startsWith('/api/')) {
     event.respondWith(

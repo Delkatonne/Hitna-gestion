@@ -886,6 +886,7 @@
                 <div class="nav-item">
                     <a href="/admin/ventes-annulees" class="nav-link {% if request.endpoint == 'ventes_annulees_list' %}active{% endif %}">
                         <span class="icon"><i class="bi bi-slash-circle"></i></span><span>Ventes annulées</span>
+                        {% if nb_ventes_annulees_nouvelles %}<span class="nav-badge">{{ nb_ventes_annulees_nouvelles }}</span>{% endif %}
                     </a>
                 </div>
                 <div class="nav-item">
@@ -1189,6 +1190,38 @@
         // ============================================================
         let notifications = [];
         let totalNonLus = 0;
+
+        // ── Pastilles de la barre latérale (ventes annulées, commandes, messages) mises à jour sans recharger
+        const LIENS_COMPTEURS = {
+            ventes_annulees: '/admin/ventes-annulees',
+            commandes: '/admin/commandes',
+            messages: '/admin/messages'
+        };
+        function afficherPastille(lien, nombre) {
+            document.querySelectorAll('.sidebar a.nav-link[href="' + lien + '"], nav a.nav-link[href="' + lien + '"]').forEach(function (a) {
+                let pastille = a.querySelector('.nav-badge');
+                if (nombre > 0) {
+                    if (!pastille) { pastille = document.createElement('span'); pastille.className = 'nav-badge'; a.appendChild(pastille); }
+                    pastille.textContent = nombre > 99 ? '99+' : nombre;
+                } else if (pastille) {
+                    pastille.remove();
+                }
+            });
+        }
+        function chargerCompteurs() {
+            if (document.hidden) return;
+            fetch('/api/compteurs', { cache: 'no-store', credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (c) {
+                    if (!c) return;
+                    Object.keys(LIENS_COMPTEURS).forEach(function (cle) {
+                        if (typeof c[cle] === 'number') afficherPastille(LIENS_COMPTEURS[cle], c[cle]);
+                    });
+                })
+                .catch(function () {});
+        }
+        setInterval(chargerCompteurs, 30000);
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) chargerCompteurs(); });
 
         function chargerNotifications() {
             fetch('/api/notifications')

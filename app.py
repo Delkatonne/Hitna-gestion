@@ -763,6 +763,17 @@ def init_db():
         except Exception as e:
             print(f"⚠️ Erreur ajout colonne motif à ventes_annulees: {e}")
 
+        # ── NOTIFICATION D'ANNULATION — « vue » = l'admin a ouvert la page des ventes annulées.
+        #    Les annulations déjà en base sont marquées vues (sinon le compteur démarrerait très haut).
+        try:
+            c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='ventes_annulees' AND column_name='vue'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE ventes_annulees ADD COLUMN vue INTEGER DEFAULT 1")
+                c.execute("ALTER TABLE ventes_annulees ALTER COLUMN vue SET DEFAULT 0")
+                print("✅ Colonne 'vue' ajoutée à ventes_annulees")
+        except Exception as e:
+            print(f"⚠️ Erreur ajout colonne vue à ventes_annulees: {e}")
+
         # ── FICHE CLIENT — rattache une vente à un client (identifié
         #    par téléphone) pour retrouver son historique d'achats.
         try:
@@ -1201,18 +1212,42 @@ def archiver_si_necessaire():
 # ──────────────────────────────────────────────────────────────
 # HELPERS MÉTIER
 # ──────────────────────────────────────────────────────────────
+def compteurs_sidebar():
+    """Nombres affichés devant « Ventes annulées », « Commandes » et « Messages » dans la barre latérale.
+    - ventes_annulees : ventes annulées (par n'importe quel acteur) que l'admin n'a pas encore consultées
+    - commandes : commandes au statut « nouvelle »     - messages : messages non lus"""
+    compteurs = {}
+    is_admin = session.get('role') == 'admin'
+    perms = (session.get('permissions') or '').split(',')
+    if is_admin or 'commandes' in perms:
+        nc = q1("SELECT COUNT(*) FROM commandes WHERE statut='nouvelle'")
+        compteurs['commandes'] = int(nc[0]) if nc else 0
+    if is_admin:
+        nm = q1("SELECT COUNT(*) FROM messages_contact WHERE statut='non_lu'")
+        compteurs['messages'] = int(nm[0]) if nm else 0
+        bq, bp = boutique_filtre_sql('boutique_id')
+        na = q1(f"SELECT COUNT(DISTINCT groupe_vente) FROM ventes_annulees WHERE COALESCE(vue, 0) = 0{bq}", bp)
+        compteurs['ventes_annulees'] = int(na[0]) if na else 0
+    return compteurs
+
+@app.route('/api/compteurs')
+def api_compteurs():
+    """Appelée toutes les 30 s par la barre latérale pour mettre les badges à jour sans recharger la page."""
+    if 'user_id' not in session:
+        return jsonify({'erreur': 'non connecté'}), 401
+    return jsonify(compteurs_sidebar()), 200, {'Cache-Control': 'no-store'}
+
 @app.context_processor
 def inject_now():
     ctx = {'date_actuelle': datetime.now().strftime('%d/%m/%Y %H:%M')}
     try:
         is_admin = session.get('role') == 'admin'
-        perms = (session.get('permissions') or '').split(',')
-        if is_admin or 'commandes' in perms:
-            nc = q1("SELECT COUNT(*) FROM commandes WHERE statut='nouvelle'")
-            ctx['nb_commandes_nouvelles'] = nc[0] if nc else 0
+        c = compteurs_sidebar()
+        if 'commandes' in c:
+            ctx['nb_commandes_nouvelles'] = c['commandes']
         if is_admin:
-            nm = q1("SELECT COUNT(*) FROM messages_contact WHERE statut='non_lu'")
-            ctx['nb_messages_non_lus'] = nm[0] if nm else 0
+            ctx['nb_messages_non_lus'] = c['messages']
+            ctx['nb_ventes_annulees_nouvelles'] = c['ventes_annulees']
             ctx['boutiques_toutes'] = qall("SELECT id, nom FROM boutiques WHERE actif = 1 ORDER BY nom")
             ctx['boutique_filtre_id'] = session.get('boutique_filtre')
     except Exception:
@@ -2992,6 +3027,15 @@ def _annuler_vente(groupe_vente, annule_par_id, motif=None):
         exe("DELETE FROM sorties WHERE id = ?", (ligne_id,))
         noms.append(f'{format_qte(quantite)} x {palier_nom}' if palier_nom else f'{format_qte(quantite)} x {nom_produit}')
     exe("DELETE FROM ventes_paiements WHERE groupe_vente=?", (groupe_vente,))
+    # Notification des administrateurs (cloche), quel que soit l'acteur qui annule
+    try:
+        total_annule = sum(l[6] or 0 for l in lignes)
+        for adm in qall("SELECT id FROM users WHERE role='admin' AND actif=1"):
+            creer_notification(adm[0], 'vente_annulee', 'Vente annulée',
+                               f"{nom_annuleur} a annulé une vente de {total_annule:,.0f} FCFA ({motif})".replace(',', ' '),
+                               '/admin/ventes-annulees')
+    except Exception as e:
+        print(f"❌ Notification d'annulation: {e}")
     return True, f"✅ Vente annulée ({motif}), stock restauré : " + ", ".join(noms)
 
 
@@ -5268,9 +5312,13 @@ def ventes_annulees_list():
                                FROM ventes_annulees
                                ORDER BY date_annulation DESC LIMIT 300''')
         total_annule = q1("SELECT COALESCE(SUM(total),0), COUNT(DISTINCT groupe_vente) FROM ventes_annulees")
+        nouveaux_ids = {r[0] for r in qall("SELECT id FROM ventes_annulees WHERE COALESCE(vue, 0) = 0")}
+        if nouveaux_ids:
+            exe("UPDATE ventes_annulees SET vue = 1 WHERE COALESCE(vue, 0) = 0")   # la pastille de la barre latérale repart à zéro
         return render_template('admin_ventes_annulees.html', annulations=annulations,
             total_annule=total_annule[0] if total_annule else 0,
-            nb_ventes_annulees=total_annule[1] if total_annule else 0)
+            nb_ventes_annulees=total_annule[1] if total_annule else 0,
+            nouveaux_ids=nouveaux_ids)
     except Exception as e:
         print(f"❌ Erreur ventes_annulees_list: {e}")
         flash('Erreur lors du chargement des ventes annulées')

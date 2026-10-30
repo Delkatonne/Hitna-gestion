@@ -71,7 +71,7 @@
         {% for a in annulations %}
         <div class="annulation-card">
             <div class="header">
-                <h3>{{ a[2] }}{% if a[10] %} <span style="font-weight:normal; color:#856404;">— <i class="bi bi-box-seam"></i> {{ a[10] }}</span>{% endif %}</h3>
+                <h3>{% if a[0] in nouveaux_ids %}<span style="background:#dc3545;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-right:6px;vertical-align:middle;">Nouvelle</span>{% endif %}{{ a[2] }}{% if a[10] %} <span style="font-weight:normal; color:#856404;">— <i class="bi bi-box-seam"></i> {{ a[10] }}</span>{% endif %}</h3>
                 <span class="montant">-{{ "{:,.0f}".format(a[4]) }} FCFA</span>
             </div>
             {% if a[11] %}
