@@ -3155,6 +3155,39 @@ def _paliers_par_produit():
 
 
 # ─── VENTES ADMIN ──────────────────────────────────────────────
+JOURS_FR = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+JOURS_HISTORIQUE_VENTES = 7        # période affichée dans l'historique des ventes
+LIGNES_MAX_HISTORIQUE_VENTES = 400  # plafond de lignes affichées (les totaux restent complets)
+
+
+def _grouper_ventes_par_jour(lignes, totaux, aujourdhui, hier):
+    """Regroupe les lignes de vente (de la plus récente à la plus ancienne) par jour.
+    Le total de chaque jour vient de `totaux` (calculé sur TOUTES les ventes du jour),
+    donc il reste exact même si la liste affichée est tronquée.
+    `totaux` : {'AAAA-MM-JJ': (nb_ventes, nb_articles, total)}."""
+    jours, index = [], {}
+    for v in lignes:
+        jour = (v[4] or '')[:10]
+        if not jour:
+            continue
+        if jour not in index:
+            nb_ventes, nb_articles, total = totaux.get(jour, (0, 0, 0))
+            try:
+                nom_jour = JOURS_FR[datetime.strptime(jour, '%Y-%m-%d').weekday()]
+            except ValueError:
+                nom_jour = ''
+            index[jour] = {
+                'date': jour,
+                'etiquette': "AUJOURD'HUI" if jour == aujourdhui else ('HIER' if jour == hier else nom_jour),
+                'est_aujourdhui': jour == aujourdhui,
+                'nb_ventes': nb_ventes, 'nb_articles': nb_articles, 'total': total,
+                'lignes': [],
+            }
+            jours.append(index[jour])
+        index[jour]['lignes'].append(v)
+    return jours
+
+
 @app.route('/admin/ventes', methods=['GET','POST'])
 def admin_ventes():
     try:
@@ -3186,10 +3219,10 @@ def admin_ventes():
             else:
                 flash('❌ Aucun produit n\'a pu être vendu')
             return redirect('/admin/ventes')
-        cache_key = f'admin_ventes_data_{boutique_active() or "toutes"}'
+        cache_key = f'admin_ventes_data2_{boutique_active() or "toutes"}'
         cached_data = get_cached(cache_key, 30)
         if cached_data:
-            produits, historique, stats_vendeurs, paliers = cached_data
+            produits, historique, stats_vendeurs, paliers, totaux_jours = cached_data
         else:
             where_p, params_p = boutique_filtre_sql('p.boutique_id')
             produits = qall(f'''SELECT p.id, p.nom, p.prix, p.stock,
@@ -3204,15 +3237,26 @@ def admin_ventes():
             where_s, params_s = boutique_filtre_sql('s.boutique_id')
             historique = qall(f'''SELECT s.id,p.nom,s.quantite,s.total,s.date_sortie,u.nom,s.client,s.groupe_vente,s.palier_nom,u.role
                 FROM sorties s JOIN produits p ON s.produit_id=p.id JOIN users u ON s.employe_id=u.id
-                WHERE 1=1{where_s}
-                ORDER BY s.date_sortie DESC LIMIT 20''', params_s)
+                WHERE DATE(s.date_sortie) >= CURRENT_DATE - {JOURS_HISTORIQUE_VENTES - 1}{where_s}
+                ORDER BY s.date_sortie DESC LIMIT {LIGNES_MAX_HISTORIQUE_VENTES}''', params_s)
+            # Totaux par jour calculés sur toutes les ventes de la période (pas seulement les lignes affichées)
+            totaux_jours = {str(r[0]): (int(r[1] or 0), int(r[2] or 0), float(r[3] or 0))
+                            for r in qall(f'''SELECT DATE(s.date_sortie), COUNT(DISTINCT s.groupe_vente), COUNT(*), COALESCE(SUM(s.total),0)
+                                              FROM sorties s
+                                              WHERE DATE(s.date_sortie) >= CURRENT_DATE - {JOURS_HISTORIQUE_VENTES - 1}{where_s}
+                                              GROUP BY 1''', params_s)}
             stats_vendeurs = qall(f'''SELECT u.nom,u.role,COUNT(s.id),COALESCE(SUM(s.total),0)
                 FROM sorties s JOIN users u ON s.employe_id=u.id
                 WHERE DATE(s.date_sortie)=CURRENT_DATE{where_s} GROUP BY u.id,u.nom,u.role ORDER BY 4 DESC''', params_s)
             paliers = _paliers_par_produit()
-            set_cached(cache_key, (produits, historique, stats_vendeurs, paliers))
-        return render_template('admin_ventes.html', produits=produits, historique=historique, stats_vendeurs=stats_vendeurs,
-            paliers_json=json.dumps(paliers), today_iso=datetime.now().strftime('%Y-%m-%d'))
+            set_cached(cache_key, (produits, historique, stats_vendeurs, paliers, totaux_jours))
+        aujourdhui = datetime.now().strftime('%Y-%m-%d')
+        hier = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        jours = _grouper_ventes_par_jour(historique, totaux_jours, aujourdhui, hier)
+        return render_template('admin_ventes.html', produits=produits, jours=jours,
+            historique_tronque=len(historique) >= LIGNES_MAX_HISTORIQUE_VENTES,
+            jours_historique=JOURS_HISTORIQUE_VENTES, stats_vendeurs=stats_vendeurs,
+            paliers_json=json.dumps(paliers), today_iso=aujourdhui)
     except Exception as e:
         print(f"❌ Erreur admin_ventes: {e}")
         flash('Erreur lors du chargement des ventes')

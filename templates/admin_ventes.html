@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Ventes - HITNA{% endblock %}
+{% block title %}Ventes - Administrateur{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -24,7 +24,7 @@
     
     .products-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
         gap: 15px;
         margin-bottom: 30px;
         max-height: 500px;
@@ -298,12 +298,6 @@
         border: 2px solid #e0e0e0;
         border-radius: 10px;
         margin: 20px 0;
-        font-size: 16px;
-    }
-    
-    .modal-content input:focus {
-        outline: none;
-        border-color: #2a5298;
     }
     
     .modal-content .btn-group {
@@ -345,7 +339,7 @@
     
     .stats-vendeurs {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
         gap: 15px;
         margin-bottom: 20px;
     }
@@ -358,17 +352,8 @@
         text-align: center;
     }
     
-    .stat-vendeur.admin {
-        background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
-        color: #333;
-    }
-    
-    .stat-vendeur.employe {
-        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-    }
-    
-    .stat-vendeur .icon {
-        font-size: 24px;
+    .stat-vendeur .role-icon {
+        font-size: 30px;
     }
     
     .stat-vendeur .name {
@@ -381,174 +366,132 @@
         font-weight: bold;
     }
     
-    .total-jour-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 15px;
-        margin-top: 20px;
-        text-align: center;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    }
-    
-    .total-jour-card h3 {
-        font-size: 16px;
-        opacity: 0.9;
-        margin-bottom: 5px;
-    }
-    
-    .total-jour-card .montant {
-        font-size: 36px;
-        font-weight: bold;
-    }
-    
-    .total-jour-card .nb-ventes {
-        font-size: 14px;
-        opacity: 0.8;
-        margin-top: 5px;
-    }
-    
     .badge-admin {
         background: #ffc107;
         color: #333;
-        padding: 3px 10px;
+        padding: 2px 8px;
         border-radius: 20px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: bold;
-        display: inline-block;
     }
     
     .badge-employe {
         background: #17a2b8;
         color: white;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: bold;
+    }
+    
+    .vendeur-admin {
+        background: #ffc107;
+        color: #333;
         padding: 3px 10px;
         border-radius: 20px;
         font-size: 12px;
         font-weight: bold;
-        display: inline-block;
-    }
-
-    .offline-banner {
-        display: none;
-        background: #ffc107;
-        color: #333;
-        padding: 10px 15px;
-        border-radius: 10px;
-        margin-bottom: 15px;
-        text-align: center;
-        font-weight: bold;
-        border: 1px solid #e0a800;
-    }
-
-    .spinner {
-        display: inline-block;
-        width: 20px;
-        height: 20px;
-        border: 3px solid rgba(255,255,255,0.3);
-        border-radius: 50%;
-        border-top-color: #fff;
-        animation: spin 0.8s ease-in-out infinite;
-        vertical-align: middle;
-        margin-right: 10px;
     }
     
-    @keyframes spin {
-        to { transform: rotate(360deg); }
-    }
-
-    .nav-links {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-        align-items: center;
-        margin-top: 20px;
-        padding-top: 20px;
-        border-top: 2px solid #e0e0e0;
-    }
-    
-    .nav-links a {
-        color: #2a5298;
-        text-decoration: none;
-        padding: 10px 20px;
-        border-radius: 8px;
-        background: #f8f9fa;
-        transition: all 0.3s;
-        display: inline-block;
-    }
-    
-    .nav-links a:hover {
-        background: #2a5298;
-        color: white;
-        transform: translateY(-2px);
-    }
-    
-    .nav-links .btn-export {
+    .vendeur-employe {
         background: #17a2b8;
         color: white;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 12px;
         font-weight: bold;
     }
-    
-    .nav-links .btn-export:hover {
-        background: #138496;
-        color: white;
-    }
 
+    /* ── Responsive ── */
     @media (max-width: 768px) {
+        .stats-vendeurs {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .stat-vendeur {
+            padding: 12px 8px;
+        }
+
+        .stat-vendeur .nb-ventes {
+            font-size: 16px;
+        }
+
         .products-grid {
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             max-height: 400px;
         }
-        
+
         .product-name {
             font-size: 15px;
         }
-        
+
         .product-price {
             font-size: 20px;
         }
-        
+
         .sale-form-container {
             padding: 15px;
+            border-radius: 15px;
         }
-        
+
+        .selected-product-name {
+            font-size: 16px;
+        }
+
+        .selected-product-price {
+            font-size: 22px;
+        }
+
         .quantity-control input {
-            width: 80px;
+            width: 70px;
             padding: 8px;
             font-size: 16px;
         }
-        
+
         .quantity-control button {
-            width: 40px;
-            height: 40px;
+            width: 42px;
+            height: 42px;
             font-size: 20px;
         }
-        
+
         .total-amount {
-            font-size: 24px;
+            font-size: 22px;
         }
-        
+
         .btn-sale {
-            font-size: 16px;
             padding: 12px 20px;
+            font-size: 16px;
         }
-        
-        .stats-vendeurs {
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
+
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            width: 100%;
         }
-        
+
+        table {
+            min-width: 500px;
+            font-size: 12px;
+        }
+
+        th, td {
+            padding: 7px 5px;
+        }
+
+        .search-box {
+            padding: 12px 15px;
+            font-size: 14px;
+        }
+
         .modal-content {
             padding: 20px;
             max-width: 95%;
         }
-        
-        .nav-links {
-            flex-direction: column;
-        }
-        
-        .nav-links a {
-            width: 100%;
-            text-align: center;
+
+        .vendeur-admin, .vendeur-employe {
+            font-size: 10px;
+            padding: 2px 6px;
         }
     }
 
@@ -556,40 +499,91 @@
         .products-grid {
             grid-template-columns: 1fr;
         }
-        
+
         .stats-vendeurs {
             grid-template-columns: 1fr;
         }
     }
+
+    /* ── Historique des ventes regroupé par jour (même présentation que les entrées de stock) ── */
+    .day-separator {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: white;
+        padding: 12px 20px;
+        margin: 25px 0 15px 0;
+        border-radius: 12px;
+        font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .day-separator.premier { margin-top: 0; }
+    .day-date { font-size: 16px; display: flex; align-items: center; flex-wrap: wrap; }
+    .day-name {
+        background: rgba(255,255,255,0.2);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        margin-left: 10px;
+    }
+    .day-name.aujourdhui { background: #28a745; }
+    .day-total {
+        background: rgba(255,255,255,0.2);
+        padding: 6px 15px;
+        border-radius: 25px;
+        font-size: 14px;
+    }
+    .ventes-group {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 5px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .day-total-footer {
+        background: #f8f9fa;
+        padding: 10px 15px;
+        font-weight: bold;
+        text-align: right;
+        border-top: 2px solid #e0e0e0;
+        font-size: 14px;
+    }
+    .heure-cell { font-family: monospace; font-size: 13px; color: #666; white-space: nowrap; }
+    .note-historique { font-size: 12px; color: #777; margin: 0 0 14px; }
+    body.dark-theme .ventes-group { background: #16213e; }
+    body.dark-theme .day-total-footer { background: #1b2a4e; color: #eee; border-top-color: #2a3a63; }
+    body.dark-theme .heure-cell, body.dark-theme .note-historique { color: #b8c0d4; }
+    @media (max-width: 768px) {
+        .day-separator { flex-direction: column; text-align: center; padding: 10px 12px; }
+        .day-separator .day-total { margin-top: 6px; font-size: 12px; }
+        .day-date { font-size: 13px; justify-content: center; }
+        .ventes-group { overflow-x: auto; }
+    }
 </style>
 {% endblock %}
 
-{% block page_title %}<i class="bi bi-cart3"></i> Enregistrer une vente{% endblock %}
-{% block page_subtitle %}Sélectionnez un produit et enregistrez la vente{% endblock %}
+{% block page_title %}<i class="bi bi-bar-chart-line"></i> Ventes - Administrateur{% endblock %}
+{% block page_subtitle %}Enregistrer des ventes et suivre l'activité{% endblock %}
 
 {% block content %}
-<!-- Message d'information employé -->
-<div class="card" style="background: #e8f4fd; border-left: 4px solid #17a2b8; margin-bottom: 20px;">
-    <p style="margin: 0;">
-        <i class="bi bi-person"></i> Vous êtes connecté en tant qu'<strong>{{ session.user_nom }}</strong><br>
-        <i class="bi bi-bar-chart-line"></i> Vous voyez toutes les ventes du jour
-    </p>
+<div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+    <a href="/export/pdf_employe" target="_blank" style="background:#17a2b8; color:white; font-weight:bold; text-decoration:none; padding:10px 16px; border-radius:10px; font-size:14px;">
+        <i class="bi bi-file-earmark-text"></i> Exporter le point du jour (PDF)
+    </a>
 </div>
-
-<!-- Bannière hors ligne -->
-<div id="offlineBanner" class="offline-banner" style="display: none;">
-    <i class="bi bi-broadcast"></i> Mode hors ligne activé - Les ventes seront sauvegardées localement
-</div>
-
-<!-- Statistiques des vendeurs du jour -->
-{% if stats_vendeurs and stats_vendeurs|length > 0 %}
+<!-- Statistiques des vendeurs -->
+{% if stats_vendeurs %}
 <div class="stats-vendeurs">
     {% for v in stats_vendeurs %}
-    <div class="stat-vendeur {% if v[0] == 'admin' %}admin{% else %}employe{% endif %}">
-        <div class="icon">{% if v[0] == 'admin' %}<i class="bi bi-award-fill"></i>{% else %}<i class="bi bi-person"></i>{% endif %}</div>
-        <div class="name">{% if v[0] == 'admin' %}Administrateur{% else %}Employé{% endif %}</div>
-        <div class="nb-ventes">{{ v[1] }} vente(s)</div>
-        <div>{{ "{:,.0f}".format(v[2]) }} FCFA</div>
+    <div class="stat-vendeur">
+        <div class="role-icon">{% if v[1] == 'admin' %}<i class="bi bi-award-fill"></i>{% else %}<i class="bi bi-person"></i>{% endif %}</div>
+        <div class="name">{{ v[0] }}</div>
+        <div class="nb-ventes">{{ v[2] }} ventes</div>
+        <div class="total">{{ "{:,.0f}".format(v[3]) }} FCFA</div>
+        <span class="badge-{% if v[1] == 'admin' %}admin{% else %}employe{% endif %}">
+            {% if v[1] == 'admin' %}Administrateur{% else %}Employé{% endif %}
+        </span>
     </div>
     {% endfor %}
 </div>
@@ -600,7 +594,7 @@
     <h2 class="card-title"><i class="bi bi-search"></i> Rechercher un produit</h2>
     <div class="search-container" style="display:flex; gap:10px;">
         <input type="text" id="searchInput" class="search-box" placeholder="Tapez le nom du produit..." autocomplete="off" style="flex:1;">
-        <button type="button" onclick="ouvrirScannerCodeBarre(rechercherParCodeBarre)"
+        <button type="button" onclick="ouvrirScannerCodeBarre(adminRechercherParCodeBarre)"
                 style="background:#1e3c72; color:white; border:none; border-radius:10px; padding:0 18px; cursor:pointer; font-size:15px; white-space:nowrap;"><i class="bi bi-camera-fill"></i> Scanner</button>
     </div>
 </div>
@@ -608,51 +602,45 @@
 <!-- Produits disponibles -->
 <div class="card">
     <h2 class="card-title"><i class="bi bi-box-seam"></i> Produits disponibles</h2>
-    {% if produits and produits|length > 0 %}
     <div class="products-grid" id="productsGrid">
         {% for p in produits %}
-        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-unite="{{ p[4] }}" data-fractionnable="{{ p[7] }}" data-barcode="{{ p[8] }}">
+        <div class="product-card" id="card-{{ p[0] }}" data-id="{{ p[0] }}" data-name="{{ p[1]|lower }}" data-nom="{{ p[1] }}" data-price="{{ p[2] }}" data-stock="{{ p[3] }}" data-fractionnable="{{ p[7] }}" data-barcode="{{ p[8] }}">
             {% if p[4] %}<div class="unite-badge-vente"><i class="bi bi-rulers"></i> {% if p[6] %}{{ p[6]|round(2) }} {% endif %}{{ p[4] }}{% if p[5] %} — {{ p[5] }}{% endif %}</div>{% endif %}
             {% if p[7] %}<div class="unite-badge-vente" style="background:#fff3cd; color:#856404;"><i class="bi bi-calculator"></i> Vendable en 1/2, 1/4...</div>{% endif %}
             <div class="product-name">{{ p[1] }}</div>
             <div class="product-price">{{ p[2] }} <small>FCFA</small></div>
             <div class="product-stock"><i class="bi bi-box-seam"></i> Stock: {{ p[3]|qte }} unités</div>
             <div id="tier-wrap-{{ p[0] }}"></div>
-            <button type="button" class="btn-add-cart" onclick="ajouterAuPanier({{ p[0] }})"><i class="bi bi-plus-lg"></i> Ajouter au panier</button>
+            <button type="button" class="btn-add-cart" onclick="adminAjouterAuPanier({{ p[0] }})"><i class="bi bi-plus-lg"></i> Ajouter au panier</button>
         </div>
         {% endfor %}
     </div>
     <div id="noResults" class="no-results" style="display: none;">
         <i class="bi bi-search"></i> Aucun produit trouvé
     </div>
-    {% else %}
-    <p style="text-align: center; color: #999; padding: 40px;">
-        <i class="bi bi-inbox"></i> Aucun produit disponible en stock
-    </p>
-    {% endif %}
 </div>
 
 <!-- Panier de vente -->
 <div class="sale-form-container">
     <h3><i class="bi bi-cart3"></i> Panier de vente</h3>
-    <div class="cart-list" id="cartList">
-        <div class="cart-empty" id="cartEmpty"><i class="bi bi-hand-index-fill"></i> Ajoutez des produits depuis la liste ci-dessus</div>
+    <div class="cart-list" id="adminCartList">
+        <div class="cart-empty" id="adminCartEmpty"><i class="bi bi-hand-index-fill"></i> Ajoutez des produits depuis la liste ci-dessus</div>
     </div>
 
-    <form method="post" id="saleForm" action="/vente">
-        <input type="hidden" name="cart_json" id="cartJsonInput">
-        <input type="hidden" name="client" id="clientName" value="">
-        <input type="hidden" name="telephone" id="clientTelephone" value="">
+    <form method="post" id="adminSaleForm" action="/admin/ventes">
+        <input type="hidden" name="cart_json" id="adminCartJsonInput">
+        <input type="hidden" name="client" id="adminClientName" value="">
+        <input type="hidden" name="telephone" id="adminClientTelephone" value="">
 
-        <div id="totalDisplay" style="display: none;">
+        <div id="adminTotalDisplay" style="display: none;">
             <div class="total-amount">
-                Total: <span id="totalAmount">0</span> FCFA
+                Total: <span id="adminTotalAmount">0</span> FCFA
             </div>
         </div>
 
-        <div id="paiementWrap" style="display:none; margin: 12px 0;">
+        <div id="adminPaiementWrap" style="display:none; margin: 12px 0;">
             <label style="display:block; font-size:13px; color:#555; margin-bottom:6px;"><i class="bi bi-credit-card-fill"></i> Mode de paiement</label>
-            <select name="mode_paiement" id="modePaiement" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+            <select name="mode_paiement" id="adminModePaiement" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
                 <option value="Espèces">💵 Espèces</option>
                 <option value="MTN MobileMoney">📱 MTN MobileMoney</option>
                 <option value="Moov MoovMoney">📱 Moov MoovMoney</option>
@@ -669,7 +657,7 @@
             <input type="hidden" name="paiements_json" id="paiementsJson" value="">
         </div>
 
-        <button type="button" id="validateSaleBtn" class="btn-sale" style="display: none;" onclick="validateSale()">
+        <button type="button" id="adminValidateSaleBtn" class="btn-sale" style="display: none;" onclick="adminValidateSale()">
             <i class="bi bi-cash"></i> Valider la vente
         </button>
     </form>
@@ -677,109 +665,113 @@
 
 <script src="{{ url_for('static', filename='paiement-multiple.js') }}"></script>
 
-<!-- Historique des ventes du jour -->
+<!-- Historique des ventes, regroupé par jour -->
 <div class="card">
-    <h2 class="card-title"><i class="bi bi-scroll"></i> Ventes du jour</h2>
-    {% if historique and historique|length > 0 %}
-    <div class="table-container">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Heure</th>
-                    <th>Produit</th>
-                    <th>Quantité</th>
-                    <th>Total (FCFA)</th>
-                    <th>Client</th>
-                    <th>Vendeur</th>
-                    <th>Reçu</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for v in historique %}
-                <tr>
-                    <td>{{ v[4].split(' ')[1] if v[4] else '-' }}</td>
-                    <td><strong>{{ v[1] }}</strong>{% if v[9] %}<br><small style="color:#856404;"><i class="bi bi-box-seam"></i> {{ v[9] }}</small>{% endif %}</td>
-                    <td>{{ v[2]|qte }}</td>
-                    <td style="color: #28a745; font-weight: bold;">{{ v[3] }} FCFA</td>
-                    <td>{{ v[5] or '-' }}</td>
-                    <td>
-                        {% if v[7] == 'admin' %}
-                            <span class="badge-admin"><i class="bi bi-award-fill"></i> {{ v[6] }}</span>
-                        {% else %}
-                            <span class="badge-employe"><i class="bi bi-person"></i> {{ v[6] }}</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if v[8] %}
-                            <a href="/vente/recu/{{ v[8] }}" target="_blank" class="btn-small" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;"><i class="bi bi-receipt"></i> Voir</a>
-                        {% else %}
-                            —
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if v[8] %}
-                        <a href="/vente/annuler/{{ v[8] }}" onclick="return demanderMotifAnnulation('/vente/annuler/{{ v[8] }}')" class="btn-small" style="background:#dc3545; color:white; text-decoration:none; display:inline-block; padding:5px 10px; border-radius:6px; font-size:12px;"><i class="bi bi-x-circle-fill"></i> Annuler</a>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <h2 class="card-title"><i class="bi bi-scroll"></i> Historique des ventes</h2>
+    <p class="note-historique">
+        {{ jours_historique }} derniers jours. Les ventes plus anciennes sont dans <a href="/admin/archives">Archives</a>.
+        {% if historique_tronque %}Affichage limité aux lignes les plus récentes ; le total de chaque jour reste complet.{% endif %}
+    </p>
+
+    {% for jour in jours %}
+    <div class="day-separator{% if loop.first %} premier{% endif %}">
+        <div class="day-date">
+            📅 {{ jour.date }}
+            <span class="day-name{% if jour.est_aujourdhui %} aujourdhui{% endif %}">
+                {% if jour.est_aujourdhui %}📍 {% endif %}{{ jour.etiquette }}
+            </span>
+        </div>
+        <div class="day-total">Total: {{ "{:,.0f}".format(jour.total).replace(",", " ") }} FCFA</div>
     </div>
-    
-    <div class="total-jour-card">
-        <h3><i class="bi bi-cash-coin"></i> TOTAL DES VENTES DU JOUR</h3>
-        <div class="montant">{{ "{:,.0f}".format(total_general[0] if total_general and total_general[0] else 0) }} FCFA</div>
-        <div class="nb-ventes">{{ total_general[1] if total_general and total_general[1] else 0 }} vente(s) enregistrée(s)</div>
-        <p style="font-size:11px; opacity:0.8; margin-top:6px;"><i class="bi bi-alarm-fill"></i> Une vente ne peut être annulée que le jour même, avant minuit.</p>
+
+    <div class="ventes-group">
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Heure</th>
+                        <th>Produit</th>
+                        <th>Quantité</th>
+                        <th>Total</th>
+                        <th>Vendeur</th>
+                        <th>Client</th>
+                        <th>Reçu</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in jour.lignes %}
+                    <tr>
+                        <td class="heure-cell">{{ v[4].split(' ')[1] if ' ' in v[4] else '-' }}</td>
+                        <td><strong>{{ v[1] }}</strong>{% if v[8] %}<br><small style="color:#856404;"><i class="bi bi-box-seam"></i> {{ v[8] }}</small>{% endif %}</td>
+                        <td>{{ v[2]|qte }}</td>
+                        <td style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(v[3]) }} FCFA</td>
+                        <td>
+                            {% if v[9] == 'admin' %}
+                                <span class="vendeur-admin">{{ v[5] }}</span>
+                            {% else %}
+                                <span class="vendeur-employe">{{ v[5] }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ v[6] or '-' }}</td>
+                        <td>
+                            {% if v[7] %}
+                                <a href="/vente/recu/{{ v[7] }}" target="_blank" class="btn-small" style="background:#17a2b8; color:white; text-decoration:none; padding:5px 10px; border-radius:6px; font-size:12px;"><i class="bi bi-receipt"></i> Voir</a>
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if v[7] and jour.est_aujourdhui %}
+                            <a href="/admin/ventes/annuler/{{ v[7] }}" onclick="return demanderMotifAnnulation('/admin/ventes/annuler/{{ v[7] }}')" class="btn-small" style="background:#dc3545; color:white; text-decoration:none; display:inline-block; padding:5px 10px; border-radius:6px; font-size:12px;"><i class="bi bi-x-circle-fill"></i> Annuler</a>
+                            {% else %}
+                            —
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="day-total-footer">
+            📊 Total du {{ jour.date }} :
+            <span style="color: #28a745; font-weight: bold;">{{ "{:,.0f}".format(jour.total).replace(",", " ") }} FCFA</span>
+            ({{ jour.nb_ventes }} vente{{ 's' if jour.nb_ventes > 1 }}, {{ jour.nb_articles }} article{{ 's' if jour.nb_articles > 1 }})
+        </div>
     </div>
     {% else %}
-    <p style="text-align: center; color: #999; padding: 40px;">Aucune vente enregistrée aujourd'hui</p>
-    {% endif %}
+        <p style="text-align:center; color:#999; padding:40px;">Aucune vente sur les {{ jours_historique }} derniers jours</p>
+    {% endfor %}
 </div>
 
-<!-- ============================================================ -->
-<!-- NAVIGATION AVEC BOUTON EXPORT POINT DU JOUR                   -->
-<!-- ============================================================ -->
 <div class="nav-links">
-    <a href="/changer_mdp"><i class="bi bi-key-fill"></i> Changer mot de passe</a>
-    <a href="/export/pdf_employe" target="_blank" class="btn-export" onclick="chargementExport(this)">
-        <i class="bi bi-file-earmark-text"></i> Exporter le point du jour
-    </a>
-    <a href="/logout" onclick="return confirm('Voulez-vous vraiment vous déconnecter ?')"><i class="bi bi-door-open-fill"></i> Déconnexion</a>
+    <a href="/dashboard"><i class="bi bi-arrow-left"></i> Retour au Dashboard</a>
+    <a href="/admin/archives"><i class="bi bi-journals"></i> Archives</a>
+    <a href="/admin/stats"><i class="bi bi-bar-chart-line"></i> Statistiques</a>
+    <a href="/admin/ventes-annulees"><i class="bi bi-slash-circle"></i> Ventes annulées</a>
 </div>
 
 <!-- Modal client -->
-<div id="clientModal" class="modal">
+<div id="adminClientModal" class="modal">
     <div class="modal-content">
         <h3><i class="bi bi-person"></i> Informations client</h3>
-        <p style="color: #666; font-size: 14px; margin-bottom: 10px;"></p>
-        <input type="text" id="clientNameInput" placeholder="Nom du client" autocomplete="off">
-        <input type="tel" id="clientPhoneInput" placeholder="Téléphone (pour la fiche client)" autocomplete="off" style="margin-top:10px;">
+        <input type="text" id="adminClientNameInput" placeholder="Nom du client" autocomplete="off">
+        <input type="tel" id="adminClientPhoneInput" placeholder="Téléphone (pour la fiche client)" autocomplete="off" style="margin-top:10px;">
         <div class="btn-group">
-            <button class="btn-confirm" onclick="confirmClientName()"><i class="bi bi-check-circle-fill"></i> Confirmer</button>
-            <button class="btn-skip" onclick="skipClientName()"><i class="bi bi-skip-forward-fill"></i> Passer</button>
+            <button class="btn-confirm" onclick="adminConfirmClientName()"><i class="bi bi-check-circle-fill"></i> Confirmer</button>
+            <button class="btn-skip" onclick="adminSkipClientName()"><i class="bi bi-skip-forward-fill"></i> Passer</button>
         </div>
     </div>
 </div>
 
 <script>
     // ============================================================
-    // VARIABLES GLOBALES
+    // ADMIN - VARIABLES GLOBALES
     // ============================================================
-    function chargementExport(el) {
-        const html = el.innerHTML;
-        el.innerHTML = '<i class="bi bi-hourglass-split"></i> Chargement...';
-        setTimeout(function() { el.innerHTML = html; }, 3000);
-    }
-    let cart = {}; // { produit_id: { id, name, price, stock, qty, tierId?, tierNom?, unitEquiv? } }
-    const PALIERS = {{ paliers_json|safe }}; // { produit_id: [{id, nom, quantite, prix}, ...] }
+    let adminCart = {}; // { produit_id: { id, name, price, stock, qty, tierId?, tierNom?, unitEquiv? } }
+    const PALIERS = {{ paliers_json|safe }};
 
-    // ============================================================
-    // PALIERS DE PRIX (carton de 24, pack de 6, etc.)
-    // ============================================================
-    function initSelecteursPaliers() {
+    function initSelecteursPaliersAdmin() {
         Object.keys(PALIERS).forEach(pid => {
             const tiers = PALIERS[pid];
             if (!tiers || tiers.length === 0) return;
@@ -795,9 +787,9 @@
                 <div style="display:flex; gap:6px; margin:6px 0 4px 0;">
                     <input type="number" id="units-input-${pid}" min="1" step="1" inputmode="numeric"
                            placeholder="Ou saisir un nombre d'unités"
-                           onkeydown="if(event.key==='Enter'){event.preventDefault();ajouterParUnites(${pid});}"
+                           onkeydown="if(event.key==='Enter'){event.preventDefault();adminAjouterParUnites(${pid});}"
                            style="flex:1; min-width:0; padding:8px; border:2px solid #e0e0e0; border-radius:8px; font-size:13px;">
-                    <button type="button" onclick="ajouterParUnites(${pid})"
+                    <button type="button" onclick="adminAjouterParUnites(${pid})"
                             style="padding:8px 10px; border:none; border-radius:8px; background:#17a2b8; color:#fff; font-size:12px; cursor:pointer; white-space:nowrap;">
                         Ajouter en unités
                     </button>
@@ -808,20 +800,18 @@
     }
 
     // ============================================================
-    // RECHERCHE DE PRODUITS (CORRIGÉE)
+    // ADMIN - RECHERCHE DE PRODUITS
     // ============================================================
-    const searchInput = document.getElementById('searchInput');
-    const productsGrid = document.getElementById('productsGrid');
-    const productCards = document.querySelectorAll('.product-card');
-    const noResults = document.getElementById('noResults');
+    const adminSearchInput = document.getElementById('searchInput');
+    const adminProductCards = document.querySelectorAll('.product-card');
+    const adminNoResults = document.getElementById('noResults');
     
-    function filterProducts() {
-        // Normaliser le terme de recherche (supprimer les accents)
-        const searchTerm = searchInput.value.toLowerCase().trim()
+    function adminFilterProducts() {
+        const searchTerm = adminSearchInput.value.toLowerCase().trim()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         let hasResults = false;
         
-        productCards.forEach(card => {
+        adminProductCards.forEach(card => {
             const productName = card.getAttribute('data-name') || '';
             const normalizedName = productName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             
@@ -833,35 +823,33 @@
             }
         });
         
-        noResults.style.display = hasResults ? 'none' : 'block';
+        adminNoResults.style.display = hasResults ? 'none' : 'block';
     }
-    // Écouteurs d'événements
-    searchInput.addEventListener('input', filterProducts);
-    searchInput.addEventListener('keyup', filterProducts);
+    
+    adminSearchInput.addEventListener('input', adminFilterProducts);
+    adminSearchInput.addEventListener('keyup', adminFilterProducts);
     
     // ============================================================
-    // GESTION DU PANIER
+    // ADMIN - GESTION DU PANIER
     // ============================================================
     // Arrondi à 3 décimales pour éviter les erreurs de flottant JS (ex: 0.1+0.2)
-    function arrondirQte(v) {
+    function adminArrondirQte(v) {
         return Math.round(v * 1000) / 1000;
     }
 
-    // Formate une quantité pour l'affichage (20 au lieu de 20.000, 19.5 au lieu de 19.500)
-    function formaterQte(v) {
+    function adminFormaterQte(v) {
         return (Math.round(v * 1000) / 1000).toString();
     }
 
-    // Recherche un produit par son code-barres scanné et l'ajoute directement
-    // au panier (à défaut d'être trouvé, on prévient l'utilisateur).
-    function rechercherParCodeBarre(code) {
+    // Recherche un produit par son code-barres scanné et l'ajoute directement au panier.
+    function adminRechercherParCodeBarre(code) {
         code = (code || '').trim();
         if (!code) return;
         const cards = document.querySelectorAll('.product-card');
         for (const card of cards) {
             if (card.getAttribute('data-barcode') === code) {
                 const id = card.getAttribute('data-id');
-                ajouterAuPanier(id);
+                adminAjouterAuPanier(id);
                 card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 card.style.outline = '3px solid #28a745';
                 setTimeout(function() { card.style.outline = ''; }, 1500);
@@ -873,38 +861,38 @@
 
     // Une ligne de panier par couple (produit, palier) : on peut donc mélanger
     // carton + pack + unités du même produit sur un seul reçu.
-    function cleLigne(id, tierId) { return tierId ? (id + '_t' + tierId) : String(id); }
+    function adminCleLigne(id, tierId) { return tierId ? (id + '_t' + tierId) : String(id); }
 
     // Unités de base déjà présentes dans le panier pour ce produit (hors la ligne exceptKey)
-    function unitesAutresLignes(id, exceptKey) {
+    function adminUnitesAutresLignes(id, exceptKey) {
         let t = 0;
-        Object.keys(cart).forEach(k => {
-            const it = cart[k];
+        Object.keys(adminCart).forEach(k => {
+            const it = adminCart[k];
             if (String(it.id) === String(id) && k !== exceptKey) {
                 t += it.tierId ? it.qty * it.unitEquiv : it.qty;
             }
         });
-        return arrondirQte(t);
+        return adminArrondirQte(t);
     }
 
     // Ajoute qty à la ligne (produit, palier). qty = nb de paliers, ou nb d'unités si tier == null.
     // Retourne false si le stock total du produit serait dépassé.
-    function ajouterLigne(id, card, stock, tier, qty) {
-        const key = cleLigne(id, tier ? tier.id : null);
-        const equiv = tier ? arrondirQte(tier.quantite) : 1;
-        const deja = cart[key] ? cart[key].qty : 0;
-        if (arrondirQte(unitesAutresLignes(id, key) + (deja + qty) * equiv) > stock) return false;
-        if (cart[key]) {
-            cart[key].qty = arrondirQte(deja + qty);
+    function adminAjouterLigne(id, card, stock, tier, qty) {
+        const key = adminCleLigne(id, tier ? tier.id : null);
+        const equiv = tier ? adminArrondirQte(tier.quantite) : 1;
+        const deja = adminCart[key] ? adminCart[key].qty : 0;
+        if (adminArrondirQte(adminUnitesAutresLignes(id, key) + (deja + qty) * equiv) > stock) return false;
+        if (adminCart[key]) {
+            adminCart[key].qty = adminArrondirQte(deja + qty);
         } else if (tier) {
-            cart[key] = {
+            adminCart[key] = {
                 key: key, id: id, name: card.getAttribute('data-nom'),
                 price: tier.prix, stock: stock, fractionnable: false, step: 1, qty: qty,
                 tierId: tier.id, tierNom: tier.nom, unitEquiv: equiv
             };
         } else {
             const frac = card.getAttribute('data-fractionnable') === '1';
-            cart[key] = {
+            adminCart[key] = {
                 key: key, id: id, name: card.getAttribute('data-nom'),
                 price: parseFloat(card.getAttribute('data-price')), stock: stock,
                 fractionnable: frac, step: frac ? 0.5 : 1, qty: qty,
@@ -914,7 +902,7 @@
         return true;
     }
 
-    function ajouterAuPanier(id) {
+    function adminAjouterAuPanier(id) {
         const card = document.getElementById('card-' + id);
         if (!card) return;
         const stock = parseFloat(card.getAttribute('data-stock'));
@@ -923,30 +911,30 @@
         const tierSelect = document.getElementById('tier-select-' + id);
         if (tiers && tiers.length > 0 && tierSelect) {
             const tier = tiers[parseInt(tierSelect.value, 10)];
-            if (!ajouterLigne(id, card, stock, tier, 1)) {
-                const dispo = arrondirQte(stock - unitesAutresLignes(id, null));
-                alert(`Stock insuffisant pour "${tier.nom}" ! Il reste ${formaterQte(dispo)} unité(s) disponible(s)`);
+            if (!adminAjouterLigne(id, card, stock, tier, 1)) {
+                const dispo = adminArrondirQte(stock - adminUnitesAutresLignes(id, null));
+                alert(`Stock insuffisant pour "${tier.nom}" ! Il reste ${adminFormaterQte(dispo)} unité(s) disponible(s)`);
                 return;
             }
             card.classList.add('in-cart');
-            renderCart();
+            adminRenderCart();
             return;
         }
 
         const fractionnable = card.getAttribute('data-fractionnable') === '1';
         const step = fractionnable ? 0.5 : 1;
-        const existe = !!cart[cleLigne(id, null)];
-        if (!ajouterLigne(id, card, stock, null, existe ? step : 1)) {
-            alert(`Stock insuffisant ! Il reste ${formaterQte(arrondirQte(stock - unitesAutresLignes(id, null)))} unité(s)`);
+        const existe = !!adminCart[adminCleLigne(id, null)];
+        if (!adminAjouterLigne(id, card, stock, null, existe ? step : 1)) {
+            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminArrondirQte(stock - adminUnitesAutresLignes(id, null)))} unité(s)`);
             return;
         }
         card.classList.add('in-cart');
-        renderCart();
+        adminRenderCart();
     }
 
     // Saisie d'un nombre d'unités : l'application répartit automatiquement en
     // cartons / packs (du plus grand au plus petit palier) + unités restantes.
-    function ajouterParUnites(id) {
+    function adminAjouterParUnites(id) {
         const card = document.getElementById('card-' + id);
         const input = document.getElementById('units-input-' + id);
         const msg = document.getElementById('units-msg-' + id);
@@ -957,9 +945,9 @@
             alert('Entrez un nombre d\'unités valide (ex : 26)');
             return;
         }
-        const dispo = arrondirQte(stock - unitesAutresLignes(id, null));
+        const dispo = adminArrondirQte(stock - adminUnitesAutresLignes(id, null));
         if (n > dispo) {
-            alert(`Stock insuffisant ! Il reste ${formaterQte(dispo)} unité(s) disponible(s)`);
+            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(dispo)} unité(s) disponible(s)`);
             return;
         }
         const tiers = (PALIERS[id] || []).filter(t => t.quantite > 0)
@@ -968,92 +956,92 @@
         const resume = [];
         tiers.forEach(t => {
             if (t.quantite <= 1) return;               // le palier "unité" est géré après
-            const k = Math.floor(arrondirQte(reste / t.quantite) + 1e-9);
+            const k = Math.floor(adminArrondirQte(reste / t.quantite) + 1e-9);
             if (k > 0) {
-                ajouterLigne(id, card, stock, t, k);
+                adminAjouterLigne(id, card, stock, t, k);
                 resume.push(`${k} × ${t.nom}`);
-                reste = arrondirQte(reste - k * t.quantite);
+                reste = adminArrondirQte(reste - k * t.quantite);
             }
         });
         if (reste > 0) {
             const palierUnite = tiers.find(t => t.quantite === 1);
-            ajouterLigne(id, card, stock, palierUnite || null, reste);
-            resume.push(`${formaterQte(reste)} × ${palierUnite ? palierUnite.nom : 'unité'}`);
+            adminAjouterLigne(id, card, stock, palierUnite || null, reste);
+            resume.push(`${adminFormaterQte(reste)} × ${palierUnite ? palierUnite.nom : 'unité'}`);
         }
         input.value = '';
         if (msg) msg.textContent = `✔ ${n} unités = ${resume.join(' + ')}`;
         card.classList.add('in-cart');
-        renderCart();
+        adminRenderCart();
     }
 
-    function changerQuantitePanier(key, delta) {
-        const item = cart[key];
+    function adminChangerQuantitePanier(key, delta) {
+        const item = adminCart[key];
         if (!item) return;
-        const autres = unitesAutresLignes(item.id, key);
+        const autres = adminUnitesAutresLignes(item.id, key);
         if (item.tierId) {
             const n = item.qty + delta;
-            if (n < 1) { retirerDuPanier(key); return; }
-            if (arrondirQte(autres + n * item.unitEquiv) > item.stock) {
-                alert(`Stock insuffisant ! Il reste ${formaterQte(arrondirQte(item.stock - autres))} unité(s) disponible(s)`);
+            if (n < 1) { adminRetirerDuPanier(key); return; }
+            if (adminArrondirQte(autres + n * item.unitEquiv) > item.stock) {
+                alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminArrondirQte(item.stock - autres))} unité(s) disponible(s)`);
                 return;
             }
             item.qty = n;
-            renderCart();
+            adminRenderCart();
             return;
         }
         const step = item.step || 1;
-        const n = arrondirQte(item.qty + delta);
-        if (arrondirQte(autres + n) > item.stock) {
-            alert(`Stock insuffisant ! Il reste ${formaterQte(arrondirQte(item.stock - autres))} unité(s) disponible(s)`);
+        const n = adminArrondirQte(item.qty + delta);
+        if (adminArrondirQte(autres + n) > item.stock) {
+            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(adminArrondirQte(item.stock - autres))} unité(s) disponible(s)`);
             return;
         }
-        if (n < step) { retirerDuPanier(key); return; }
+        if (n < step) { adminRetirerDuPanier(key); return; }
         item.qty = n;
-        renderCart();
+        adminRenderCart();
     }
 
     // Saisie directe d'une quantité (ex: 0.5, 2.5) pour les produits vendables en fraction.
-    function setQuantitePanier(key, valeur) {
-        const item = cart[key];
+    function adminSetQuantitePanier(key, valeur) {
+        const item = adminCart[key];
         if (!item) return;
-        let q = arrondirQte(parseFloat(valeur));
-        if (isNaN(q) || q <= 0) { retirerDuPanier(key); return; }
-        const max = arrondirQte(item.stock - unitesAutresLignes(item.id, key));
+        let q = adminArrondirQte(parseFloat(valeur));
+        if (isNaN(q) || q <= 0) { adminRetirerDuPanier(key); return; }
+        const max = adminArrondirQte(item.stock - adminUnitesAutresLignes(item.id, key));
         if (q > max) {
-            alert(`Stock insuffisant ! Il reste ${formaterQte(max)} unité(s) disponible(s)`);
+            alert(`Stock insuffisant ! Il reste ${adminFormaterQte(max)} unité(s) disponible(s)`);
             q = max;
         }
-        if (q <= 0) { retirerDuPanier(key); return; }
+        if (q <= 0) { adminRetirerDuPanier(key); return; }
         item.qty = q;
-        renderCart();
+        adminRenderCart();
     }
 
-    function retirerDuPanier(key) {
-        const item = cart[key];
-        delete cart[key];
-        if (item && !Object.values(cart).some(it => String(it.id) === String(item.id))) {
+    function adminRetirerDuPanier(key) {
+        const item = adminCart[key];
+        delete adminCart[key];
+        if (item && !Object.values(adminCart).some(it => String(it.id) === String(item.id))) {
             const card = document.getElementById('card-' + item.id);
             if (card) card.classList.remove('in-cart');
         }
-        renderCart();
+        adminRenderCart();
     }
 
-    function renderCart() {
-        const cartList = document.getElementById('cartList');
-        const keys = Object.keys(cart);
+    function adminRenderCart() {
+        const cartList = document.getElementById('adminCartList');
+        const keys = Object.keys(adminCart);
 
         if (keys.length === 0) {
-            cartList.innerHTML = '<div class="cart-empty" id="cartEmpty"> Ajoutez des produits depuis la liste ci-dessus</div>';
-            document.getElementById('totalDisplay').style.display = 'none';
-            document.getElementById('paiementWrap').style.display = 'none';
-            document.getElementById('validateSaleBtn').style.display = 'none';
+            cartList.innerHTML = '<div class="cart-empty" id="adminCartEmpty"> Ajoutez des produits depuis la liste ci-dessus</div>';
+            document.getElementById('adminTotalDisplay').style.display = 'none';
+            document.getElementById('adminPaiementWrap').style.display = 'none';
+            document.getElementById('adminValidateSaleBtn').style.display = 'none';
             return;
         }
 
         let html = '';
         let total = 0;
         keys.forEach(key => {
-            const item = cart[key];
+            const item = adminCart[key];
             const subtotal = Math.round(item.qty * item.price);
             total += subtotal;
             const step = item.step || 1;
@@ -1061,26 +1049,26 @@
             let qtyControl;
             if (item.tierId) {
                 qtyControl = `
-                    <button type="button" onclick="changerQuantitePanier('${key}', -1)">-</button>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', -1)">-</button>
                     <span>${item.qty}</span>
-                    <button type="button" onclick="changerQuantitePanier('${key}', 1)">+</button>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', 1)">+</button>
                 `;
             } else if (item.fractionnable) {
                 // Produit vendable en fraction : champ modifiable directement
                 // (0.5 = 1/2 carton, 0.25 = 1/4 carton, etc.)
                 qtyControl = `
-                    <button type="button" onclick="changerQuantitePanier('${key}', -${step})">-</button>
-                    <input type="number" class="cart-item-qty-input" value="${formaterQte(item.qty)}"
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', -${step})">-</button>
+                    <input type="number" class="cart-item-qty-input" value="${adminFormaterQte(item.qty)}"
                            step="0.01" min="0.01"
-                           onchange="setQuantitePanier('${key}', this.value)"
+                           onchange="adminSetQuantitePanier('${key}', this.value)"
                            style="width:55px; text-align:center; border:1px solid #ccc; border-radius:6px; padding:4px;">
-                    <button type="button" onclick="changerQuantitePanier('${key}', ${step})">+</button>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', ${step})">+</button>
                 `;
             } else {
                 qtyControl = `
-                    <button type="button" onclick="changerQuantitePanier('${key}', -1)">-</button>
-                    <span>${formaterQte(item.qty)}</span>
-                    <button type="button" onclick="changerQuantitePanier('${key}', 1)">+</button>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', -1)">-</button>
+                    <span>${adminFormaterQte(item.qty)}</span>
+                    <button type="button" onclick="adminChangerQuantitePanier('${key}', 1)">+</button>
                 `;
             }
 
@@ -1091,150 +1079,110 @@
                     <div class="cart-item-name">${item.name}${suffixe}</div>
                     <div class="cart-item-qty">${qtyControl}</div>
                     <div class="cart-item-subtotal">${subtotal.toLocaleString()} FCFA</div>
-                    <button type="button" class="cart-item-remove" onclick="retirerDuPanier('${key}')"></button>
+                    <button type="button" class="cart-item-remove" onclick="adminRetirerDuPanier('${key}')"></button>
                 </div>
             `;
         });
         cartList.innerHTML = html;
 
-        document.getElementById('totalAmount').innerText = total.toLocaleString();
+        document.getElementById('adminTotalAmount').innerText = total.toLocaleString();
         if (window.hitnaPaiement) window.hitnaPaiement.setTotal(total);
-        document.getElementById('totalDisplay').style.display = 'block';
-        document.getElementById('paiementWrap').style.display = 'block';
-        document.getElementById('validateSaleBtn').style.display = 'block';
+        document.getElementById('adminTotalDisplay').style.display = 'block';
+        document.getElementById('adminPaiementWrap').style.display = 'block';
+        document.getElementById('adminValidateSaleBtn').style.display = 'block';
     }
 
     // ============================================================
-    // VALIDATION VENTE
+    // ADMIN - VALIDATION VENTE
     // ============================================================
-    function validateSale() {
+    function adminValidateSale() {
         try {
-            const ids = Object.keys(cart);
+            const ids = Object.keys(adminCart);
             if (ids.length === 0) {
                 alert('Veuillez ajouter au moins un produit au panier');
                 return;
             }
             if (window.hitnaPaiement && !window.hitnaPaiement.valider()) return;
-            document.getElementById('clientModal').style.display = 'flex';
-            document.getElementById('clientNameInput').focus();
+            document.getElementById('adminClientModal').style.display = 'flex';
+            document.getElementById('adminClientNameInput').focus();
         } catch (error) {
-            console.error(' Erreur validation vente:', error);
+            console.error(' Erreur validation vente admin:', error);
             alert('Erreur: ' + error.message);
         }
     }
     
     // ============================================================
-    // ÉCOUTEURS D'ÉVÉNEMENTS
+    // ADMIN - CONFIRMATION CLIENT
     // ============================================================
-    document.addEventListener('DOMContentLoaded', function() {
-        initSelecteursPaliers();
-        const btn = document.getElementById('validateSaleBtn');
-        if (btn) {
-            btn.addEventListener('click', validateSale);
-        }
-        updateOfflineBanner();
-    });
-    
-    // ============================================================
-    // CONFIRMATION CLIENT
-    // ============================================================
-    function buildCartPayload() {
-        return Object.values(cart).map(item => {
+    function adminBuildCartPayload() {
+        return Object.values(adminCart).map(item => {
             const payload = { produit_id: item.id, quantite: item.qty };
             if (item.tierId) payload.palier_id = item.tierId;
             return payload;
         });
     }
 
-    function confirmClientName() {
+    function adminConfirmClientName() {
         try {
-            const clientName = document.getElementById('clientNameInput').value;
-            const clientPhone = document.getElementById('clientPhoneInput').value.trim();
-            document.getElementById('clientName').value = clientName;
-            document.getElementById('clientTelephone').value = clientPhone;
-            document.getElementById('clientModal').style.display = 'none';
-            soumettreVente(clientName, clientPhone);
+            const clientName = document.getElementById('adminClientNameInput').value;
+            const clientPhone = document.getElementById('adminClientPhoneInput').value.trim();
+            document.getElementById('adminClientName').value = clientName;
+            document.getElementById('adminClientTelephone').value = clientPhone;
+            document.getElementById('adminCartJsonInput').value = JSON.stringify(adminBuildCartPayload());
+            document.getElementById('adminClientModal').style.display = 'none';
+            
+            const form = document.getElementById('adminSaleForm');
+            if (form) {
+                form.submit();
+            } else {
+                alert('Erreur: formulaire non trouvé');
+            }
         } catch (error) {
-            console.error(' Erreur confirmClientName:', error);
+            console.error(' Erreur adminConfirmClientName:', error);
             alert('Erreur: ' + error.message);
         }
     }
     
-    function skipClientName() {
+    function adminSkipClientName() {
         try {
-            document.getElementById('clientName').value = '';
-            document.getElementById('clientTelephone').value = '';
-            document.getElementById('clientModal').style.display = 'none';
-            soumettreVente('', '');
+            document.getElementById('adminClientName').value = '';
+            document.getElementById('adminClientTelephone').value = '';
+            document.getElementById('adminCartJsonInput').value = JSON.stringify(adminBuildCartPayload());
+            document.getElementById('adminClientModal').style.display = 'none';
+            
+            const form = document.getElementById('adminSaleForm');
+            if (form) {
+                form.submit();
+            } else {
+                alert('Erreur: formulaire non trouvé');
+            }
         } catch (error) {
-            console.error(' Erreur skipClientName:', error);
+            console.error(' Erreur adminSkipClientName:', error);
             alert('Erreur: ' + error.message);
         }
     }
-
-    function soumettreVente(clientName, clientPhone) {
-        const cartPayload = buildCartPayload();
-
-        // Mode hors ligne : on met la vente en file d'attente au lieu de soumettre le formulaire
-        if (typeof navigator !== 'undefined' && !navigator.onLine && window.hitnaQueueIfOffline) {
-            const modePaiement = document.getElementById('modePaiement') ? document.getElementById('modePaiement').value : 'Espèces';
-            window.hitnaQueueIfOffline('vente', { client: clientName, telephone: clientPhone, cart: cartPayload, mode_paiement: modePaiement, paiements: window.hitnaPaiement ? window.hitnaPaiement.valeur() : [] }).then(function(queued) {
-                if (queued) {
-                    alert(' Vente enregistrée hors ligne. Elle sera synchronisée automatiquement dès le retour du réseau (le reçu ne sera disponible qu\'après synchronisation).');
-                    cart = {};
-                    renderCart();
-                    document.querySelectorAll('.product-card.in-cart').forEach(c => c.classList.remove('in-cart'));
-                }
-            });
-            return;
-        }
-
-        document.getElementById('cartJsonInput').value = JSON.stringify(cartPayload);
-        const form = document.getElementById('saleForm');
-        if (form) {
-            form.submit();
-        } else {
-            alert('Erreur: formulaire non trouvé');
-        }
-    }
     
+    // Fermer le modal en cliquant en dehors
     window.onclick = function(event) {
-        const modal = document.getElementById('clientModal');
+        const modal = document.getElementById('adminClientModal');
         if (modal && event.target == modal) {
             modal.style.display = 'none';
         }
     }
 
     // ============================================================
-    // MODE HORS LIGNE
+    // ADMIN - TOUCHE ENTRÉE POUR VALIDER LE CLIENT
     // ============================================================
-    function updateOfflineBanner() {
-        const banner = document.getElementById('offlineBanner');
-        if (banner) {
-            if (typeof navigator !== 'undefined' && !navigator.onLine) {
-                banner.style.display = 'block';
-            } else {
-                banner.style.display = 'none';
-            }
-        }
-    }
-
-    if (typeof navigator !== 'undefined') {
-        window.addEventListener('online', updateOfflineBanner);
-        window.addEventListener('offline', updateOfflineBanner);
-    }
-
-    // ============================================================
-    // TOUCHE ENTRÉE
-    // ============================================================
-    const clientNameInput = document.getElementById('clientNameInput');
-    if (clientNameInput) {
-        clientNameInput.addEventListener('keydown', function(e) {
+    const adminClientInput = document.getElementById('adminClientNameInput');
+    if (adminClientInput) {
+        adminClientInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                confirmClientName();
+                adminConfirmClientName();
             }
         });
     }
+
+    initSelecteursPaliersAdmin();
 </script>
 {% endblock %}
